@@ -1,0 +1,259 @@
+---
+description: 'PO 변경 요청 접수 관리 웹 서비스 개발 규칙'
+globs: ['**/*.tsx', '**/*.ts', '**/*.jsx', '**/*.js']
+alwaysApply: true
+---
+
+# PO 변경 요청 접수 관리 웹 서비스 개발 규칙
+
+## 핵심 개발 원칙
+
+### 사용자 경험 최우선
+- **로딩 상태 UI**: 모든 비동기 작업에 대해 로딩 상태를 시각적으로 표시
+- **빈 상태 UI**: 데이터가 없을 때 사용자에게 빈 상태를 명확히 알림
+- **오류 상태 UI**: 오류 발생 시 사용자에게 친절한 안내 메시지 제공
+- **상호작용 지연 최소화**: 사용자 입력에 대한 즉각적인 피드백 제공 (낙관적 업데이트, 스켈레톤 UI 등)
+
+### 오류 처리 철저
+- **서버 측 오류 처리**: API Route, Server Actions, Server Components에서 발생하는 모든 예외를 포착
+- **클라이언트 측 오류 처리**: 클라이언트 컴포넌트에서 발생하는 오류를 Error Boundary와 try-catch로 처리
+- **사용자 메시지**: 모든 오류 메시지는 한글로 친절하고 이해하기 쉽게 작성
+- **개발 환경 로깅**: 개발 환경에서는 상세한 오류 로그를 콘솔에 출력하여 디버깅 용이성 확보
+
+## 코딩 스타일
+
+### 컴포넌트 작성 규칙
+- **함수형 컴포넌트 기본 사용**
+  - 클래스 컴포넌트 사용 금지
+  - React Hooks 활용
+
+- **화살표 함수 사용**
+  ```typescript
+  // ✅ 좋은 예
+  const RequestList = () => {
+    return <div>...</div>;
+  };
+
+  // ❌ 나쁜 예
+  function RequestList() {
+    return <div>...</div>;
+  }
+  ```
+
+### 파일 명명 규칙
+- **컴포넌트 파일명**: 파스칼 케이스
+  - 예: `RequestList.tsx`, `RequestForm.tsx`, `ApprovalDialog.tsx`
+- **유틸리티 파일명**: 케이밍 케이스 (kebab-case)
+  - 예: `date-utils.ts`, `api-client.ts`, `request-validator.ts`
+- **훅 파일명**: `use-` 접두사 + 케이밍 케이스
+  - 예: `use-requests.ts`, `use-auth.ts`, `use-approval.ts`
+
+### 주석 규칙
+- **한글 주석 필수**
+  - 모든 함수/컴포넌트 상단에 한 문장 개요를 한글로 작성
+  - JSDoc 형식으로 상세 설명을 한글로 작성
+  
+  ```typescript
+  /**
+   * PO 변경 요청 목록을 표시하는 컴포넌트
+   * 
+   * @param requests - 표시할 요청 목록
+   * @returns 요청 목록을 렌더링하는 React 컴포넌트
+   */
+  const RequestList = ({ requests }: { requests: PORequest[] }) => {
+    // 컴포넌트 구현
+  };
+  ```
+
+- **복잡한 로직 주석**: 알고리즘이나 비즈니스 로직이 복잡한 경우 한글로 설명 주석 추가
+
+### ESLint 준수
+- **모든 린트 규칙 준수 필수**
+- 커밋 전 반드시 `npm run lint` 실행
+- 린트 오류는 반드시 해결 후 커밋
+
+- **주요 ESLint 규칙 위반 예시**
+  ```typescript
+  // ❌ 나쁜 예: any 타입 사용
+  const handleSubmit = (data: any) => {
+    // ...
+  };
+
+  // ✅ 좋은 예: 명시적 타입 지정
+  const handleSubmit = (data: RequestFormData) => {
+    // ...
+  };
+
+  // ❌ 나쁜 예: 사용하지 않는 변수
+  const unusedVar = 'test';
+  const handleClick = () => {
+    console.log('clicked');
+  };
+
+  // ✅ 좋은 예: 사용하지 않는 변수 제거
+  const handleClick = () => {
+    console.log('clicked');
+  };
+
+  // ❌ 나쁜 예: React Hook 규칙 위반
+  const RequestForm = () => {
+    if (condition) {
+      const [state, setState] = useState('');
+    }
+    // ...
+  };
+
+  // ✅ 좋은 예: Hook을 조건문 밖에서 호출
+  const RequestForm = () => {
+    const [state, setState] = useState('');
+    if (condition) {
+      // ...
+    }
+    // ...
+  };
+  ```
+
+## 기술 스택
+
+### 핵심 프레임워크
+- **Next.js 15** (App Router)
+  - 서버 컴포넌트 우선 사용
+  - Server Actions 활용
+  - Streaming SSR 활용
+  - App Router의 파일 기반 라우팅 시스템 사용
+
+### 타입 안정성
+- **TypeScript** (필수, `strict: true` 권장)
+  - 모든 컴포넌트, 함수, 변수에 명시적 타입 지정
+  - `any` 타입 사용 금지 (불가피한 경우 `unknown` 사용)
+
+### 스타일링
+- **Tailwind CSS**
+  - 유틸리티 클래스 우선 사용
+  - 커스텀 클래스는 최소화
+  - 반응형 디자인은 Tailwind의 breakpoint 사용
+
+### UI 컴포넌트
+- **Shadcn/ui**
+  - 기존 UI 컴포넌트 재사용 우선
+  - 필요한 경우 컴포넌트 커스터마이징
+  - 접근성(a11y) 고려
+
+### 백엔드 서비스
+- **Supabase**
+  - 인증(Auth) 관리
+  - 데이터베이스(PostgreSQL) 연결
+  - 실시간 구독(Realtime) 활용 시 고려
+
+## 코드 구조
+
+### 컴포넌트 분리 원칙
+- 단일 책임 원칙 준수
+- 재사용 가능한 컴포넌트는 `components/` 디렉토리에 배치
+- 페이지별 전용 컴포넌트는 해당 페이지 디렉토리 내에 배치
+
+### 파일 구조 예시
+```
+app/
+  page.tsx
+  (routes)/
+    requests/
+      page.tsx
+      components/
+        RequestList.tsx
+        RequestForm.tsx
+components/
+  ui/
+  common/
+    Header.tsx
+    ApprovalDialog.tsx
+lib/
+  utils.ts
+  api.ts
+  supabase.ts
+hooks/
+  use-requests.ts
+  use-approval.ts
+```
+
+### 타입 정의
+- **인터페이스 vs 타입 별칭**
+  - 객체 형태는 `interface` 사용
+  - 유니온, 교차 타입 등은 `type` 사용
+  
+  ```typescript
+  // ✅ interface 사용
+  interface PORequest {
+    id: string;
+    title: string;
+    status: 'pending' | 'approved' | 'rejected';
+    requestedBy: string;
+    requestedAt: Date;
+  }
+
+  // ✅ type 사용
+  type RequestStatus = 'pending' | 'approved' | 'rejected';
+  type RequestWithStatus = PORequest & { status: RequestStatus };
+  ```
+
+### 상태 관리
+- **서버 상태**: Server Components와 Server Actions 활용
+- **클라이언트 상태**: `useState`, `useReducer` 사용
+- **전역 상태**: 필요한 경우 Context API 사용 (상태 관리 라이브러리는 신중히 도입)
+
+### 에러 핸들링 패턴
+
+**서버 사이드 (Server Actions)**
+```typescript
+/**
+ * PO 변경 요청을 생성하는 Server Action
+ */
+const createPORequest = async (data: RequestFormData) => {
+  try {
+    'use server';
+    // Supabase에 요청 저장
+    const result = await supabase.from('po_requests').insert(data);
+    return { success: true, data: result };
+  } catch (error) {
+    console.error('PO 요청 생성 실패:', error);
+    return { success: false, error: '요청 생성에 실패했습니다. 다시 시도해주세요.' };
+  }
+};
+```
+
+**클라이언트 사이드**
+```typescript
+/**
+ * PO 변경 요청 제출 핸들러
+ */
+const handleSubmitRequest = async () => {
+  try {
+    const result = await createPORequest(formData);
+    if (!result.success) {
+      toast.error(result.error || '처리 중 오류가 발생했습니다.');
+      return;
+    }
+    toast.success('요청이 성공적으로 제출되었습니다.');
+    router.push('/requests');
+  } catch (error) {
+    console.error(error);
+    toast.error('예기치 않은 오류가 발생했습니다. 관리자에게 문의해주세요.');
+  }
+};
+```
+
+## 추가 권장 사항
+
+### 성능 최적화
+- 이미지 최적화: `next/image` 사용
+- 코드 스플리팅: 동적 import 활용
+- 메모이제이션: `useMemo`, `useCallback` 적절히 활용
+
+### 접근성
+- 시맨틱 HTML 사용
+- ARIA 속성 활용
+- 키보드 네비게이션 지원
+
+### 테스트 (선택사항)
+- 단위 테스트 작성 권장
+- 통합 테스트 고려
