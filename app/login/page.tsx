@@ -102,6 +102,23 @@ export default function LoginPage() {
     setErrorMessage(null);
 
     try {
+      // 환경 변수 확인
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+      if (!supabaseUrl || !supabaseAnonKey) {
+        throw new Error(
+          'Supabase 환경 변수가 설정되지 않았습니다. .env.local 파일에 NEXT_PUBLIC_SUPABASE_URL과 NEXT_PUBLIC_SUPABASE_ANON_KEY를 설정해주세요.'
+        );
+      }
+
+      // Supabase URL 유효성 검사
+      try {
+        new URL(supabaseUrl);
+      } catch {
+        throw new Error('Supabase URL이 유효하지 않습니다. .env.local 파일을 확인해주세요.');
+      }
+
       const supabase = createClient();
 
       // Supabase Auth 로그인
@@ -118,10 +135,20 @@ export default function LoginPage() {
       // 세션은 Supabase Auth에서 자동 관리되므로 메인 페이지로 이동
       router.push('/');
       router.refresh(); // 세션 정보 갱신
-    } catch (error) {
+    } catch (error: any) {
       console.error('로그인 오류:', error);
-      const errorMsg = getErrorMessage(error);
-      setErrorMessage(errorMsg);
+      
+      // 네트워크 오류 처리
+      if (error?.message === 'Failed to fetch' || error?.name === 'TypeError') {
+        const errorMsg = '네트워크 연결 오류가 발생했습니다. 다음을 확인해주세요:\n' +
+          '1. 인터넷 연결 상태\n' +
+          '2. .env.local 파일의 Supabase URL과 API 키가 올바른지\n' +
+          '3. Supabase 프로젝트가 활성화되어 있는지';
+        setErrorMessage(errorMsg);
+      } else {
+        const errorMsg = getErrorMessage(error);
+        setErrorMessage(errorMsg);
+      }
     } finally {
       setIsLoading(false);
     }

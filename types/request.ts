@@ -33,15 +33,20 @@ export interface PORequest {
   requesting_dept: string;
   requester_id?: string;
   requester_name: string;
-  factory_shipment_date: string;
+  request_type?: 'existing' | 'new'; // 구분: 기존/신규
+  factory_shipment_date: string; // 현재 출하일
+  desired_shipment_date?: string; // 희망 출하일
+  confirmed_shipment_date?: string; // 확정 출하일 (검토자/관리자만 수정 가능)
   leadtime?: number;
   category_of_request: string;
   priority: PriorityLevel;
+  shipping_method?: string; // 운송방법 (Ocean, Air, UPS, DHL)
   erp_code: string;
   item_name: string;
   quantity: number;
   reason_for_request: string;
   request_details?: string;
+  items?: RequestItem[]; // 품목 목록 (여러 품목 지원)
   feasibility?: FeasibilityStatus;
   review_details?: string;
   reviewing_dept?: string;
@@ -53,6 +58,15 @@ export interface PORequest {
   created_at: string;
   updated_at: string;
   deleted_at?: string;
+}
+
+/**
+ * 요청 품목 아이템 인터페이스
+ */
+export interface RequestItem {
+  erp_code: string;
+  item_name: string;
+  quantity: number;
 }
 
 /**

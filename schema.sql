@@ -16,7 +16,10 @@ CREATE TABLE IF NOT EXISTS public.user_profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   full_name TEXT NOT NULL,
   department TEXT NOT NULL,
-  role TEXT NOT NULL DEFAULT 'requester' CHECK (role IN ('requester', 'reviewer', 'admin')),
+  role TEXT NOT NULL DEFAULT 'requester' CHECK (
+    role IS NULL OR
+    role ~ '^(requester|reviewer|admin)(\s*,\s*(requester|reviewer|admin))*$'
+  ),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -65,8 +68,12 @@ CREATE TABLE IF NOT EXISTS public.requests (
   requester_name TEXT NOT NULL, -- 비정규화 (성능 및 이력 유지)
   
   -- SO 정보
-  so_number TEXT NOT NULL,
-  factory_shipment_date DATE NOT NULL,
+  so_number TEXT, -- 기존 PO 수정 시 필수, 신규 PO 추가 시 선택
+  factory_shipment_date DATE NOT NULL, -- 현재 출하일
+  desired_shipment_date DATE, -- 희망 출하일 (요청자 입력)
+  confirmed_shipment_date DATE, -- 확정 출하일 (검토자/관리자만 수정 가능)
+  request_type TEXT CHECK (request_type IN ('existing', 'new')), -- 구분: 기존/신규
+  shipping_method TEXT, -- 운송방법 (Ocean, Air, UPS, DHL)
   request_date DATE NOT NULL DEFAULT CURRENT_DATE,
   leadtime INTEGER GENERATED ALWAYS AS (
     (factory_shipment_date - request_date)::INTEGER
@@ -74,10 +81,11 @@ CREATE TABLE IF NOT EXISTS public.requests (
   
   -- 요청 내용
   category_of_request TEXT NOT NULL,
-  priority TEXT NOT NULL DEFAULT '일반' CHECK (priority IN ('긴급', '일반', '보통')),
+  priority TEXT NOT NULL DEFAULT '보통' CHECK (priority IN ('긴급', '보통')),
   erp_code TEXT,
   item_name TEXT,
-  quantity INTEGER CHECK (quantity > 0),
+  quantity INTEGER CHECK (quantity IS NULL OR quantity >= -999999), -- 음수, 0, 양수 모두 허용
+  items JSONB, -- 품목 목록 (JSONB 배열 형식: [{"erp_code": "...", "item_name": "...", "quantity": ...}])
   reason_for_request TEXT NOT NULL,
   request_details TEXT NOT NULL,
   
@@ -109,6 +117,115 @@ CREATE INDEX IF NOT EXISTS idx_requests_status ON public.requests(status);
 CREATE INDEX IF NOT EXISTS idx_requests_created_at ON public.requests(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_requests_deleted_at ON public.requests(deleted_at) WHERE deleted_at IS NULL;
 
+-- ============================================
+-- 2-1. 기존 테이블 마이그레이션 (이미 테이블이 존재하는 경우)
+-- ============================================
+-- 기존 테이블이 이미 존재하는 경우, 새 필드와 제약 조건을 추가/수정합니다.
+-- 이 섹션은 테이블 생성 직후에 실행되어야 합니다.
+
+-- 2-1-1. user_profiles 테이블: role CHECK 제약 조건 수정
+ALTER TABLE public.user_profiles 
+DROP CONSTRAINT IF EXISTS user_profiles_role_check;
+
+ALTER TABLE public.user_profiles
+ADD CONSTRAINT user_profiles_role_check 
+CHECK (
+  role IS NULL OR
+  role ~ '^(requester|reviewer|admin)(\s*,\s*(requester|reviewer|admin))*$'
+);
+
+-- 2-1-2. requests 테이블: so_number를 nullable로 변경
+DO $$ 
+BEGIN
+  -- so_number가 NOT NULL 제약이 있는 경우에만 제거
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'requests' 
+    AND column_name = 'so_number' 
+    AND is_nullable = 'NO'
+  ) THEN
+    ALTER TABLE public.requests ALTER COLUMN so_number DROP NOT NULL;
+  END IF;
+END $$;
+
+-- 2-1-3. requests 테이블: 새 필드 추가
+ALTER TABLE public.requests 
+ADD COLUMN IF NOT EXISTS desired_shipment_date DATE;
+
+ALTER TABLE public.requests 
+ADD COLUMN IF NOT EXISTS confirmed_shipment_date DATE;
+
+ALTER TABLE public.requests 
+ADD COLUMN IF NOT EXISTS request_type TEXT;
+
+-- request_type에 CHECK 제약 조건 추가 (이미 존재하지 않는 경우)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint 
+    WHERE conname = 'requests_request_type_check'
+  ) THEN
+    ALTER TABLE public.requests 
+    ADD CONSTRAINT requests_request_type_check 
+    CHECK (request_type IN ('existing', 'new'));
+  END IF;
+END $$;
+
+ALTER TABLE public.requests 
+ADD COLUMN IF NOT EXISTS shipping_method TEXT;
+
+ALTER TABLE public.requests 
+ADD COLUMN IF NOT EXISTS items JSONB;
+
+-- 2-1-4. requests 테이블: quantity 제약 조건 수정 (음수, 0 허용)
+ALTER TABLE public.requests 
+DROP CONSTRAINT IF EXISTS requests_quantity_check;
+
+ALTER TABLE public.requests 
+ADD CONSTRAINT requests_quantity_check CHECK (quantity IS NULL OR quantity >= -999999);
+
+-- 2-1-5. requests 테이블: priority 제약 조건 수정 ('일반' 제거)
+-- 먼저 기존 데이터의 '일반' 값을 '보통'으로 업데이트
+UPDATE public.requests 
+SET priority = '보통' 
+WHERE priority = '일반' OR priority NOT IN ('긴급', '보통');
+
+-- 기존 제약 조건 삭제
+ALTER TABLE public.requests 
+DROP CONSTRAINT IF EXISTS requests_priority_check;
+
+-- 새로운 제약 조건 추가
+ALTER TABLE public.requests 
+ADD CONSTRAINT requests_priority_check CHECK (priority IN ('긴급', '보통'));
+
+-- 2-1-6. priority 기본값 변경 (기존 '일반' → '보통')
+ALTER TABLE public.requests 
+ALTER COLUMN priority SET DEFAULT '보통';
+
+-- 2-1-7. erp_code, item_name, quantity를 nullable로 변경 (출하일정 변경, 운송방법 변경 시 품목 정보 불필요)
+ALTER TABLE public.requests 
+ALTER COLUMN erp_code DROP NOT NULL;
+
+ALTER TABLE public.requests 
+ALTER COLUMN item_name DROP NOT NULL;
+
+ALTER TABLE public.requests 
+ALTER COLUMN quantity DROP NOT NULL;
+
+-- 2-1-7. 코멘트 업데이트
+COMMENT ON COLUMN public.user_profiles.role IS '사용자 역할: requester(요청자), reviewer(검토자), admin(관리자). 여러 역할은 콤마로 구분 (예: "reviewer,requester")';
+
+COMMENT ON COLUMN public.requests.so_number IS 'SO 번호 (기존 PO 수정 시 필수, 신규 PO 추가 시 선택)';
+COMMENT ON COLUMN public.requests.factory_shipment_date IS '현재 출하일';
+COMMENT ON COLUMN public.requests.desired_shipment_date IS '희망 출하일 (요청자 입력)';
+COMMENT ON COLUMN public.requests.confirmed_shipment_date IS '확정 출하일 (검토자/관리자만 수정 가능)';
+COMMENT ON COLUMN public.requests.request_type IS '구분: existing(기존), new(신규)';
+COMMENT ON COLUMN public.requests.shipping_method IS '운송방법 (Ocean, Air, UPS, DHL)';
+COMMENT ON COLUMN public.requests.items IS '품목 목록 (JSONB 배열 형식: [{"erp_code": "...", "item_name": "...", "quantity": ...}])';
+COMMENT ON COLUMN public.requests.quantity IS '수량 (음수, 0, 양수 모두 허용)';
+COMMENT ON COLUMN public.requests.priority IS '우선순위: 긴급, 보통';
+
 -- RLS 활성화
 ALTER TABLE public.requests ENABLE ROW LEVEL SECURITY;
 
@@ -136,7 +253,8 @@ CREATE POLICY "Reviewers can view all requests"
   USING (
     EXISTS (
       SELECT 1 FROM public.user_profiles
-      WHERE id = auth.uid() AND role IN ('reviewer', 'admin')
+      WHERE id = auth.uid() 
+      AND (role LIKE '%reviewer%' OR role LIKE '%admin%')
     )
     AND deleted_at IS NULL
   );
@@ -164,7 +282,8 @@ CREATE POLICY "Reviewers can update review fields"
   USING (
     EXISTS (
       SELECT 1 FROM public.user_profiles
-      WHERE id = auth.uid() AND role IN ('reviewer', 'admin')
+      WHERE id = auth.uid() 
+      AND (role LIKE '%reviewer%' OR role LIKE '%admin%')
     )
     AND deleted_at IS NULL
   );
@@ -246,11 +365,20 @@ CREATE TRIGGER on_auth_user_created
 
 COMMENT ON TABLE public.user_profiles IS '사용자 프로필 테이블 (auth.users와 1:1 관계)';
 COMMENT ON COLUMN public.user_profiles.id IS '사용자 ID (auth.users.id와 동일)';
-COMMENT ON COLUMN public.user_profiles.role IS '사용자 역할: requester(요청자), reviewer(검토자), admin(관리자)';
+COMMENT ON COLUMN public.user_profiles.role IS '사용자 역할: requester(요청자), reviewer(검토자), admin(관리자). 여러 역할은 콤마로 구분 (예: "reviewer,requester")';
 
 COMMENT ON TABLE public.requests IS 'PO 변경 요청 관리 테이블';
 COMMENT ON COLUMN public.requests.requester_id IS '요청자 ID (user_profiles.id 참조)';
 COMMENT ON COLUMN public.requests.reviewer_id IS '검토자 ID (user_profiles.id 참조)';
+COMMENT ON COLUMN public.requests.so_number IS 'SO 번호 (기존 PO 수정 시 필수, 신규 PO 추가 시 선택)';
+COMMENT ON COLUMN public.requests.factory_shipment_date IS '현재 출하일';
+COMMENT ON COLUMN public.requests.desired_shipment_date IS '희망 출하일 (요청자 입력)';
+COMMENT ON COLUMN public.requests.confirmed_shipment_date IS '확정 출하일 (검토자/관리자만 수정 가능)';
+COMMENT ON COLUMN public.requests.request_type IS '구분: existing(기존), new(신규)';
+COMMENT ON COLUMN public.requests.shipping_method IS '운송방법 (Ocean, Air, UPS, DHL)';
+COMMENT ON COLUMN public.requests.items IS '품목 목록 (JSONB 배열 형식: [{"erp_code": "...", "item_name": "...", "quantity": ...}])';
+COMMENT ON COLUMN public.requests.quantity IS '수량 (음수, 0, 양수 모두 허용)';
+COMMENT ON COLUMN public.requests.priority IS '우선순위: 긴급, 보통';
 COMMENT ON COLUMN public.requests.leadtime IS '리드타임 (출하일 - 요청일, 자동 계산)';
 COMMENT ON COLUMN public.requests.status IS '요청 상태: pending(검토대기), in_review(검토중), approved(승인), rejected(거절), completed(완료)';
 COMMENT ON COLUMN public.requests.deleted_at IS 'Soft delete를 위한 삭제 시각 (NULL이면 삭제되지 않음)';

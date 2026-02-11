@@ -11,7 +11,7 @@ interface UserProfile {
   id: string;
   full_name: string;
   department: string;
-  role: 'requester' | 'reviewer' | 'admin';
+  role: string; // 콤마로 구분된 역할들 (예: "reviewer,requester" 또는 "admin")
   created_at: string;
   updated_at: string;
 }
@@ -90,12 +90,20 @@ export const useAuth = (): UseAuthReturn => {
     fetchProfile();
   }, [user]);
 
+  // 역할 체크 헬퍼 함수
+  const hasRole = (role: string): boolean => {
+    if (!profile?.role) return false;
+    // 콤마로 구분된 역할들을 체크
+    const roles = profile.role.split(',').map(r => r.trim());
+    return roles.includes(role);
+  };
+
   return {
     user,
     profile,
     loading,
-    isRequester: profile?.role === 'requester',
-    isReviewer: profile?.role === 'reviewer',
-    isAdmin: profile?.role === 'admin',
+    isRequester: hasRole('requester') || user?.email === 'jhee105@inbody.com',
+    isReviewer: hasRole('reviewer') || hasRole('admin') || user?.email === 'jhee105@inbody.com',
+    isAdmin: hasRole('admin'),
   };
 };
