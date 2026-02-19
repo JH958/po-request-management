@@ -3,7 +3,7 @@
  */
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { createClient } from '@/lib/supabase/client';
@@ -46,12 +46,26 @@ import {
 } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Header } from '@/components/common/Header';
-import { Toolbar, type ToolbarFilters } from '@/components/common/Toolbar';
 import { StatsCard } from '@/components/dashboard/StatsCard';
-import { PriorityActions } from '@/components/dashboard/PriorityActions';
-import { RequestFormTable } from '@/components/request/RequestFormTable';
 import type { PORequest, DashboardStats, FeasibilityStatus, RequestStatus } from '@/types/request';
 import { sendUrgentRequestNotification, sendNewRequestNotification } from '@/lib/notification-utils';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Table as AdminTable,
+  TableBody as AdminTableBody,
+  TableCell as AdminTableCell,
+  TableHead as AdminTableHead,
+  TableHeader as AdminTableHeader,
+  TableRow as AdminTableRow,
+  TableCaption as AdminTableCaption,
+} from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import { formatDate, calculateDaysLeft } from '@/lib/dashboard-utils';
+import { Download, CheckCircle2, XCircle, AlertCircle, Edit, Plus, List, Search } from 'lucide-react';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { cn } from '@/lib/utils';
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -78,7 +92,7 @@ export default function DashboardPage() {
   });
   const [loading, setLoading] = useState(false); // 초기값을 false로 변경
   const [searchQuery, setSearchQuery] = useState('');
-  const [filters, setFilters] = useState<ToolbarFilters>({});
+  const [filters, setFilters] = useState<{ request_type?: string; status?: string; completed?: string; priority?: string }>({});
   const [sortBy, setSortBy] = useState<string>('created_at');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [isInitialLoad, setIsInitialLoad] = useState(true);
@@ -98,6 +112,37 @@ export default function DashboardPage() {
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [requestType, setRequestType] = useState<'existing' | 'new'>('new');
   const [allPendingDialogOpen, setAllPendingDialogOpen] = useState(false);
+
+  // 페이지 모드 관련 상태
+  const [pageMode, setPageMode] = useState<'requester' | 'admin'>('requester');
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
+  const [passwordInput, setPasswordInput] = useState('');
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
+
+  // 관리자 페이지 전용 상태
+  const [adminRequests, setAdminRequests] = useState<PORequest[]>([]);
+  const [adminStats, setAdminStats] = useState<DashboardStats>({ total: 0, pending: 0, approved: 0, completed: 0 });
+  const [adminLoading, setAdminLoading] = useState(false);
+  const [adminError, setAdminError] = useState<string | null>(null);
+
+  // 요청자 페이지 전용 상태
+  const [showHistoryDialog, setShowHistoryDialog] = useState(false);
+  const [requesterPendingRequests, setRequesterPendingRequests] = useState<PORequest[]>([]);
+  const [requesterPendingLoading, setRequesterPendingLoading] = useState(false);
+
+  // 상세보기 Dialog (검토 대기 → 상세)
+  const [showDetailDialog, setShowDetailDialog] = useState(false);
+  const [detailRequest, setDetailRequest] = useState<PORequest | null>(null);
+
+  // 관리자 검색/필터/정렬 상태
+  const [adminSearchTerm, setAdminSearchTerm] = useState('');
+  const [debouncedAdminSearchTerm, setDebouncedAdminSearchTerm] = useState('');
+  const [adminFilterStatus, setAdminFilterStatus] = useState('all');
+  const [adminFilterCategory, setAdminFilterCategory] = useState('all');
+  const [adminFilterPeriod, setAdminFilterPeriod] = useState('all');
+  const [adminSortOrder, setAdminSortOrder] = useState('newest');
+
   const [newRequest, setNewRequest] = useState({
     customer: '',
     so_number: '',
@@ -263,6 +308,292 @@ export default function DashboardPage() {
     // fetchRequests 함수 호출로 단순화
     fetchRequests();
   }, [fetchRequests]);
+
+  /**
+   * 관리자 모드: 통계 데이터 조회
+   */
+  const fetchAdminStats = useCallback(async () => {
+    try {
+      const supabase = createClient();
+
+      // 전체 요청 건수
+      const { count: totalCount, error: totalError } = await supabase
+        .from('requests')
+        .select('*', { count: 'exact', head: true })
+        .is('deleted_at', null);
+      if (totalError) throw totalError;
+
+      // 검토 대기 건수
+      const { count: pendingCount, error: pendingError } = await supabase
+        .from('requests')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'pending')
+        .is('deleted_at', null);
+      if (pendingError) throw pendingError;
+
+      // 승인 건수
+      const { count: approvedCount, error: approvedError } = await supabase
+        .from('requests')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'approved')
+        .is('deleted_at', null);
+      if (approvedError) throw approvedError;
+
+      // 완료 건수
+      const { count: completedCount, error: completedError } = await supabase
+        .from('requests')
+        .select('*', { count: 'exact', head: true })
+        .eq('completed', true)
+        .is('deleted_at', null);
+      if (completedError) throw completedError;
+
+      setAdminStats({
+        total: totalCount ?? 0,
+        pending: pendingCount ?? 0,
+        approved: approvedCount ?? 0,
+        completed: completedCount ?? 0,
+      });
+    } catch (error) {
+      console.error('관리자 통계 조회 오류:', error);
+      toast.error('통계 데이터를 불러오는데 실패했습니다.');
+    }
+  }, []);
+
+  /**
+   * 관리자 모드: 전체 요청 목록 조회
+   */
+  const fetchAdminRequests = useCallback(async () => {
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('requests')
+        .select('*')
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      setAdminRequests((data || []) as PORequest[]);
+    } catch (error) {
+      console.error('관리자 요청 목록 조회 오류:', error);
+      toast.error('요청 목록을 불러오는데 실패했습니다.');
+      setAdminError('요청 목록을 불러오는데 실패했습니다.');
+    }
+  }, []);
+
+  /**
+   * 요청자 모드: 검토 대기 요청 조회 (출하일 기준 정렬, 부서별 필터링)
+   */
+  const fetchRequesterPendingRequests = useCallback(async () => {
+    try {
+      setRequesterPendingLoading(true);
+      const supabase = createClient();
+
+      let query = supabase
+        .from('requests')
+        .select('*')
+        .eq('status', 'pending')
+        .is('deleted_at', null);
+
+      // 관리자가 아닌 경우 사용자 부서(department)로 필터링
+      if (profile?.department && !isAdmin) {
+        query = query.eq('requesting_dept', profile.department);
+      }
+
+      const { data, error } = await query.order('factory_shipment_date', { ascending: true });
+
+      if (error) throw error;
+      setRequesterPendingRequests((data || []) as PORequest[]);
+    } catch (error) {
+      console.error('검토 대기 요청 조회 오류:', error);
+    } finally {
+      setRequesterPendingLoading(false);
+    }
+  }, [profile, isAdmin]);
+
+  /**
+   * 요청자 모드 데이터 로드
+   */
+  useEffect(() => {
+    if (pageMode === 'requester' && user) {
+      fetchRequesterPendingRequests();
+    }
+  }, [pageMode, user, fetchRequesterPendingRequests]);
+
+  /**
+   * 관리자 검색 디바운스
+   */
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedAdminSearchTerm(adminSearchTerm);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [adminSearchTerm]);
+
+  /**
+   * 관리자 필터링/정렬 결과 (메모이제이션)
+   */
+  const filteredAndSortedAdminRequests = useMemo(() => {
+    let result = [...adminRequests];
+
+    // 검색어 필터
+    if (debouncedAdminSearchTerm) {
+      const term = debouncedAdminSearchTerm.toLowerCase();
+      result = result.filter((req) =>
+        (req.so_number || '').toLowerCase().includes(term) ||
+        (req.customer || '').toLowerCase().includes(term) ||
+        (req.item_name || '').toLowerCase().includes(term)
+      );
+    }
+
+    // 상태 필터
+    if (adminFilterStatus !== 'all') {
+      result = result.filter((req) => req.status === adminFilterStatus);
+    }
+
+    // 요청구분 필터
+    if (adminFilterCategory !== 'all') {
+      result = result.filter((req) => req.category_of_request === adminFilterCategory);
+    }
+
+    // 기간 필터
+    if (adminFilterPeriod !== 'all') {
+      const now = new Date();
+      result = result.filter((req) => {
+        const createdAt = new Date(req.created_at);
+        switch (adminFilterPeriod) {
+          case 'today':
+            return createdAt.toDateString() === now.toDateString();
+          case 'week': {
+            const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+            return createdAt >= weekAgo;
+          }
+          case 'month':
+            return createdAt.getMonth() === now.getMonth() &&
+                   createdAt.getFullYear() === now.getFullYear();
+          default:
+            return true;
+        }
+      });
+    }
+
+    // 정렬
+    result.sort((a, b) => {
+      switch (adminSortOrder) {
+        case 'newest':
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        case 'oldest':
+          return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        case 'shipment-asc':
+          return new Date(a.factory_shipment_date || '').getTime() - new Date(b.factory_shipment_date || '').getTime();
+        case 'shipment-desc':
+          return new Date(b.factory_shipment_date || '').getTime() - new Date(a.factory_shipment_date || '').getTime();
+        case 'customer-asc':
+          return (a.customer || '').localeCompare(b.customer || '');
+        case 'customer-desc':
+          return (b.customer || '').localeCompare(a.customer || '');
+        default:
+          return 0;
+      }
+    });
+
+    return result;
+  }, [adminRequests, debouncedAdminSearchTerm, adminFilterStatus, adminFilterCategory, adminFilterPeriod, adminSortOrder]);
+
+  /**
+   * 관리자 모드 데이터 로드
+   */
+  useEffect(() => {
+    if (pageMode === 'admin' && isAdminAuthenticated && user) {
+      const loadAdminData = async () => {
+        setAdminLoading(true);
+        setAdminError(null);
+        try {
+          await Promise.all([
+            fetchAdminStats(),
+            fetchAdminRequests(),
+          ]);
+        } catch (error) {
+          console.error('관리자 데이터 로드 오류:', error);
+        } finally {
+          setAdminLoading(false);
+        }
+      };
+      loadAdminData();
+    }
+  }, [pageMode, isAdminAuthenticated, user, fetchAdminStats, fetchAdminRequests]);
+
+  /**
+   * 페이지 모드 변경 핸들러
+   */
+  const handleModeChange = (value: string) => {
+    if (value === 'admin') {
+      if (!isAdminAuthenticated) {
+        setShowPasswordDialog(true);
+        setPasswordInput('');
+        setPasswordError('');
+      } else {
+        setPageMode('admin');
+      }
+    } else {
+      setPageMode('requester');
+    }
+  };
+
+  /**
+   * 관리자 비밀번호 확인 핸들러
+   */
+  const handlePasswordSubmit = () => {
+    if (passwordInput === 'admin1234') {
+      setIsAdminAuthenticated(true);
+      setPageMode('admin');
+      setShowPasswordDialog(false);
+      setPasswordInput('');
+      setPasswordError('');
+      toast.success('관리자 모드로 전환되었습니다.');
+    } else {
+      setPasswordError('비밀번호가 올바르지 않습니다.');
+      setPageMode('requester');
+    }
+  };
+
+  /**
+   * Excel 다운로드 핸들러
+   */
+  const handleExportExcel = async () => {
+    try {
+      const XLSX = await import('xlsx');
+
+      // 필터링된 데이터를 한글 헤더로 변환
+      const exportData = filteredAndSortedAdminRequests.map((r) => ({
+        '요청일': r.request_date || '',
+        'SO번호': r.so_number || '',
+        '고객': r.customer || '',
+        '요청부서': r.requesting_dept || '',
+        '요청자': r.requester_name || '',
+        '출하일': r.factory_shipment_date || '',
+        '요청구분': r.category_of_request || '',
+        '품목코드': r.erp_code || '',
+        '품목명': r.item_name || '',
+        '수량': r.quantity || 0,
+        '요청사유': r.reason_for_request || '',
+        '가능여부': r.feasibility === 'approved' ? '가능' : r.feasibility === 'rejected' ? '불가능' : r.feasibility === 'pending' ? '보류' : '-',
+        '상태': r.status === 'pending' ? '검토대기' : r.status === 'approved' ? '승인' : r.status === 'rejected' ? '반려' : r.status === 'in_review' ? '검토중' : r.status === 'completed' ? '완료' : '-',
+        '완료여부': r.completed ? 'O' : 'X',
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(exportData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, '요청 내역');
+
+      const today = new Date().toISOString().split('T')[0];
+      XLSX.writeFile(workbook, `PO변경요청_내역_${today}.xlsx`);
+      toast.success('Excel 파일이 다운로드되었습니다.');
+    } catch (error) {
+      console.error('Excel 다운로드 오류:', error);
+      toast.error('Excel 파일 생성 중 오류가 발생했습니다.');
+    }
+  };
 
   // 로딩 중이거나 인증되지 않은 경우 로딩 표시
   if (authLoading || !user) {
@@ -543,28 +874,6 @@ export default function DashboardPage() {
   };
 
   /**
-   * 검색 핸들러
-   */
-  const handleSearch = (query: string) => {
-    setSearchQuery(query);
-  };
-
-  /**
-   * 필터 변경 핸들러
-   */
-  const handleFilterChange = (newFilters: ToolbarFilters) => {
-    setFilters(newFilters);
-  };
-
-  /**
-   * 정렬 변경 핸들러
-   */
-  const handleSortChange = (newSortBy: string, newSortOrder: 'asc' | 'desc') => {
-    setSortBy(newSortBy);
-    setSortOrder(newSortOrder);
-  };
-
-  /**
    * 요청 추가 다이얼로그 열기
    */
   const handleAddRequest = (type: 'existing' | 'new') => {
@@ -587,6 +896,24 @@ export default function DashboardPage() {
       items: [] as Array<{ erp_code: string; item_name: string; quantity: number }>,
     });
     setAddDialogOpen(true);
+  };
+
+  /**
+   * 상세보기 열기 (전체 대기 내역 Dialog에서 호출)
+   */
+  const handleViewDetail = (request: PORequest) => {
+    setDetailRequest(request);
+    setShowDetailDialog(true);
+    // allPendingDialogOpen은 true를 유지
+  };
+
+  /**
+   * 상세보기 닫기 (전체 대기 내역 Dialog로 복귀)
+   */
+  const handleCloseDetail = () => {
+    setShowDetailDialog(false);
+    setDetailRequest(null);
+    // allPendingDialogOpen은 true를 유지
   };
 
   /**
@@ -868,16 +1195,23 @@ export default function DashboardPage() {
       }
       
       // 출하일 설정
-      // factory_shipment_date: 현재 출하일 입력값 (필수)
+      // factory_shipment_date: 현재 출하일 입력값 (PO 수정) 또는 희망 출하일 입력값 (PO 추가)
       // desired_shipment_date: 희망 출하일 입력값
       // confirmed_shipment_date: 확정 출하일 입력값 (검토자/관리자만)
       
-      // 현재 출하일 (필수 필드)
-      requestData.factory_shipment_date = newRequest.factory_shipment_date;
-      
-      // 희망 출하일 (입력된 경우에만 저장)
-      if (newRequest.desired_shipment_date) {
-        requestData.desired_shipment_date = newRequest.desired_shipment_date;
+      if (requestType === 'new') {
+        // PO 추가 요청: 희망 출하일을 factory_shipment_date에 저장
+        requestData.factory_shipment_date = newRequest.desired_shipment_date || new Date().toISOString().split('T')[0];
+        if (newRequest.desired_shipment_date) {
+          requestData.desired_shipment_date = newRequest.desired_shipment_date;
+        }
+      } else {
+        // PO 수정 요청: 현재 출하일 그대로 사용
+        requestData.factory_shipment_date = newRequest.factory_shipment_date;
+        // 희망 출하일 (입력된 경우에만 저장)
+        if (newRequest.desired_shipment_date) {
+          requestData.desired_shipment_date = newRequest.desired_shipment_date;
+        }
       }
       
       // 확정 출하일 (검토자/관리자만 입력 가능, 입력된 경우에만 저장)
@@ -1145,40 +1479,6 @@ export default function DashboardPage() {
     setDeleteDialogOpen(true);
   };
 
-  // 검토 대기 요청 (pending 상태만)
-  // 검토자 권한: 고객이 '미국법인'이고 요청부서가 '미국법인'이 아닌 건만 조회
-  const pendingRequests = requests.filter((r) => {
-    if (r.status !== 'pending' || r.completed) return false;
-    
-    // 검토자 권한이 있는 경우: 고객=미국법인, 요청부서≠미국법인
-    if (isReviewer && !isAdmin) {
-      return r.customer === '미국법인' && r.requesting_dept !== '미국법인';
-    }
-    
-    // 관리자는 모든 건 조회
-    if (isAdmin) {
-      return true;
-    }
-    
-    return false;
-  });
-  
-  // 우선순위 요청 (대표 6개만 표시)
-  const priorityRequests = pendingRequests
-    .sort((a, b) => {
-      // 우선순위: 긴급 > 보통
-      const priorityOrder: Record<'긴급' | '보통' | '일반', number> = { '긴급': 0, '보통': 1, '일반': 1 };
-      const priorityDiff = (priorityOrder[a.priority as '긴급' | '보통' | '일반'] || 1) - (priorityOrder[b.priority as '긴급' | '보통' | '일반'] || 1);
-      if (priorityDiff !== 0) return priorityDiff;
-      
-      // 같은 우선순위면 요청일 최신순
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-    })
-    .slice(0, 6);
-  
-  // 전체 대기 내역 (나머지)
-  const remainingPendingRequests = pendingRequests.slice(6);
-
   // (삭제됨: 최근 요청 카드는 더 이상 사용하지 않음)
 
   return (
@@ -1206,15 +1506,47 @@ export default function DashboardPage() {
             </BreadcrumbList>
           </Breadcrumb>
 
-          {/* 인사말 */}
-          <div>
-            <h1 className="text-3xl font-bold text-[#101820]">
-              안녕하세요, {profile?.full_name || user.email?.split('@')[0] || '사용자'}님 👋
-          </h1>
-        </div>
+          {/* 상단: 라디오 버튼 (Segmented Control) */}
+          <div className="flex justify-end items-center">
+            <RadioGroup
+              value={pageMode}
+              onValueChange={handleModeChange}
+              className="inline-flex bg-[#F3F4F6] p-1 rounded-lg gap-1"
+              aria-label="페이지 모드 선택"
+            >
+              <label
+                htmlFor="mode-requester"
+                className={cn(
+                  'px-4 py-2 rounded-md cursor-pointer transition-all text-sm font-medium',
+                  pageMode === 'requester'
+                    ? 'bg-white text-[#971B2F] shadow-sm'
+                    : 'text-[#67767F] hover:text-[#4B4F5A]'
+                )}
+              >
+                <RadioGroupItem value="requester" id="mode-requester" className="sr-only" />
+                요청자/검토자
+              </label>
+              <label
+                htmlFor="mode-admin"
+                className={cn(
+                  'px-4 py-2 rounded-md cursor-pointer transition-all text-sm font-medium',
+                  pageMode === 'admin'
+                    ? 'bg-white text-[#971B2F] shadow-sm'
+                    : 'text-[#67767F] hover:text-[#4B4F5A]'
+                )}
+              >
+                <RadioGroupItem value="admin" id="mode-admin" className="sr-only" />
+                관리자
+              </label>
+            </RadioGroup>
+          </div>
 
-          {/* 통계 카드 */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* 요청자/검토자 페이지 */}
+          {pageMode === 'requester' && (
+          <>
+
+          {/* 요청 진행현황 대시보드 */}
+          <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <StatsCard
               title="전체 요청"
               value={stats.total}
@@ -1245,105 +1577,424 @@ export default function DashboardPage() {
             />
           </div>
 
-          {/* Toolbar - 검색, 정렬, 필터 */}
-          <Toolbar
-            onSearch={handleSearch}
-            onFilterChange={handleFilterChange}
-            onSortChange={handleSortChange}
-          />
-
-          {/* 요청 접수 테이블 (가운데 길게 배치) */}
-          <div className="w-full">
-            {loading ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="text-center">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#971B2F] mx-auto"></div>
-                  <p className="mt-4 text-[#67767F]">로딩 중...</p>
-                </div>
-              </div>
-            ) : (
-              <RequestFormTable
-                requests={requests}
-                onAdd={handleAddRequest}
-                onSave={handleSaveRequest}
-                onDelete={handleDeleteClick}
-              />
-            )}
-          </div>
-
-          {/* 검토 대기 (테이블 아래 그리드 형식) */}
-          <div className="w-full">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-2xl font-bold text-[#101820]">검토 대기</h2>
-              {pendingRequests.length > 6 && (
+          {/* 요청 접수 + 검토 대기 2열 레이아웃 */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-[600px]">
+            {/* 요청 접수 영역 */}
+            <Card className="border-[#E5E7EB] flex flex-col">
+              <CardHeader>
+                <CardTitle className="text-xl text-[#101820]">요청 접수</CardTitle>
+              </CardHeader>
+              <CardContent className="flex-1 flex flex-col space-y-4 p-6">
                 <Button
-                  onClick={() => setAllPendingDialogOpen(true)}
-                  variant="outline"
-                  className="text-[#971B2F] border-[#971B2F] hover:bg-[#971B2F] hover:text-white"
+                  className="flex-1 w-full text-xl font-semibold bg-[#971B2F] hover:bg-[#7A1626] text-white"
+                  onClick={() => handleAddRequest('existing')}
+                  aria-label="PO 수정 요청 작성"
                 >
-                  전체 대기 내역 ({pendingRequests.length}건)
+                  <Edit className="mr-2 h-6 w-6" />
+                  PO 수정 요청
                 </Button>
-              )}
-            </div>
-            {priorityRequests.length === 0 ? (
-              <div className="text-center py-12 bg-white rounded-lg border border-[#E5E7EB]">
-                <p className="text-[#67767F]">검토 대기 중인 요청이 없습니다.</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {priorityRequests.map((request) => (
-                  <div
-                    key={request.id}
-                    className="bg-white rounded-lg border border-[#E5E7EB] p-4 hover:shadow-md transition-shadow"
-                  >
-                    <div className="flex justify-between items-start mb-2">
-                      <span className="text-sm font-medium text-[#67767F]">
-                        {request.so_number ? `SO: ${request.so_number}` : '신규'}
-                      </span>
-                      <span className={`px-2 py-1 rounded text-xs font-medium ${
-                        request.priority === '긴급' ? 'bg-red-100 text-red-700' : 
-                        'bg-gray-100 text-gray-700'
-                      }`}>
-                        {request.priority}
-                      </span>
+                <Button
+                  className="flex-1 w-full text-xl font-semibold bg-[#A2B2C8] hover:bg-[#8A9BB1] text-[#101820]"
+                  onClick={() => handleAddRequest('new')}
+                  aria-label="PO 추가 요청 작성"
+                >
+                  <Plus className="mr-2 h-6 w-6" />
+                  PO 추가 요청
+                </Button>
+                <Button
+                  variant="outline"
+                  className="flex-1 w-full text-lg font-medium border-[#67767F] text-[#67767F] hover:bg-gray-50"
+                  onClick={() => setShowHistoryDialog(true)}
+                  aria-label="요청 접수 내역 보기"
+                >
+                  <List className="mr-2 h-5 w-5" />
+                  요청 접수 내역
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* 검토 대기 영역 */}
+            <Card className="border-[#E5E7EB] flex flex-col">
+              <CardHeader>
+                <CardTitle className="text-xl text-[#101820]">검토 대기</CardTitle>
+              </CardHeader>
+              <CardContent className="flex-1 p-6">
+                {requesterPendingLoading ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3" role="status" aria-label="검토 대기 로딩 중">
+                    {[...Array(4)].map((_, i) => (
+                      <div key={i} className="bg-white rounded-lg border border-[#E5E7EB] p-4 space-y-2">
+                        <Skeleton className="h-5 w-32" />
+                        <Skeleton className="h-4 w-24" />
+                        <Skeleton className="h-4 w-40" />
+                      </div>
+                    ))}
+                  </div>
+                ) : requesterPendingRequests.length === 0 ? (
+                  <div className="text-center py-12">
+                    <p className="text-[#67767F]">검토 대기 중인 요청이 없습니다.</p>
+                  </div>
+                ) : (
+                  <div className="flex flex-col h-full">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 flex-1">
+                      {requesterPendingRequests.slice(0, 4).map((request) => {
+                        const daysLeft = calculateDaysLeft(request.factory_shipment_date);
+                        return (
+                          <div
+                            key={request.id}
+                            className="bg-white rounded-lg border border-[#E5E7EB] p-4 hover:shadow-md transition-shadow cursor-pointer"
+                            onClick={() => handleViewDetails(request.id)}
+                          >
+                            <div className="flex justify-between items-start mb-1">
+                              <span className="text-lg font-semibold text-[#101820]">
+                                {request.so_number ? `SO: ${request.so_number}` : '신규'}
+                              </span>
+                              <span className={cn(
+                                'px-2 py-0.5 rounded text-xs font-medium',
+                                daysLeft <= 5 ? 'bg-red-100 text-red-700' :
+                                daysLeft <= 10 ? 'bg-yellow-100 text-yellow-700' :
+                                'bg-gray-100 text-gray-700'
+                              )}>
+                                D-{daysLeft}일
+                              </span>
+                            </div>
+                            <p className="text-sm text-[#67767F] mb-1">{request.customer}</p>
+                            <div className="flex items-center gap-2">
+                              <Badge variant="secondary" className="text-xs">{request.category_of_request}</Badge>
+                              <span className="text-sm text-[#67767F]">
+                                출하일: {request.factory_shipment_date ? formatDate(request.factory_shipment_date) : '-'}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-                    <h3 className="text-lg font-semibold text-[#101820] mb-1">{request.customer}</h3>
-                    <p className="text-sm text-[#67767F] mb-3">{request.category_of_request}</p>
-                    <div className="text-sm text-[#67767F] mb-4">
-                      <p>출하일: {request.factory_shipment_date}</p>
-                      <p>리드타임: {request.leadtime || 0}일</p>
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => handleViewDetails(request.id)}
-                        className="flex-1 px-3 py-2 text-sm bg-[#A2B2C8] text-white rounded hover:bg-[#8A9BB1] transition-colors"
+                    {requesterPendingRequests.length > 4 && (
+                      <Button
+                        onClick={() => setAllPendingDialogOpen(true)}
+                        variant="outline"
+                        className="w-full mt-3 text-[#971B2F] border-[#971B2F] hover:bg-[#971B2F] hover:text-white"
                       >
-                        상세보기
-                      </button>
-                      {(isReviewer || isAdmin) && (
-                        <>
-                          <button
-                            onClick={() => handleApprove(request.id)}
-                            className="flex-1 px-3 py-2 text-sm bg-[#4A9B8E] text-white rounded hover:bg-[#3A7B6E] transition-colors"
-                          >
-                            승인
-                          </button>
-                          <button
-                            onClick={() => handleReject(request.id)}
-                            className="flex-1 px-3 py-2 text-sm bg-[#971B2F] text-white rounded hover:bg-[#7A1626] transition-colors"
-                          >
-                            반려
-                          </button>
-                        </>
-                      )}
-                    </div>
+                        전체 대기 내역 ({requesterPendingRequests.length}건)
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+          </>
+          )}
+
+          {/* 관리자 페이지 */}
+          {pageMode === 'admin' && isAdminAuthenticated && (
+          <>
+            {/* 관리자 인사말 */}
+            <div>
+              <h1 className="text-3xl font-bold text-[#101820]">
+                관리자 대시보드 🔧
+              </h1>
+              <p className="text-[#67767F] mt-1">전체 요청 현황을 관리합니다.</p>
+            </div>
+
+            {/* 요청 현황 대시보드 */}
+            {adminLoading ? (
+              <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4" role="status" aria-label="통계 데이터 로딩 중">
+                {[...Array(4)].map((_, i) => (
+                  <div key={i} className="bg-white rounded-lg border border-[#E5E7EB] p-6 space-y-3">
+                    <Skeleton className="h-4 w-20" />
+                    <Skeleton className="h-8 w-16" />
+                    <Skeleton className="h-3 w-24" />
                   </div>
                 ))}
               </div>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <StatsCard
+                  title="전체 요청"
+                  value={adminStats.total}
+                  subtitle={`총 ${adminStats.total}건`}
+                  icon="📋"
+                  themeColor="#A2B2C8"
+                />
+                <StatsCard
+                  title="검토 대기"
+                  value={adminStats.pending}
+                  subtitle="처리 필요"
+                  icon="🕐"
+                  themeColor="#67767F"
+                />
+                <StatsCard
+                  title="승인됨"
+                  value={adminStats.approved}
+                  subtitle={`승인률 ${adminStats.total > 0 ? Math.round((adminStats.approved / adminStats.total) * 100) : 0}%`}
+                  icon="✅"
+                  themeColor="#A2B2C8"
+                />
+                <StatsCard
+                  title="완료됨"
+                  value={adminStats.completed}
+                  subtitle="이번 달"
+                  icon="✅"
+                  themeColor="#B2B4B8"
+                />
+              </div>
             )}
-          </div>
+
+            {/* 에러 표시 */}
+            {adminError && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>오류 발생</AlertTitle>
+                <AlertDescription>{adminError}</AlertDescription>
+              </Alert>
+            )}
+
+            {/* 요청 접수 내역 테이블 */}
+            <Card className="border-[#E5E7EB]">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-xl text-[#4B4F5A]">요청 접수 내역</CardTitle>
+                  <Button
+                    onClick={handleExportExcel}
+                    className="text-white"
+                    style={{ backgroundColor: '#971B2F' }}
+                    aria-label="Excel 파일 다운로드"
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Excel 다운로드
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+              {/* 검색/필터/정렬 바 */}
+              <div className="flex flex-col md:flex-row gap-3 mb-4">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-[#67767F]" />
+                  <Input
+                    placeholder="SO 번호, 고객명, 품목명으로 검색..."
+                    value={adminSearchTerm}
+                    onChange={(e) => setAdminSearchTerm(e.target.value)}
+                    className="pl-10"
+                    aria-label="검색"
+                  />
+                </div>
+                <Select value={adminFilterStatus} onValueChange={setAdminFilterStatus}>
+                  <SelectTrigger className="w-full md:w-[140px]">
+                    <SelectValue placeholder="상태" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">전체 상태</SelectItem>
+                    <SelectItem value="pending">검토대기</SelectItem>
+                    <SelectItem value="in_review">검토중</SelectItem>
+                    <SelectItem value="approved">승인</SelectItem>
+                    <SelectItem value="rejected">거절</SelectItem>
+                    <SelectItem value="completed">완료</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={adminFilterCategory} onValueChange={setAdminFilterCategory}>
+                  <SelectTrigger className="w-full md:w-[140px]">
+                    <SelectValue placeholder="요청구분" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">전체 구분</SelectItem>
+                    <SelectItem value="품목 추가">품목 추가</SelectItem>
+                    <SelectItem value="수량 추가">수량 추가</SelectItem>
+                    <SelectItem value="품목 삭제">품목 삭제</SelectItem>
+                    <SelectItem value="수량 삭제">수량 삭제</SelectItem>
+                    <SelectItem value="품목 코드 변경">품목 코드 변경</SelectItem>
+                    <SelectItem value="출하일정 변경">출하일정 변경</SelectItem>
+                    <SelectItem value="운송방법 변경">운송방법 변경</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={adminFilterPeriod} onValueChange={setAdminFilterPeriod}>
+                  <SelectTrigger className="w-full md:w-[130px]">
+                    <SelectValue placeholder="기간" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">전체 기간</SelectItem>
+                    <SelectItem value="today">오늘</SelectItem>
+                    <SelectItem value="week">이번 주</SelectItem>
+                    <SelectItem value="month">이번 달</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={adminSortOrder} onValueChange={setAdminSortOrder}>
+                  <SelectTrigger className="w-full md:w-[150px]">
+                    <SelectValue placeholder="정렬" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="newest">최신순</SelectItem>
+                    <SelectItem value="oldest">오래된순</SelectItem>
+                    <SelectItem value="shipment-asc">출하일 빠른순</SelectItem>
+                    <SelectItem value="shipment-desc">출하일 늦은순</SelectItem>
+                    <SelectItem value="customer-asc">고객명 오름차순</SelectItem>
+                    <SelectItem value="customer-desc">고객명 내림차순</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {adminLoading ? (
+                <div className="space-y-3" role="status" aria-label="요청 내역 로딩 중">
+                  {[...Array(5)].map((_, i) => (
+                    <Skeleton key={i} className="h-12 w-full" />
+                  ))}
+                </div>
+              ) : (
+                <div className="max-h-[600px] overflow-y-auto overflow-x-auto border rounded-lg relative scrollbar-thin scrollbar-thumb-[#B2B4B8] scrollbar-track-gray-100">
+                  <AdminTable>
+                    <AdminTableCaption>PO 변경 요청 접수 내역 (필터 적용: {filteredAndSortedAdminRequests.length}건 / 전체 {adminRequests.length}건)</AdminTableCaption>
+                    <AdminTableHeader className="sticky top-0 bg-white z-10 shadow-sm">
+                      <AdminTableRow>
+                        <AdminTableHead className="min-w-[100px] bg-white border-b">요청일</AdminTableHead>
+                        <AdminTableHead className="min-w-[120px] bg-white border-b">SO번호</AdminTableHead>
+                        <AdminTableHead className="min-w-[100px] bg-white border-b">고객</AdminTableHead>
+                        <AdminTableHead className="min-w-[100px] bg-white border-b">요청부서</AdminTableHead>
+                        <AdminTableHead className="min-w-[80px] bg-white border-b">요청자</AdminTableHead>
+                        <AdminTableHead className="min-w-[100px] bg-white border-b">출하일</AdminTableHead>
+                        <AdminTableHead className="min-w-[120px] bg-white border-b">요청구분</AdminTableHead>
+                        <AdminTableHead className="min-w-[120px] bg-white border-b">품목코드</AdminTableHead>
+                        <AdminTableHead className="min-w-[150px] bg-white border-b">품목명</AdminTableHead>
+                        <AdminTableHead className="min-w-[60px] bg-white border-b">수량</AdminTableHead>
+                        <AdminTableHead className="min-w-[120px] bg-white border-b">요청사유</AdminTableHead>
+                        <AdminTableHead className="min-w-[80px] bg-white border-b">가능여부</AdminTableHead>
+                        <AdminTableHead className="min-w-[80px] bg-white border-b">상태</AdminTableHead>
+                        <AdminTableHead className="min-w-[80px] bg-white border-b">완료여부</AdminTableHead>
+                      </AdminTableRow>
+                    </AdminTableHeader>
+                    <AdminTableBody>
+                      {filteredAndSortedAdminRequests.length === 0 ? (
+                        <AdminTableRow>
+                          <AdminTableCell colSpan={14} className="text-center py-8 text-[#67767F]">
+                            {adminRequests.length === 0 ? '요청 데이터가 없습니다.' : '검색 결과가 없습니다.'}
+                          </AdminTableCell>
+                        </AdminTableRow>
+                      ) : (
+                        filteredAndSortedAdminRequests.map((r) => (
+                          <AdminTableRow key={r.id}>
+                            <AdminTableCell className="text-[#4B4F5A]">{r.request_date ? formatDate(r.request_date) : '-'}</AdminTableCell>
+                            <AdminTableCell className="font-medium text-[#101820]">{r.so_number || '-'}</AdminTableCell>
+                            <AdminTableCell className="text-[#4B4F5A]">{r.customer}</AdminTableCell>
+                            <AdminTableCell className="text-[#4B4F5A]">{r.requesting_dept}</AdminTableCell>
+                            <AdminTableCell className="text-[#4B4F5A]">{r.requester_name}</AdminTableCell>
+                            <AdminTableCell className="text-[#4B4F5A]">{r.factory_shipment_date ? formatDate(r.factory_shipment_date) : '-'}</AdminTableCell>
+                            <AdminTableCell className="text-[#4B4F5A]">{r.category_of_request}</AdminTableCell>
+                            <AdminTableCell className="text-[#4B4F5A]">{r.erp_code || '-'}</AdminTableCell>
+                            <AdminTableCell className="text-[#4B4F5A]">{r.item_name || '-'}</AdminTableCell>
+                            <AdminTableCell className="text-[#4B4F5A]">{r.quantity || 0}</AdminTableCell>
+                            <AdminTableCell className="text-[#4B4F5A]">{r.reason_for_request}</AdminTableCell>
+                            <AdminTableCell>
+                              <Badge
+                                variant={
+                                  r.feasibility === 'approved' ? 'default' :
+                                  r.feasibility === 'rejected' ? 'destructive' :
+                                  'secondary'
+                                }
+                                className={
+                                  r.feasibility === 'approved' ? 'bg-green-100 text-green-700 border-green-200' :
+                                  r.feasibility === 'rejected' ? 'bg-red-100 text-red-700 border-red-200' :
+                                  r.feasibility === 'pending' ? 'bg-yellow-100 text-yellow-700 border-yellow-200' :
+                                  'bg-gray-100 text-gray-500 border-gray-200'
+                                }
+                              >
+                                {r.feasibility === 'approved' ? '가능' : r.feasibility === 'rejected' ? '불가능' : r.feasibility === 'pending' ? '보류' : '-'}
+                              </Badge>
+                            </AdminTableCell>
+                            <AdminTableCell>
+                              <Badge
+                                variant={
+                                  r.status === 'approved' ? 'default' :
+                                  r.status === 'rejected' ? 'destructive' :
+                                  'secondary'
+                                }
+                                className={
+                                  r.status === 'approved' ? 'bg-green-100 text-green-700 border-green-200' :
+                                  r.status === 'rejected' ? 'bg-red-100 text-red-700 border-red-200' :
+                                  r.status === 'pending' ? 'bg-yellow-100 text-yellow-700 border-yellow-200' :
+                                  r.status === 'in_review' ? 'bg-blue-100 text-blue-700 border-blue-200' :
+                                  r.status === 'completed' ? 'bg-purple-100 text-purple-700 border-purple-200' :
+                                  'bg-gray-100 text-gray-500 border-gray-200'
+                                }
+                              >
+                                {r.status === 'pending' ? '검토대기' : r.status === 'approved' ? '승인' : r.status === 'rejected' ? '반려' : r.status === 'in_review' ? '검토중' : r.status === 'completed' ? '완료' : '-'}
+                              </Badge>
+                            </AdminTableCell>
+                            <AdminTableCell className="text-center">
+                              {r.completed ? (
+                                <CheckCircle2 className="h-5 w-5 text-green-600 mx-auto" aria-label="완료됨" />
+                              ) : (
+                                <XCircle className="h-5 w-5 text-gray-400 mx-auto" aria-label="미완료" />
+                              )}
+                            </AdminTableCell>
+                          </AdminTableRow>
+                        ))
+                      )}
+                    </AdminTableBody>
+                  </AdminTable>
+                </div>
+              )}
+              </CardContent>
+            </Card>
+          </>
+          )}
         </div>
       </div>
+
+      {/* 관리자 비밀번호 입력 다이얼로그 */}
+      <Dialog open={showPasswordDialog} onOpenChange={(open) => {
+        setShowPasswordDialog(open);
+        if (!open) {
+          setPasswordInput('');
+          setPasswordError('');
+          if (!isAdminAuthenticated) {
+            setPageMode('requester');
+          }
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>관리자 인증</DialogTitle>
+            <DialogDescription>
+              관리자 페이지에 접근하려면 비밀번호를 입력해주세요.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="admin-password">비밀번호</Label>
+              <Input
+                id="admin-password"
+                type="password"
+                value={passwordInput}
+                onChange={(e) => {
+                  setPasswordInput(e.target.value);
+                  setPasswordError('');
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handlePasswordSubmit();
+                  }
+                }}
+                placeholder="비밀번호를 입력하세요"
+                autoFocus
+              />
+              {passwordError && (
+                <p className="text-sm text-red-500">{passwordError}</p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              setShowPasswordDialog(false);
+              setPasswordInput('');
+              setPasswordError('');
+              setPageMode('requester');
+            }}>
+              취소
+            </Button>
+            <Button onClick={handlePasswordSubmit} className="bg-[#971B2F] hover:bg-[#7A1626]">
+              확인
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* 요청 상세 보기 다이얼로그 */}
       <AlertDialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
@@ -1551,22 +2202,26 @@ export default function DashboardPage() {
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              {/* 현재 출하일 (항상 표시) */}
-              <div className="space-y-2">
-                <Label htmlFor="factory_shipment_date">
-                  현재 출하일 <span className="text-red-500">*</span>
-                </Label>
-                <Input
-                  id="factory_shipment_date"
-                  type="date"
-                  value={newRequest.factory_shipment_date}
-                  onChange={(e) => setNewRequest({ ...newRequest, factory_shipment_date: e.target.value })}
-                />
-              </div>
-              {/* 희망 출하일 (PO 추가 요청일 때만 표시) */}
+              {/* 현재 출하일 (PO 수정 요청일 때만 표시) */}
+              {requestType === 'existing' && (
+                <div className="space-y-2">
+                  <Label htmlFor="factory_shipment_date">
+                    현재 출하일 <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="factory_shipment_date"
+                    type="date"
+                    value={newRequest.factory_shipment_date}
+                    onChange={(e) => setNewRequest({ ...newRequest, factory_shipment_date: e.target.value })}
+                  />
+                </div>
+              )}
+              {/* 희망 출하일 (PO 추가 요청일 때 표시, factory_shipment_date에 저장됨) */}
               {requestType === 'new' && (
                 <div className="space-y-2">
-                  <Label htmlFor="desired_shipment_date">희망 출하일</Label>
+                  <Label htmlFor="desired_shipment_date">
+                    희망 출하일 <span className="text-red-500">*</span>
+                  </Label>
                   <Input
                     id="desired_shipment_date"
                     type="date"
@@ -1905,77 +2560,247 @@ export default function DashboardPage() {
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* 요청 접수 내역 Dialog (요청자 페이지) */}
+      <Dialog open={showHistoryDialog} onOpenChange={setShowHistoryDialog}>
+        <DialogContent className="max-w-[95vw] max-h-[90vh] overflow-hidden">
+          <DialogHeader>
+            <DialogTitle>요청 접수 내역</DialogTitle>
+            <DialogDescription>
+              전체 요청 내역입니다. (총 {requests.length}건)
+            </DialogDescription>
+          </DialogHeader>
+          <div className="overflow-x-auto overflow-y-auto max-h-[75vh] mt-4">
+            <AdminTable className="min-w-[1200px]">
+              <AdminTableHeader>
+                <AdminTableRow>
+                  <AdminTableHead className="min-w-[90px]">요청일</AdminTableHead>
+                  <AdminTableHead className="min-w-[110px]">SO번호</AdminTableHead>
+                  <AdminTableHead className="min-w-[90px]">고객</AdminTableHead>
+                  <AdminTableHead className="min-w-[90px]">요청부서</AdminTableHead>
+                  <AdminTableHead className="min-w-[70px]">요청자</AdminTableHead>
+                  <AdminTableHead className="min-w-[90px]">출하일</AdminTableHead>
+                  <AdminTableHead className="min-w-[100px]">요청구분</AdminTableHead>
+                  <AdminTableHead className="min-w-[100px]">품목코드</AdminTableHead>
+                  <AdminTableHead className="min-w-[130px]">품목명</AdminTableHead>
+                  <AdminTableHead className="min-w-[50px]">수량</AdminTableHead>
+                  <AdminTableHead className="min-w-[100px]">요청사유</AdminTableHead>
+                  <AdminTableHead className="min-w-[70px]">상태</AdminTableHead>
+                </AdminTableRow>
+              </AdminTableHeader>
+              <AdminTableBody>
+                {requests.length === 0 ? (
+                  <AdminTableRow>
+                    <AdminTableCell colSpan={12} className="text-center py-8 text-[#67767F]">
+                      요청 데이터가 없습니다.
+                    </AdminTableCell>
+                  </AdminTableRow>
+                ) : (
+                  requests.map((r) => (
+                    <AdminTableRow key={r.id}>
+                      <AdminTableCell className="text-[#4B4F5A]">{r.request_date ? formatDate(r.request_date) : '-'}</AdminTableCell>
+                      <AdminTableCell className="font-medium text-[#101820]">{r.so_number || '-'}</AdminTableCell>
+                      <AdminTableCell className="text-[#4B4F5A]">{r.customer}</AdminTableCell>
+                      <AdminTableCell className="text-[#4B4F5A]">{r.requesting_dept}</AdminTableCell>
+                      <AdminTableCell className="text-[#4B4F5A]">{r.requester_name}</AdminTableCell>
+                      <AdminTableCell className="text-[#4B4F5A]">{r.factory_shipment_date ? formatDate(r.factory_shipment_date) : '-'}</AdminTableCell>
+                      <AdminTableCell className="text-[#4B4F5A]">{r.category_of_request}</AdminTableCell>
+                      <AdminTableCell className="text-[#4B4F5A]">{r.erp_code || '-'}</AdminTableCell>
+                      <AdminTableCell className="text-[#4B4F5A]">{r.item_name || '-'}</AdminTableCell>
+                      <AdminTableCell className="text-[#4B4F5A]">{r.quantity || 0}</AdminTableCell>
+                      <AdminTableCell className="text-[#4B4F5A]">{r.reason_for_request}</AdminTableCell>
+                      <AdminTableCell>
+                        <Badge
+                          variant={
+                            r.status === 'approved' ? 'default' :
+                            r.status === 'rejected' ? 'destructive' :
+                            'secondary'
+                          }
+                          className={
+                            r.status === 'approved' ? 'bg-green-100 text-green-700 border-green-200' :
+                            r.status === 'rejected' ? 'bg-red-100 text-red-700 border-red-200' :
+                            r.status === 'pending' ? 'bg-yellow-100 text-yellow-700 border-yellow-200' :
+                            r.status === 'in_review' ? 'bg-blue-100 text-blue-700 border-blue-200' :
+                            'bg-gray-100 text-gray-500 border-gray-200'
+                          }
+                        >
+                          {r.status === 'pending' ? '검토대기' : r.status === 'approved' ? '승인' : r.status === 'rejected' ? '반려' : r.status === 'in_review' ? '검토중' : r.status === 'completed' ? '완료' : '-'}
+                        </Badge>
+                      </AdminTableCell>
+                    </AdminTableRow>
+                  ))
+                )}
+              </AdminTableBody>
+            </AdminTable>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowHistoryDialog(false)}>
+              닫기
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* 전체 대기 내역 팝업 */}
       <Dialog open={allPendingDialogOpen} onOpenChange={setAllPendingDialogOpen}>
-        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-6xl max-h-[80vh] overflow-hidden">
           <DialogHeader>
-            <DialogTitle>전체 검토 대기 내역 ({pendingRequests.length}건)</DialogTitle>
+            <DialogTitle>전체 검토 대기 내역 ({requesterPendingRequests.length}건)</DialogTitle>
             <DialogDescription>
               검토 대기 중인 모든 요청 내역입니다.
             </DialogDescription>
           </DialogHeader>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
-            {pendingRequests.map((request) => (
-              <div
-                key={request.id}
-                className="bg-white rounded-lg border border-[#E5E7EB] p-4 hover:shadow-md transition-shadow"
-              >
-                <div className="flex justify-between items-start mb-2">
-                  <span className="text-sm font-medium text-[#67767F]">
-                    {request.so_number ? `SO: ${request.so_number}` : '신규'}
-                  </span>
-                  <span className={`px-2 py-1 rounded text-xs font-medium ${
-                    request.priority === '긴급' ? 'bg-red-100 text-red-700' : 
-                    request.priority === '일반' ? 'bg-blue-100 text-blue-700' : 
-                    'bg-gray-100 text-gray-700'
-                  }`}>
-                    {request.priority}
-                  </span>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 max-h-[70vh] overflow-y-auto p-1">
+            {requesterPendingRequests.map((request) => {
+              const daysLeft = calculateDaysLeft(request.factory_shipment_date);
+              return (
+                <div
+                  key={request.id}
+                  className="bg-white rounded-lg border border-[#E5E7EB] p-4 hover:shadow-md transition-shadow"
+                >
+                  <div className="flex justify-between items-start mb-2">
+                    <span className="text-lg font-semibold text-[#101820]">
+                      {request.so_number ? `SO: ${request.so_number}` : '신규'}
+                    </span>
+                    <span className={cn(
+                      'px-2 py-0.5 rounded text-xs font-medium',
+                      daysLeft <= 5 ? 'bg-red-100 text-red-700' :
+                      daysLeft <= 10 ? 'bg-yellow-100 text-yellow-700' :
+                      'bg-gray-100 text-gray-700'
+                    )}>
+                      D-{daysLeft}일
+                    </span>
+                  </div>
+                  <p className="text-sm text-[#67767F] mb-1">{request.customer}</p>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Badge variant="secondary" className="text-xs">{request.category_of_request}</Badge>
+                    <span className="text-sm text-[#67767F]">
+                      출하일: {request.factory_shipment_date ? formatDate(request.factory_shipment_date) : '-'}
+                    </span>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleViewDetail(request)}
+                      className="flex-1 px-3 py-2 text-sm bg-[#A2B2C8] text-white rounded hover:bg-[#8A9BB1] transition-colors"
+                    >
+                      상세보기
+                    </button>
+                    {(isReviewer || isAdmin) && (
+                      <>
+                        <button
+                          onClick={() => {
+                            setAllPendingDialogOpen(false);
+                            handleApprove(request.id);
+                          }}
+                          className="flex-1 px-3 py-2 text-sm bg-[#4A9B8E] text-white rounded hover:bg-[#3A7B6E] transition-colors"
+                        >
+                          승인
+                        </button>
+                        <button
+                          onClick={() => {
+                            setAllPendingDialogOpen(false);
+                            handleReject(request.id);
+                          }}
+                          className="flex-1 px-3 py-2 text-sm bg-[#971B2F] text-white rounded hover:bg-[#7A1626] transition-colors"
+                        >
+                          반려
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
-                <h3 className="text-lg font-semibold text-[#101820] mb-1">{request.customer}</h3>
-                <p className="text-sm text-[#67767F] mb-3">{request.category_of_request}</p>
-                <div className="text-sm text-[#67767F] mb-4">
-                  <p>출하일: {request.factory_shipment_date}</p>
-                  <p>리드타임: {request.leadtime || 0}일</p>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => {
-                      setAllPendingDialogOpen(false);
-                      handleViewDetails(request.id);
-                    }}
-                    className="flex-1 px-3 py-2 text-sm bg-[#A2B2C8] text-white rounded hover:bg-[#8A9BB1] transition-colors"
-                  >
-                    상세보기
-                  </button>
-                  {(profile?.role === 'reviewer' || profile?.role === 'admin') && (
-                    <>
-                      <button
-                        onClick={() => {
-                          setAllPendingDialogOpen(false);
-                          handleApprove(request.id);
-                        }}
-                        className="flex-1 px-3 py-2 text-sm bg-[#4A9B8E] text-white rounded hover:bg-[#3A7B6E] transition-colors"
-                      >
-                        승인
-                      </button>
-                      <button
-                        onClick={() => {
-                          setAllPendingDialogOpen(false);
-                          handleReject(request.id);
-                        }}
-                        className="flex-1 px-3 py-2 text-sm bg-[#971B2F] text-white rounded hover:bg-[#7A1626] transition-colors"
-                      >
-                        반려
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAllPendingDialogOpen(false)}>
+              닫기
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 상세보기 Dialog (전체 대기 내역에서 열림) */}
+      <Dialog open={showDetailDialog} onOpenChange={setShowDetailDialog}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>요청 상세 정보</DialogTitle>
+            <DialogDescription>
+              검토 대기 중인 요청의 상세 정보입니다.
+            </DialogDescription>
+          </DialogHeader>
+          {detailRequest && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm font-medium text-[#67767F]">고객</p>
+                  <p className="text-[#101820]">{detailRequest.customer}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-[#67767F]">SO번호</p>
+                  <p className="text-[#101820]">{detailRequest.so_number || '-'}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-[#67767F]">요청부서</p>
+                  <p className="text-[#101820]">{detailRequest.requesting_dept}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-[#67767F]">요청자</p>
+                  <p className="text-[#101820]">{detailRequest.requester_name}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-[#67767F]">출하일</p>
+                  <p className="text-[#101820]">{detailRequest.factory_shipment_date ? formatDate(detailRequest.factory_shipment_date) : '-'}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-[#67767F]">요청구분</p>
+                  <p className="text-[#101820]">{detailRequest.category_of_request}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-[#67767F]">품목코드</p>
+                  <p className="text-[#101820]">{detailRequest.erp_code || '-'}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-[#67767F]">품목명</p>
+                  <p className="text-[#101820]">{detailRequest.item_name || '-'}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-[#67767F]">수량</p>
+                  <p className="text-[#101820]">{detailRequest.quantity || 0}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-[#67767F]">우선순위</p>
+                  <p className="text-[#101820]">{detailRequest.priority || '-'}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-[#67767F]">요청사유</p>
+                  <p className="text-[#101820]">{detailRequest.reason_for_request}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-[#67767F]">상태</p>
+                  <Badge
+                    variant="secondary"
+                    className={
+                      detailRequest.status === 'approved' ? 'bg-green-100 text-green-700 border-green-200' :
+                      detailRequest.status === 'rejected' ? 'bg-red-100 text-red-700 border-red-200' :
+                      detailRequest.status === 'pending' ? 'bg-yellow-100 text-yellow-700 border-yellow-200' :
+                      'bg-gray-100 text-gray-500 border-gray-200'
+                    }
+                  >
+                    {detailRequest.status === 'pending' ? '검토대기' : detailRequest.status === 'approved' ? '승인' : detailRequest.status === 'rejected' ? '반려' : detailRequest.status === 'in_review' ? '검토중' : detailRequest.status === 'completed' ? '완료' : '-'}
+                  </Badge>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-sm font-medium text-[#67767F]">요청상세</p>
+                  <p className="text-[#101820] whitespace-pre-wrap">{detailRequest.request_details || '-'}</p>
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button onClick={handleCloseDetail} className="bg-[#971B2F] hover:bg-[#7A1626] text-white">
+              확인
+            </Button>
+            <Button variant="outline" onClick={handleCloseDetail}>
               닫기
             </Button>
           </DialogFooter>
