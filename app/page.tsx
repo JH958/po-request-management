@@ -1882,9 +1882,10 @@ export default function DashboardPage() {
                     <SelectItem value="수량 추가">수량 추가</SelectItem>
                     <SelectItem value="품목 삭제">품목 삭제</SelectItem>
                     <SelectItem value="수량 삭제">수량 삭제</SelectItem>
-                    <SelectItem value="품목 코드 변경">품목 코드 변경</SelectItem>
+                    <SelectItem value="품목코드 변경">품목코드 변경</SelectItem>
                     <SelectItem value="출하일정 변경">출하일정 변경</SelectItem>
                     <SelectItem value="운송방법 변경">운송방법 변경</SelectItem>
+                    <SelectItem value="기타">기타</SelectItem>
                   </SelectContent>
                 </Select>
                 <Select value={adminFilterPeriod} onValueChange={setAdminFilterPeriod}>
@@ -2359,9 +2360,10 @@ export default function DashboardPage() {
                       <>
                         <SelectItem value="품목 삭제">품목 삭제</SelectItem>
                         <SelectItem value="수량 삭제">수량 삭제</SelectItem>
-                        <SelectItem value="품목 코드 변경">품목 코드 변경</SelectItem>
+                        <SelectItem value="품목코드 변경">품목코드 변경</SelectItem>
                         <SelectItem value="출하일정 변경">출하일정 변경</SelectItem>
                         <SelectItem value="운송방법 변경">운송방법 변경</SelectItem>
+                        <SelectItem value="기타">기타</SelectItem>
                       </>
                     )}
                   </SelectContent>
@@ -2571,6 +2573,8 @@ export default function DashboardPage() {
                     <SelectItem value="적재공간 과부족">적재공간 과부족</SelectItem>
                     <SelectItem value="품질 이슈">품질 이슈</SelectItem>
                     <SelectItem value="선적스케줄 변경">선적스케줄 변경</SelectItem>
+                    <SelectItem value="선수금 미입금">선수금 미입금</SelectItem>
+                    <SelectItem value="포워더 미지정">포워더 미지정</SelectItem>
                     <SelectItem value="고객 요청">고객 요청</SelectItem>
                     <SelectItem value="기타">기타</SelectItem>
                   </SelectContent>
