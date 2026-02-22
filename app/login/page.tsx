@@ -161,7 +161,7 @@ export default function LoginPage() {
         <div className="hidden lg:flex flex-col justify-center space-y-6 px-8">
           <div className="space-y-4">
             <h1 className="text-4xl font-bold text-[#101820]">
-              PO 변경 요청 관리 시스템
+              Purchase On
             </h1>
             <p className="text-lg text-[#67767F] leading-relaxed">
               체계적인 PO 변경 요청 관리를 통해<br />
@@ -316,7 +316,7 @@ export default function LoginPage() {
         {/* 모바일: 브랜딩 영역 (하단에 표시) */}
         <div className="lg:hidden flex flex-col items-center space-y-4 text-center px-4">
           <h1 className="text-2xl font-bold text-[#101820]">
-            PO 변경 요청 관리 시스템
+            Purchase On
           </h1>
           <p className="text-sm text-[#67767F]">
             체계적인 PO 변경 요청 관리를 통해 효율적인 협업을 지원합니다.

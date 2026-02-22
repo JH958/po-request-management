@@ -46,33 +46,44 @@ type SignupFormData = z.infer<typeof signupSchema>;
  * 부서 목록
  */
 const departments = [
-  '제조관리팀',
+  // 본사 팀
   '영업관리팀',
-  '사업성장팀',
-  '글로벌CS팀',
-  '제조팀',
-  '구매팀',
-  '생산관리팀',
-  '경영관리팀',
-  '대리점영업팀',
-  '해외영업마케팅팀',
-  'Biz&Ops 팀',
-  '남부지사',
-  '대전지사',
-  '부산지사',
-  '강북지사',
-  '미국법인',
-  'BWA법인',
-  '중국법인',
-  '중국생산법인',
-  '일본법인',
-  '유럽법인',
-  '인도법인',
-  '아시아법인',
-  '호주법인',
-  '베트남법인',
-  '터키법인',
-  '멕시코법인',
+  '제조관리팀',
+  '혈압계팀',
+  'W팀',
+  '글로벌 CS팀',
+  // 해외 법인 및 지사
+  '일본(일본법인)',
+  '미국(미국법인)',
+  '중국(중국법인)',
+  '말레이시아(아시아법인)',
+  '인도(인도법인)',
+  '네덜란드(유럽법인)',
+  '멕시코(멕시코법인)',
+  '중국(중국법인_생산)',
+  '독일(유럽법인_독일지사)',
+  '주식회사 코르트',
+  '호주(호주법인)',
+  '미국(미국동부법인)',
+  '주식회사 인바디헬스케어',
+  '영국(유럽법인_영국지사)',
+  '베트남(베트남법인)',
+  '튀르키예(튀르키예법인)',
+  // 국내 지사
+  '국내_인바디 서부지사',
+  '국내_인바디 남부지사',
+  '국내_인바디 강남지사',
+  '국내_인바디 대전지사',
+  '국내_인바디 대구지사',
+  '국내_인바디 광주지사',
+  '국내_인바디 강북지사',
+  '국내_인바디 강서지사',
+  '국내_인바디 강원지사',
+  '국내_인바디 중부지사',
+  '국내_인바디 부산지사',
+  // 기타 해외 법인
+  '태국(InBody Thailand Co., Ltd.)',
+  '인도네시아(PT. InBody Global Healthcare)',
 ];
 
 export default function SignupPage() {
@@ -170,7 +181,7 @@ export default function SignupPage() {
         <div className="hidden lg:flex flex-col justify-center space-y-6 px-8">
           <div className="space-y-4">
             <h1 className="text-4xl font-bold text-[#101820]">
-              PO 변경 요청 관리 시스템
+              Purchase On
             </h1>
             <p className="text-lg text-[#67767F] leading-relaxed">
               체계적인 PO 변경 요청 관리를 통해<br />
@@ -400,7 +411,7 @@ export default function SignupPage() {
         {/* 모바일: 브랜딩 영역 (하단에 표시) */}
         <div className="lg:hidden flex flex-col items-center space-y-4 text-center px-4">
           <h1 className="text-2xl font-bold text-[#101820]">
-            PO 변경 요청 관리 시스템
+            Purchase On
           </h1>
           <p className="text-sm text-[#67767F]">
             체계적인 PO 변경 요청 관리를 통해 효율적인 협업을 지원합니다.

@@ -35,28 +35,71 @@ export const useAuth = (): UseAuthReturn => {
 
   useEffect(() => {
     const supabase = createClient();
+    let mounted = true;
     
     // 초기 세션 확인
     const checkSession = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        setUser(session?.user ?? null);
-        setLoading(false);
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        // Refresh Token 관련 오류 처리
+        if (error) {
+          console.warn('세션 확인 오류 - 로그아웃 처리:', error.message);
+          // 만료/유효하지 않은 토큰인 경우 세션 정리
+          await supabase.auth.signOut();
+          if (mounted) {
+            setUser(null);
+            setProfile(null);
+            setLoading(false);
+          }
+          return;
+        }
+        
+        if (mounted) {
+          setUser(session?.user ?? null);
+          setLoading(false);
+        }
       } catch (error) {
         console.error('세션 확인 오류:', error);
-        setLoading(false);
+        // 예외 발생 시에도 세션 정리
+        try {
+          await supabase.auth.signOut();
+        } catch {
+          // signOut 실패 시 무시
+        }
+        if (mounted) {
+          setUser(null);
+          setProfile(null);
+          setLoading(false);
+        }
       }
     };
 
     checkSession();
 
     // 인증 상태 변경 구독
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      setProfile(null); // 프로필 초기화
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      // TOKEN_REFRESHED 실패 또는 SIGNED_OUT 이벤트 처리
+      if (event === 'TOKEN_REFRESHED' && !session) {
+        console.warn('토큰 갱신 실패 - 로그아웃 처리');
+        await supabase.auth.signOut();
+        if (mounted) {
+          setUser(null);
+          setProfile(null);
+        }
+        return;
+      }
+      
+      if (mounted) {
+        setUser(session?.user ?? null);
+        if (!session?.user) {
+          setProfile(null);
+        }
+      }
     });
 
     return () => {
+      mounted = false;
       subscription.unsubscribe();
     };
   }, []);

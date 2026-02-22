@@ -63,7 +63,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { formatDate, calculateDaysLeft } from '@/lib/dashboard-utils';
-import { Download, CheckCircle2, XCircle, AlertCircle, Edit, Plus, List, Search } from 'lucide-react';
+import { Download, CheckCircle2, XCircle, AlertCircle, Edit, Plus, List, Search, ClipboardList, Clock, CheckCheck } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 
@@ -135,6 +135,11 @@ export default function DashboardPage() {
   const [showDetailDialog, setShowDetailDialog] = useState(false);
   const [detailRequest, setDetailRequest] = useState<PORequest | null>(null);
 
+  // 통계 카드 클릭 Dialog
+  const [showStatsDialog, setShowStatsDialog] = useState(false);
+  const [statsDialogType, setStatsDialogType] = useState<'total' | 'pending' | 'approved' | 'completed'>('total');
+  const [statsDialogRequests, setStatsDialogRequests] = useState<PORequest[]>([]);
+
   // 관리자 검색/필터/정렬 상태
   const [adminSearchTerm, setAdminSearchTerm] = useState('');
   const [debouncedAdminSearchTerm, setDebouncedAdminSearchTerm] = useState('');
@@ -185,15 +190,14 @@ export default function DashboardPage() {
         .select('*')
         .is('deleted_at', null); // Soft delete 제외
 
-      // Admin 역할: 모든 요청 조회
-      if (isAdmin) {
+      // Admin 또는 영업관리팀/제조관리팀: 모든 요청 조회
+      const canViewAll = isAdmin || profile?.department === '영업관리팀' || profile?.department === '제조관리팀';
+      if (canViewAll) {
         // 필터 없이 모든 요청 조회
       }
-      // Requester/Reviewer: department와 고객, 요청부서가 모두 동일한 건만 조회
+      // 그 외: department와 동일한 customer 건만 조회
       else if ((isRequester || isReviewer) && profile?.department) {
-        query = query
-          .eq('customer', profile.department)
-          .eq('requesting_dept', profile.department);
+        query = query.eq('customer', profile.department);
       }
 
       // 검색 필터 적용 (고객, 요청부서, 요청자, SO번호)
@@ -395,9 +399,10 @@ export default function DashboardPage() {
         .eq('status', 'pending')
         .is('deleted_at', null);
 
-      // 관리자가 아닌 경우 사용자 부서(department)로 필터링
-      if (profile?.department && !isAdmin) {
-        query = query.eq('requesting_dept', profile.department);
+      // 전체 조회 권한이 없는 경우 customer 컬럼으로 필터링
+      const allAccess = isAdmin || profile?.department === '영업관리팀' || profile?.department === '제조관리팀';
+      if (profile?.department && !allAccess) {
+        query = query.eq('customer', profile.department);
       }
 
       const { data, error } = await query.order('factory_shipment_date', { ascending: true });
@@ -870,6 +875,69 @@ export default function DashboardPage() {
       } else {
         toast.error('요청 거절 중 오류가 발생했습니다. 콘솔을 확인해주세요.');
       }
+    }
+  };
+
+  /**
+   * 상태 라벨 변환 헬퍼
+   */
+  const getStatusLabel = (status: string) => {
+    const statusMap: Record<string, string> = {
+      'pending': '검토대기',
+      'in_review': '검토중',
+      'approved': '승인',
+      'rejected': '반려',
+      'completed': '완료',
+    };
+    return statusMap[status] || status;
+  };
+
+  /**
+   * 부서가 전체 조회 가능한지 확인하는 헬퍼 (영업관리팀, 제조관리팀은 모든 고객처 조회 가능)
+   */
+  const canViewAllCustomers = (): boolean => {
+    if (isAdmin) return true;
+    const dept = profile?.department;
+    return dept === '영업관리팀' || dept === '제조관리팀';
+  };
+
+  /**
+   * 통계 카드 클릭 핸들러
+   */
+  const handleStatsCardClick = async (type: 'total' | 'pending' | 'approved' | 'completed', isAdminMode: boolean = false) => {
+    try {
+      setStatsDialogType(type);
+      const supabase = createClient();
+      
+      let query = supabase.from('requests').select('*').is('deleted_at', null);
+      
+      // 부서 기반 필터링 (관리자 모드가 아니고, 전체 조회 권한이 없는 경우)
+      if (!isAdminMode && !canViewAllCustomers() && profile?.department) {
+        query = query.eq('customer', profile.department);
+      }
+      
+      switch (type) {
+        case 'pending':
+          query = query.eq('status', 'pending');
+          break;
+        case 'approved':
+          query = query.eq('status', 'approved');
+          break;
+        case 'completed':
+          query = query.eq('completed', true);
+          break;
+        // 'total'은 필터링 없음
+      }
+      
+      const { data, error } = await query.order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      
+      setStatsDialogRequests((data || []) as PORequest[]);
+      setShowStatsDialog(true);
+    } catch (error) {
+      console.error('통계 데이터 조회 실패:', error);
+      toast.error('요청 내역을 불러올 수 없습니다.');
     }
   };
 
@@ -1545,35 +1613,44 @@ export default function DashboardPage() {
           {pageMode === 'requester' && (
           <>
 
+          {/* 요청 현황 대시보드 제목 */}
+          <div className="mb-4">
+            <h2 className="text-2xl font-bold text-[#101820]">PO 변경 요청 현황</h2>
+          </div>
+
           {/* 요청 진행현황 대시보드 */}
           <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <StatsCard
               title="전체 요청"
               value={stats.total}
-              subtitle={`총 ${stats.total}건`}
-              icon="📋"
+              subtitle="클릭하여 상세 보기"
+              icon={<ClipboardList className="h-8 w-8 text-[#971B2F]" />}
               themeColor="#A2B2C8"
+              onClick={() => handleStatsCardClick('total')}
             />
             <StatsCard
               title="검토 대기"
               value={stats.pending}
-              subtitle="처리 필요"
-              icon="🕐"
+              subtitle="클릭하여 상세 보기"
+              icon={<Clock className="h-8 w-8 text-[#67767F]" />}
               themeColor="#67767F"
+              onClick={() => handleStatsCardClick('pending')}
             />
             <StatsCard
               title="승인됨"
               value={stats.approved}
-              subtitle={`승인률 ${stats.total > 0 ? Math.round((stats.approved / stats.total) * 100) : 0}%`}
-              icon="✅"
+              subtitle="클릭하여 상세 보기"
+              icon={<CheckCircle2 className="h-8 w-8 text-[#A2B2C8]" />}
               themeColor="#A2B2C8"
+              onClick={() => handleStatsCardClick('approved')}
             />
             <StatsCard
               title="완료됨"
               value={stats.completed}
-              subtitle="이번 달"
-              icon="✅"
+              subtitle="클릭하여 상세 보기"
+              icon={<CheckCheck className="h-8 w-8 text-[#B2B4B8]" />}
               themeColor="#B2B4B8"
+              onClick={() => handleStatsCardClick('completed')}
             />
           </div>
 
@@ -1712,30 +1789,34 @@ export default function DashboardPage() {
                 <StatsCard
                   title="전체 요청"
                   value={adminStats.total}
-                  subtitle={`총 ${adminStats.total}건`}
-                  icon="📋"
+                  subtitle="클릭하여 상세 보기"
+                  icon={<ClipboardList className="h-8 w-8 text-[#971B2F]" />}
                   themeColor="#A2B2C8"
+                  onClick={() => handleStatsCardClick('total', true)}
                 />
                 <StatsCard
                   title="검토 대기"
                   value={adminStats.pending}
-                  subtitle="처리 필요"
-                  icon="🕐"
+                  subtitle="클릭하여 상세 보기"
+                  icon={<Clock className="h-8 w-8 text-[#67767F]" />}
                   themeColor="#67767F"
+                  onClick={() => handleStatsCardClick('pending', true)}
                 />
                 <StatsCard
                   title="승인됨"
                   value={adminStats.approved}
-                  subtitle={`승인률 ${adminStats.total > 0 ? Math.round((adminStats.approved / adminStats.total) * 100) : 0}%`}
-                  icon="✅"
+                  subtitle="클릭하여 상세 보기"
+                  icon={<CheckCircle2 className="h-8 w-8 text-[#A2B2C8]" />}
                   themeColor="#A2B2C8"
+                  onClick={() => handleStatsCardClick('approved', true)}
                 />
                 <StatsCard
                   title="완료됨"
                   value={adminStats.completed}
-                  subtitle="이번 달"
-                  icon="✅"
+                  subtitle="클릭하여 상세 보기"
+                  icon={<CheckCheck className="h-8 w-8 text-[#B2B4B8]" />}
                   themeColor="#B2B4B8"
+                  onClick={() => handleStatsCardClick('completed', true)}
                 />
               </div>
             )}
@@ -1822,8 +1903,8 @@ export default function DashboardPage() {
                     <SelectValue placeholder="정렬" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="newest">최신순</SelectItem>
-                    <SelectItem value="oldest">오래된순</SelectItem>
+                    <SelectItem value="newest">요청일 최신순</SelectItem>
+                    <SelectItem value="oldest">요청일 오래된순</SelectItem>
                     <SelectItem value="shipment-asc">출하일 빠른순</SelectItem>
                     <SelectItem value="shipment-desc">출하일 늦은순</SelectItem>
                     <SelectItem value="customer-asc">고객명 오름차순</SelectItem>
@@ -2179,11 +2260,38 @@ export default function DashboardPage() {
                     <SelectValue placeholder="고객을 선택하세요" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="미국법인">미국법인</SelectItem>
-                    <SelectItem value="중국법인">중국법인</SelectItem>
-                    <SelectItem value="중국생산법인">중국생산법인</SelectItem>
-                    <SelectItem value="일본법인">일본법인</SelectItem>
-                    <SelectItem value="유럽법인">유럽법인</SelectItem>
+                    {/* 해외 법인 및 지사 */}
+                    <SelectItem value="일본(일본법인)">일본(일본법인)</SelectItem>
+                    <SelectItem value="미국(미국법인)">미국(미국법인)</SelectItem>
+                    <SelectItem value="중국(중국법인)">중국(중국법인)</SelectItem>
+                    <SelectItem value="말레이시아(아시아법인)">말레이시아(아시아법인)</SelectItem>
+                    <SelectItem value="인도(인도법인)">인도(인도법인)</SelectItem>
+                    <SelectItem value="네덜란드(유럽법인)">네덜란드(유럽법인)</SelectItem>
+                    <SelectItem value="멕시코(멕시코법인)">멕시코(멕시코법인)</SelectItem>
+                    <SelectItem value="중국(중국법인_생산)">중국(중국법인_생산)</SelectItem>
+                    <SelectItem value="독일(유럽법인_독일지사)">독일(유럽법인_독일지사)</SelectItem>
+                    <SelectItem value="주식회사 코르트">주식회사 코르트</SelectItem>
+                    <SelectItem value="호주(호주법인)">호주(호주법인)</SelectItem>
+                    <SelectItem value="미국(미국동부법인)">미국(미국동부법인)</SelectItem>
+                    <SelectItem value="주식회사 인바디헬스케어">주식회사 인바디헬스케어</SelectItem>
+                    <SelectItem value="영국(유럽법인_영국지사)">영국(유럽법인_영국지사)</SelectItem>
+                    <SelectItem value="베트남(베트남법인)">베트남(베트남법인)</SelectItem>
+                    <SelectItem value="튀르키예(튀르키예법인)">튀르키예(튀르키예법인)</SelectItem>
+                    {/* 국내 지사 */}
+                    <SelectItem value="국내_인바디 서부지사">국내_인바디 서부지사</SelectItem>
+                    <SelectItem value="국내_인바디 남부지사">국내_인바디 남부지사</SelectItem>
+                    <SelectItem value="국내_인바디 강남지사">국내_인바디 강남지사</SelectItem>
+                    <SelectItem value="국내_인바디 대전지사">국내_인바디 대전지사</SelectItem>
+                    <SelectItem value="국내_인바디 대구지사">국내_인바디 대구지사</SelectItem>
+                    <SelectItem value="국내_인바디 광주지사">국내_인바디 광주지사</SelectItem>
+                    <SelectItem value="국내_인바디 강북지사">국내_인바디 강북지사</SelectItem>
+                    <SelectItem value="국내_인바디 강서지사">국내_인바디 강서지사</SelectItem>
+                    <SelectItem value="국내_인바디 강원지사">국내_인바디 강원지사</SelectItem>
+                    <SelectItem value="국내_인바디 중부지사">국내_인바디 중부지사</SelectItem>
+                    <SelectItem value="국내_인바디 부산지사">국내_인바디 부산지사</SelectItem>
+                    {/* 기타 해외 법인 */}
+                    <SelectItem value="태국(InBody Thailand Co., Ltd.)">태국(InBody Thailand Co., Ltd.)</SelectItem>
+                    <SelectItem value="인도네시아(PT. InBody Global Healthcare)">인도네시아(PT. InBody Global Healthcare)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -2236,7 +2344,7 @@ export default function DashboardPage() {
                   value={newRequest.category_of_request}
                   onValueChange={(value) => setNewRequest({ ...newRequest, category_of_request: value })}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -2278,6 +2386,8 @@ export default function DashboardPage() {
                       <SelectItem value="Air">Air</SelectItem>
                       <SelectItem value="UPS">UPS</SelectItem>
                       <SelectItem value="DHL">DHL</SelectItem>
+                      <SelectItem value="Regular">Regular</SelectItem>
+                      <SelectItem value="HC">HC</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -2375,7 +2485,7 @@ export default function DashboardPage() {
                     />
                   </div>
                   <div className="col-span-3 space-y-1">
-                    <Label htmlFor="current_quantity" className="text-xs">수량 (음수, 0, 양수 가능)</Label>
+                    <Label htmlFor="current_quantity" className="text-xs">수량</Label>
                     <Input
                       id="current_quantity"
                       type="number"
@@ -2456,7 +2566,6 @@ export default function DashboardPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="수요 예측 오류">수요 예측 오류</SelectItem>
-                    <SelectItem value="재고 확인 부족">재고 확인 부족</SelectItem>
                     <SelectItem value="영업적 이슈(이벤트 등)">영업적 이슈(이벤트 등)</SelectItem>
                     <SelectItem value="재고 부족">재고 부족</SelectItem>
                     <SelectItem value="적재공간 과부족">적재공간 과부족</SelectItem>
@@ -2562,7 +2671,7 @@ export default function DashboardPage() {
 
       {/* 요청 접수 내역 Dialog (요청자 페이지) */}
       <Dialog open={showHistoryDialog} onOpenChange={setShowHistoryDialog}>
-        <DialogContent className="max-w-[95vw] max-h-[90vh] overflow-hidden">
+        <DialogContent className="w-[95vw] max-w-none max-h-[90vh] overflow-hidden">
           <DialogHeader>
             <DialogTitle>요청 접수 내역</DialogTitle>
             <DialogDescription>
@@ -2642,7 +2751,7 @@ export default function DashboardPage() {
 
       {/* 전체 대기 내역 팝업 */}
       <Dialog open={allPendingDialogOpen} onOpenChange={setAllPendingDialogOpen}>
-        <DialogContent className="max-w-6xl max-h-[80vh] overflow-hidden">
+        <DialogContent className="w-[90vw] max-w-none max-h-[90vh] overflow-hidden">
           <DialogHeader>
             <DialogTitle>전체 검토 대기 내역 ({requesterPendingRequests.length}건)</DialogTitle>
             <DialogDescription>
@@ -2801,6 +2910,92 @@ export default function DashboardPage() {
               확인
             </Button>
             <Button variant="outline" onClick={handleCloseDetail}>
+              닫기
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 통계 카드 클릭 Dialog */}
+      <Dialog open={showStatsDialog} onOpenChange={setShowStatsDialog}>
+        <DialogContent className="w-[95vw] max-w-none max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle>
+              {statsDialogType === 'total' && '전체 요청'}
+              {statsDialogType === 'pending' && '검토 대기 요청'}
+              {statsDialogType === 'approved' && '승인된 요청'}
+              {statsDialogType === 'completed' && '완료된 요청'}
+            </DialogTitle>
+            <DialogDescription>
+              총 {statsDialogRequests.length}건의 요청이 있습니다.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="overflow-x-auto overflow-y-auto max-h-[75vh]">
+            <AdminTable className="min-w-[1800px]">
+              <AdminTableHeader className="sticky top-0 bg-white z-10">
+                <AdminTableRow>
+                  <AdminTableHead className="bg-white">요청일</AdminTableHead>
+                  <AdminTableHead className="bg-white">SO번호</AdminTableHead>
+                  <AdminTableHead className="bg-white">고객</AdminTableHead>
+                  <AdminTableHead className="bg-white">요청부서</AdminTableHead>
+                  <AdminTableHead className="bg-white">요청자</AdminTableHead>
+                  <AdminTableHead className="bg-white">출하일</AdminTableHead>
+                  <AdminTableHead className="bg-white">요청구분</AdminTableHead>
+                  <AdminTableHead className="bg-white">품목코드</AdminTableHead>
+                  <AdminTableHead className="bg-white">품목명</AdminTableHead>
+                  <AdminTableHead className="bg-white">수량</AdminTableHead>
+                  <AdminTableHead className="bg-white">요청사유</AdminTableHead>
+                  <AdminTableHead className="bg-white">상태</AdminTableHead>
+                </AdminTableRow>
+              </AdminTableHeader>
+              <AdminTableBody>
+                {statsDialogRequests.length === 0 ? (
+                  <AdminTableRow>
+                    <AdminTableCell colSpan={12} className="text-center py-8 text-[#67767F]">
+                      해당하는 요청이 없습니다.
+                    </AdminTableCell>
+                  </AdminTableRow>
+                ) : (
+                  statsDialogRequests.map((request) => (
+                    <AdminTableRow key={request.id}>
+                      <AdminTableCell className="text-[#4B4F5A]">{request.request_date ? formatDate(request.request_date) : '-'}</AdminTableCell>
+                      <AdminTableCell className="font-medium text-[#101820]">{request.so_number || '-'}</AdminTableCell>
+                      <AdminTableCell className="text-[#4B4F5A]">{request.customer}</AdminTableCell>
+                      <AdminTableCell className="text-[#4B4F5A]">{request.requesting_dept}</AdminTableCell>
+                      <AdminTableCell className="text-[#4B4F5A]">{request.requester_name}</AdminTableCell>
+                      <AdminTableCell className="text-[#4B4F5A]">{request.factory_shipment_date ? formatDate(request.factory_shipment_date) : '-'}</AdminTableCell>
+                      <AdminTableCell className="text-[#4B4F5A]">{request.category_of_request}</AdminTableCell>
+                      <AdminTableCell className="text-[#4B4F5A]">{request.erp_code || '-'}</AdminTableCell>
+                      <AdminTableCell className="text-[#4B4F5A]">{request.item_name || '-'}</AdminTableCell>
+                      <AdminTableCell className="text-[#4B4F5A]">{request.quantity || 0}</AdminTableCell>
+                      <AdminTableCell className="text-[#4B4F5A]">{request.reason_for_request}</AdminTableCell>
+                      <AdminTableCell>
+                        <Badge
+                          variant={
+                            request.status === 'approved' ? 'default' :
+                            request.status === 'rejected' ? 'destructive' :
+                            'secondary'
+                          }
+                          className={
+                            request.status === 'approved' ? 'bg-green-100 text-green-700 border-green-200' :
+                            request.status === 'rejected' ? 'bg-red-100 text-red-700 border-red-200' :
+                            request.status === 'pending' ? 'bg-yellow-100 text-yellow-700 border-yellow-200' :
+                            request.status === 'in_review' ? 'bg-blue-100 text-blue-700 border-blue-200' :
+                            request.status === 'completed' ? 'bg-purple-100 text-purple-700 border-purple-200' :
+                            'bg-gray-100 text-gray-500 border-gray-200'
+                          }
+                        >
+                          {getStatusLabel(request.status)}
+                        </Badge>
+                      </AdminTableCell>
+                    </AdminTableRow>
+                  ))
+                )}
+              </AdminTableBody>
+            </AdminTable>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowStatsDialog(false)}>
               닫기
             </Button>
           </DialogFooter>

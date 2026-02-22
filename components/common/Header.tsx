@@ -62,7 +62,7 @@ export const Header = ({ userName, userEmail }: HeaderProps) => {
       <div className="container mx-auto flex h-16 items-center justify-between px-6">
         {/* 서비스 로고/이름 */}
         <div className="flex items-center gap-2">
-          <h1 className="text-xl font-bold text-[#971B2F]">PO 변경 요청 접수 관리 시스템</h1>
+          <h1 className="text-2xl font-bold text-[#971B2F]">Purchase On - PO 변경 요청 관리 시스템</h1>
         </div>
 
         {/* 사용자 정보 및 로그아웃 */}
