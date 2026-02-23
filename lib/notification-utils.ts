@@ -96,10 +96,10 @@ export async function sendUrgentRequestNotification(
   const appUrl = typeof window !== 'undefined' ? window.location.origin : '';
   const requestLink = `${appUrl}/requests/${requestId}`;
   
-  // 각 사용자별로 개인화된 메시지 생성
+  // 알람 메시지 생성
   const subject = '[긴급] 새로운 긴급 PO 변경 요청';
-  const baseMessage = (userName: string) => `
-${userName} 님 안녕하세요.
+  const baseMessage = `
+안녕하세요.
 
 PO 변경 요청 건이 접수되었습니다.
 
@@ -131,8 +131,8 @@ export async function sendNewRequestNotification(
   const requestLink = `${appUrl}/requests/${requestId}`;
   
   const subject = '[알림] 새로운 PO 변경 요청';
-  const baseMessage = (userName: string) => `
-${userName} 님 안녕하세요.
+  const baseMessage = `
+안녕하세요.
 
 PO 변경 요청 건이 접수되었습니다.
 
@@ -174,16 +174,14 @@ export async function sendPendingReviewReminder() {
 
     const appUrl = typeof window !== 'undefined' ? window.location.origin : '';
     const subject = '[알림] 검토 대기 중인 PO 변경 요청';
-    const baseMessage = (userName: string) => `
-${userName} 님 안녕하세요.
+    const baseMessage = `
+안녕하세요.
 
 PO 변경 요청 건이 아직 검토 대기 상태로 남아 있습니다.
 
 현재 ${pendingRequests.length}건의 요청이 검토 대기 중입니다.
 
-${pendingRequests.slice(0, 5).map((req, idx) => `
-${idx + 1}. ${req.so_number ? `SO: ${req.so_number} | ` : ''}고객: ${req.customer} | 요청자: ${req.requester_name}${req.priority === '긴급' ? ' | [긴급]' : ''}
-`).join('')}
+${pendingRequests.slice(0, 5).map((req, idx) => `${idx + 1}. ${req.so_number ? `SO: ${req.so_number} | ` : ''}고객: ${req.customer} | 요청자: ${req.requester_name}${req.priority === '긴급' ? ' | [긴급]' : ''}`).join('\n')}
 ${pendingRequests.length > 5 ? `... 외 ${pendingRequests.length - 5}건` : ''}
 
 아래 링크로 접속하시어 내역 확인 및 검토 부탁드립니다.

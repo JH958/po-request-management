@@ -36,6 +36,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# 중복 프로젝트 폴더 (git clone으로 생성된 복제본)
+/po-request-management/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
