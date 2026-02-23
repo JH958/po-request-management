@@ -1615,7 +1615,10 @@ export default function DashboardPage() {
 
           {/* 요청 현황 대시보드 제목 */}
           <div className="mb-4">
-            <h2 className="text-2xl font-bold text-[#101820]">PO 변경 요청 현황</h2>
+            <h1 className="text-3xl font-bold text-[#101820]">
+              PO 변경 요청 현황 <ClipboardList className="inline-block ml-1 size-7 text-[#971B2F]" />
+            </h1>
+            <p className="text-[#67767F] mt-1">요청 접수부터 완료까지 진행 현황을 한눈에 확인하세요.</p>
           </div>
 
           {/* 요청 진행현황 대시보드 */}
