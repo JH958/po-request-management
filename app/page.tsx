@@ -62,10 +62,66 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { formatDate, calculateDaysLeft } from '@/lib/dashboard-utils';
-import { Download, CheckCircle2, XCircle, AlertCircle, Edit, Plus, List, Search, ClipboardList, Clock, CheckCheck } from 'lucide-react';
+import { format as formatDateRange } from 'date-fns';
+import { ko } from 'date-fns/locale';
+import type { DateRange } from 'react-day-picker';
+import { Download, CheckCircle2, XCircle, AlertCircle, Edit, Plus, Search, ClipboardList, Clock, CheckCheck, Calendar as CalendarIcon } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+
+const ALL_CUSTOMERS = [
+  '일본(일본법인)',
+  '미국(미국법인)',
+  '중국(중국법인)',
+  '말레이시아(아시아법인)',
+  '인도(인도법인)',
+  '네덜란드(유럽법인)',
+  '멕시코(멕시코법인)',
+  '중국(중국법인_생산)',
+  '독일(유럽법인_독일지사)',
+  '주식회사 코르트',
+  '호주(호주법인)',
+  '미국(미국동부법인)',
+  '주식회사 인바디헬스케어',
+  '영국(유럽법인_영국지사)',
+  '베트남(베트남법인)',
+  '튀르키예(튀르키예법인)',
+  '국내_인바디 서부지사',
+  '국내_인바디 남부지사',
+  '국내_인바디 강남지사',
+  '국내_인바디 대전지사',
+  '국내_인바디 대구지사',
+  '국내_인바디 광주지사',
+  '국내_인바디 강북지사',
+  '국내_인바디 강서지사',
+  '국내_인바디 강원지사',
+  '국내_인바디 중부지사',
+  '국내_인바디 부산지사',
+  '태국(InBody Thailand Co., Ltd.)',
+  '인도네시아(PT. InBody Global Healthcare)',
+] as const;
+
+const HEADQUARTERS_TEAMS = ['영업관리팀', '제조관리팀', '혈압계팀', 'W팀'] as const;
+
+const getInitialNewRequest = (type: 'existing' | 'new' = 'new') => ({
+  customer: '',
+  so_number: '',
+  factory_shipment_date: new Date().toISOString().split('T')[0],
+  desired_shipment_date: '',
+  confirmed_shipment_date: '',
+  category_of_request: type === 'existing' ? '품목 삭제' : '품목 추가',
+  priority: '보통' as '긴급' | '일반' | '보통',
+  shipping_method: '',
+  erp_code: '',
+  item_name: '',
+  quantity: 0,
+  reason_for_request: '수요 예측 오류',
+  request_details: '',
+  items: [] as Array<{ erp_code: string; item_name: string; quantity: number }>,
+});
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -88,6 +144,7 @@ export default function DashboardPage() {
     total: 0,
     pending: 0,
     approved: 0,
+    rejected: 0,
     completed: 0,
   });
   const [loading, setLoading] = useState(false); // 초기값을 false로 변경
@@ -122,12 +179,11 @@ export default function DashboardPage() {
 
   // 관리자 페이지 전용 상태
   const [adminRequests, setAdminRequests] = useState<PORequest[]>([]);
-  const [adminStats, setAdminStats] = useState<DashboardStats>({ total: 0, pending: 0, approved: 0, completed: 0 });
+  const [adminStats, setAdminStats] = useState<DashboardStats>({ total: 0, pending: 0, approved: 0, rejected: 0, completed: 0 });
   const [adminLoading, setAdminLoading] = useState(false);
   const [adminError, setAdminError] = useState<string | null>(null);
 
   // 요청자 페이지 전용 상태
-  const [showHistoryDialog, setShowHistoryDialog] = useState(false);
   const [requesterPendingRequests, setRequesterPendingRequests] = useState<PORequest[]>([]);
   const [requesterPendingLoading, setRequesterPendingLoading] = useState(false);
 
@@ -137,7 +193,7 @@ export default function DashboardPage() {
 
   // 통계 카드 클릭 Dialog
   const [showStatsDialog, setShowStatsDialog] = useState(false);
-  const [statsDialogType, setStatsDialogType] = useState<'total' | 'pending' | 'approved' | 'completed'>('total');
+  const [statsDialogType, setStatsDialogType] = useState<'total' | 'pending' | 'approved' | 'rejected' | 'completed'>('total');
   const [statsDialogRequests, setStatsDialogRequests] = useState<PORequest[]>([]);
 
   // 관리자 검색/필터/정렬 상태
@@ -145,25 +201,83 @@ export default function DashboardPage() {
   const [debouncedAdminSearchTerm, setDebouncedAdminSearchTerm] = useState('');
   const [adminFilterStatus, setAdminFilterStatus] = useState('all');
   const [adminFilterCategory, setAdminFilterCategory] = useState('all');
-  const [adminFilterPeriod, setAdminFilterPeriod] = useState('all');
+  const [adminDateRange, setAdminDateRange] = useState<DateRange | undefined>();
   const [adminSortOrder, setAdminSortOrder] = useState('newest');
 
-  const [newRequest, setNewRequest] = useState({
-    customer: '',
-    so_number: '',
-    factory_shipment_date: new Date().toISOString().split('T')[0],
-    desired_shipment_date: '',
-    confirmed_shipment_date: '',
-    category_of_request: '품목 추가',
-    priority: '일반' as '긴급' | '일반' | '보통',
-    shipping_method: '',
-    erp_code: '',
-    item_name: '',
-    quantity: 0,
-    reason_for_request: '수요 예측 오류',
-    request_details: '',
-    items: [] as Array<{ erp_code: string; item_name: string; quantity: number }>,
-  });
+  const [newRequest, setNewRequest] = useState(getInitialNewRequest('new'));
+
+  /**
+   * 사용자 권한/부서 기준으로 선택 가능한 고객 목록을 반환하는 헬퍼
+   */
+  const getAvailableCustomers = useCallback((): string[] => {
+    if (isAdmin) {
+      return [...ALL_CUSTOMERS];
+    }
+
+    const department = profile?.department;
+    if (department && HEADQUARTERS_TEAMS.includes(department as (typeof HEADQUARTERS_TEAMS)[number])) {
+      return [...ALL_CUSTOMERS];
+    }
+
+    if (department) {
+      return [department];
+    }
+
+    return [...ALL_CUSTOMERS];
+  }, [isAdmin, profile?.department]);
+
+  const availableCustomers = useMemo(() => getAvailableCustomers(), [getAvailableCustomers]);
+
+  /**
+   * 요청자/검토자 페이지의 요청 접수 내역을 요청일 최신순으로 정렬하는 메모값
+   */
+  const sortedRequesterHistoryRequests = useMemo(() => {
+    return [...requests].sort((a, b) => {
+      const requestDateDiff = new Date(b.request_date || 0).getTime() - new Date(a.request_date || 0).getTime();
+      if (requestDateDiff !== 0) {
+        return requestDateDiff;
+      }
+      return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+    });
+  }, [requests]);
+
+  /**
+   * PO 추가/수정 요청 폼을 초기 상태로 되돌리는 헬퍼
+   */
+  const resetAddRequestForm = useCallback(() => {
+    setNewRequest(getInitialNewRequest(requestType));
+    setCurrentItem({ erp_code: '', item_name: '', quantity: 0 });
+  }, [requestType]);
+
+  /**
+   * 요청 추가 다이얼로그 열림/닫힘 상태를 제어하는 핸들러
+   */
+  const handleAddDialogChange = useCallback((open: boolean) => {
+    setAddDialogOpen(open);
+    if (!open) {
+      resetAddRequestForm();
+    }
+  }, [resetAddRequestForm]);
+
+  /**
+   * 고객 선택이 1개로 제한된 계정은 다이얼로그 오픈 시 고객을 자동 선택
+   */
+  useEffect(() => {
+    if (!addDialogOpen) return;
+
+    setNewRequest((prev) => {
+      const nextCustomer =
+        availableCustomers.length === 1
+          ? availableCustomers[0]
+          : (prev.customer && availableCustomers.includes(prev.customer) ? prev.customer : '');
+
+      if (prev.customer === nextCustomer) {
+        return prev;
+      }
+
+      return { ...prev, customer: nextCustomer };
+    });
+  }, [addDialogOpen, availableCustomers]);
 
   /**
    * 인증되지 않은 사용자는 로그인 페이지로 리다이렉트
@@ -278,9 +392,10 @@ export default function DashboardPage() {
       const total = transformedData.length;
       const pending = transformedData.filter((r) => r.status === 'pending').length;
       const approved = transformedData.filter((r) => r.status === 'approved').length;
+      const rejected = transformedData.filter((r) => r.status === 'rejected').length;
       const completed = transformedData.filter((r) => r.completed).length;
 
-      setStats({ total, pending, approved, completed });
+      setStats({ total, pending, approved, rejected, completed });
       setIsInitialLoad(false);
     } catch (error: any) {
       console.error('요청 목록 조회 오류:', error);
@@ -294,7 +409,7 @@ export default function DashboardPage() {
         toast.error('요청 목록을 불러오는 중 오류가 발생했습니다.');
       }
       setRequests([]);
-      setStats({ total: 0, pending: 0, approved: 0, completed: 0 });
+      setStats({ total: 0, pending: 0, approved: 0, rejected: 0, completed: 0 });
       setIsInitialLoad(false);
     } finally {
       setLoading(false);
@@ -343,6 +458,14 @@ export default function DashboardPage() {
         .is('deleted_at', null);
       if (approvedError) throw approvedError;
 
+      // 반려 건수
+      const { count: rejectedCount, error: rejectedError } = await supabase
+        .from('requests')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'rejected')
+        .is('deleted_at', null);
+      if (rejectedError) throw rejectedError;
+
       // 완료 건수
       const { count: completedCount, error: completedError } = await supabase
         .from('requests')
@@ -355,6 +478,7 @@ export default function DashboardPage() {
         total: totalCount ?? 0,
         pending: pendingCount ?? 0,
         approved: approvedCount ?? 0,
+        rejected: rejectedCount ?? 0,
         completed: completedCount ?? 0,
       });
     } catch (error) {
@@ -461,24 +585,17 @@ export default function DashboardPage() {
       result = result.filter((req) => req.category_of_request === adminFilterCategory);
     }
 
-    // 기간 필터
-    if (adminFilterPeriod !== 'all') {
-      const now = new Date();
+    // 날짜 범위 필터 (요청일 기준)
+    if (adminDateRange?.from) {
+      const fromDate = new Date(adminDateRange.from);
+      fromDate.setHours(0, 0, 0, 0);
+
+      const toDate = adminDateRange.to ? new Date(adminDateRange.to) : new Date(adminDateRange.from);
+      toDate.setHours(23, 59, 59, 999);
+
       result = result.filter((req) => {
-        const createdAt = new Date(req.created_at);
-        switch (adminFilterPeriod) {
-          case 'today':
-            return createdAt.toDateString() === now.toDateString();
-          case 'week': {
-            const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-            return createdAt >= weekAgo;
-          }
-          case 'month':
-            return createdAt.getMonth() === now.getMonth() &&
-                   createdAt.getFullYear() === now.getFullYear();
-          default:
-            return true;
-        }
+        const requestDate = new Date(req.request_date);
+        return requestDate >= fromDate && requestDate <= toDate;
       });
     }
 
@@ -503,7 +620,7 @@ export default function DashboardPage() {
     });
 
     return result;
-  }, [adminRequests, debouncedAdminSearchTerm, adminFilterStatus, adminFilterCategory, adminFilterPeriod, adminSortOrder]);
+  }, [adminRequests, debouncedAdminSearchTerm, adminFilterStatus, adminFilterCategory, adminDateRange, adminSortOrder]);
 
   /**
    * 관리자 모드 데이터 로드
@@ -904,7 +1021,7 @@ export default function DashboardPage() {
   /**
    * 통계 카드 클릭 핸들러
    */
-  const handleStatsCardClick = async (type: 'total' | 'pending' | 'approved' | 'completed', isAdminMode: boolean = false) => {
+  const handleStatsCardClick = async (type: 'total' | 'pending' | 'approved' | 'rejected' | 'completed', isAdminMode: boolean = false) => {
     try {
       setStatsDialogType(type);
       const supabase = createClient();
@@ -922,6 +1039,9 @@ export default function DashboardPage() {
           break;
         case 'approved':
           query = query.eq('status', 'approved');
+          break;
+        case 'rejected':
+          query = query.eq('status', 'rejected');
           break;
         case 'completed':
           query = query.eq('completed', true);
@@ -947,22 +1067,8 @@ export default function DashboardPage() {
   const handleAddRequest = (type: 'existing' | 'new') => {
     setRequestType(type);
     // 초기값 설정
-    setNewRequest({
-      customer: '',
-      so_number: '',
-      factory_shipment_date: new Date().toISOString().split('T')[0],
-      desired_shipment_date: '',
-      confirmed_shipment_date: '',
-      category_of_request: '품목 추가',
-      priority: '보통' as '긴급' | '일반' | '보통',
-      shipping_method: '',
-      erp_code: '',
-      item_name: '',
-      quantity: 0,
-      reason_for_request: '수요 예측 오류',
-      request_details: '',
-      items: [] as Array<{ erp_code: string; item_name: string; quantity: number }>,
-    });
+    setNewRequest(getInitialNewRequest(type));
+    setCurrentItem({ erp_code: '', item_name: '', quantity: 0 });
     setAddDialogOpen(true);
   };
 
@@ -1319,6 +1425,9 @@ export default function DashboardPage() {
       console.log('생성된 요청 ID:', createdRequest.id);
       
       toast.success('새 요청이 생성되었습니다.');
+
+      // 성공 시 폼 초기화
+      resetAddRequestForm();
       
       // 다이얼로그 닫기 (성공 시에만)
       setAddDialogOpen(false);
@@ -1622,7 +1731,7 @@ export default function DashboardPage() {
           </div>
 
           {/* 요청 진행현황 대시보드 */}
-          <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
             <StatsCard
               title="전체 요청"
               value={stats.total}
@@ -1640,7 +1749,7 @@ export default function DashboardPage() {
               onClick={() => handleStatsCardClick('pending')}
             />
             <StatsCard
-              title="승인됨"
+              title="승인"
               value={stats.approved}
               subtitle="클릭하여 상세 보기"
               icon={<CheckCircle2 className="h-8 w-8 text-[#A2B2C8]" />}
@@ -1648,7 +1757,15 @@ export default function DashboardPage() {
               onClick={() => handleStatsCardClick('approved')}
             />
             <StatsCard
-              title="완료됨"
+              title="반려"
+              value={stats.rejected}
+              subtitle="클릭하여 상세 보기"
+              icon={<XCircle className="h-8 w-8 text-[#971B2F]" />}
+              themeColor="#971B2F"
+              onClick={() => handleStatsCardClick('rejected')}
+            />
+            <StatsCard
+              title="완료"
               value={stats.completed}
               subtitle="클릭하여 상세 보기"
               icon={<CheckCheck className="h-8 w-8 text-[#B2B4B8]" />}
@@ -1658,7 +1775,7 @@ export default function DashboardPage() {
           </div>
 
           {/* 요청 접수 + 검토 대기 2열 레이아웃 */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-[600px]">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-[600px] mb-6">
             {/* 요청 접수 영역 */}
             <Card className="border-[#E5E7EB] flex flex-col">
               <CardHeader>
@@ -1680,15 +1797,6 @@ export default function DashboardPage() {
                 >
                   <Plus className="mr-2 h-6 w-6" />
                   PO 추가 요청
-                </Button>
-                <Button
-                  variant="outline"
-                  className="flex-1 w-full text-lg font-medium border-[#67767F] text-[#67767F] hover:bg-gray-50"
-                  onClick={() => setShowHistoryDialog(true)}
-                  aria-label="요청 접수 내역 보기"
-                >
-                  <List className="mr-2 h-5 w-5" />
-                  요청 접수 내역
                 </Button>
               </CardContent>
             </Card>
@@ -1762,6 +1870,87 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
           </div>
+
+          {/* 요청 접수 내역 카드 */}
+          <Card className="border-[#E5E7EB] mb-6">
+            <CardHeader>
+              <CardTitle className="text-xl text-[#101820]">요청 접수 내역</CardTitle>
+              <p className="text-sm text-[#67767F]">총 {sortedRequesterHistoryRequests.length}건의 요청</p>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto overflow-y-auto max-h-[500px]">
+                <AdminTable className="min-w-[1500px]">
+                  <AdminTableHeader className="sticky top-0 bg-white z-10">
+                    <AdminTableRow>
+                      <AdminTableHead className="bg-white">요청일</AdminTableHead>
+                      <AdminTableHead className="bg-white">SO 번호</AdminTableHead>
+                      <AdminTableHead className="bg-white">고객</AdminTableHead>
+                      <AdminTableHead className="bg-white">요청부서</AdminTableHead>
+                      <AdminTableHead className="bg-white">요청자</AdminTableHead>
+                      <AdminTableHead className="bg-white">출하일</AdminTableHead>
+                      <AdminTableHead className="bg-white">요청구분</AdminTableHead>
+                      <AdminTableHead className="bg-white">품목코드</AdminTableHead>
+                      <AdminTableHead className="bg-white">품목명</AdminTableHead>
+                      <AdminTableHead className="bg-white">수량</AdminTableHead>
+                      <AdminTableHead className="bg-white">요청사유</AdminTableHead>
+                      <AdminTableHead className="bg-white">검토 상세</AdminTableHead>
+                      <AdminTableHead className="bg-white">상태</AdminTableHead>
+                      <AdminTableHead className="bg-white">완료</AdminTableHead>
+                    </AdminTableRow>
+                  </AdminTableHeader>
+                  <AdminTableBody>
+                    {sortedRequesterHistoryRequests.length === 0 ? (
+                      <AdminTableRow>
+                        <AdminTableCell colSpan={14} className="text-center py-8 text-[#67767F]">
+                          요청 데이터가 없습니다.
+                        </AdminTableCell>
+                      </AdminTableRow>
+                    ) : (
+                      sortedRequesterHistoryRequests.map((r) => (
+                        <AdminTableRow key={r.id}>
+                          <AdminTableCell className="text-[#4B4F5A]">{r.request_date ? formatDate(r.request_date) : '-'}</AdminTableCell>
+                          <AdminTableCell className="font-medium text-[#101820]">{r.so_number || '-'}</AdminTableCell>
+                          <AdminTableCell className="text-[#4B4F5A]">{r.customer}</AdminTableCell>
+                          <AdminTableCell className="text-[#4B4F5A]">{r.requesting_dept}</AdminTableCell>
+                          <AdminTableCell className="text-[#4B4F5A]">{r.requester_name}</AdminTableCell>
+                          <AdminTableCell className="text-[#4B4F5A]">{r.factory_shipment_date ? formatDate(r.factory_shipment_date) : '-'}</AdminTableCell>
+                          <AdminTableCell className="text-[#4B4F5A]">{r.category_of_request}</AdminTableCell>
+                          <AdminTableCell className="text-[#4B4F5A]">{r.erp_code || '-'}</AdminTableCell>
+                          <AdminTableCell className="text-[#4B4F5A]">{r.item_name || '-'}</AdminTableCell>
+                          <AdminTableCell className="text-[#4B4F5A]">{r.quantity || 0}</AdminTableCell>
+                          <AdminTableCell className="text-[#4B4F5A]">{r.reason_for_request}</AdminTableCell>
+                          <AdminTableCell className="max-w-xs truncate text-[#4B4F5A]" title={r.review_details || '-'}>
+                            {r.review_details || '-'}
+                          </AdminTableCell>
+                          <AdminTableCell>
+                            <Badge
+                              variant={
+                                r.status === 'approved' ? 'default' :
+                                r.status === 'rejected' ? 'destructive' :
+                                'secondary'
+                              }
+                              className={
+                                r.status === 'approved' ? 'bg-green-100 text-green-700 border-green-200' :
+                                r.status === 'rejected' ? 'bg-red-100 text-red-700 border-red-200' :
+                                r.status === 'pending' ? 'bg-yellow-100 text-yellow-700 border-yellow-200' :
+                                r.status === 'in_review' ? 'bg-blue-100 text-blue-700 border-blue-200' :
+                                'bg-gray-100 text-gray-500 border-gray-200'
+                              }
+                            >
+                              {getStatusLabel(r.status)}
+                            </Badge>
+                          </AdminTableCell>
+                          <AdminTableCell className="text-center text-[#4B4F5A]">
+                            {r.completed ? '✓' : '-'}
+                          </AdminTableCell>
+                        </AdminTableRow>
+                      ))
+                    )}
+                  </AdminTableBody>
+                </AdminTable>
+              </div>
+            </CardContent>
+          </Card>
           </>
           )}
 
@@ -1778,8 +1967,8 @@ export default function DashboardPage() {
 
             {/* 요청 현황 대시보드 */}
             {adminLoading ? (
-              <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4" role="status" aria-label="통계 데이터 로딩 중">
-                {[...Array(4)].map((_, i) => (
+              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4" role="status" aria-label="통계 데이터 로딩 중">
+                {[...Array(5)].map((_, i) => (
                   <div key={i} className="bg-white rounded-lg border border-[#E5E7EB] p-6 space-y-3">
                     <Skeleton className="h-4 w-20" />
                     <Skeleton className="h-8 w-16" />
@@ -1788,7 +1977,7 @@ export default function DashboardPage() {
                 ))}
               </div>
             ) : (
-              <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
                 <StatsCard
                   title="전체 요청"
                   value={adminStats.total}
@@ -1806,7 +1995,7 @@ export default function DashboardPage() {
                   onClick={() => handleStatsCardClick('pending', true)}
                 />
                 <StatsCard
-                  title="승인됨"
+                  title="승인"
                   value={adminStats.approved}
                   subtitle="클릭하여 상세 보기"
                   icon={<CheckCircle2 className="h-8 w-8 text-[#A2B2C8]" />}
@@ -1814,7 +2003,15 @@ export default function DashboardPage() {
                   onClick={() => handleStatsCardClick('approved', true)}
                 />
                 <StatsCard
-                  title="완료됨"
+                  title="반려"
+                  value={adminStats.rejected}
+                  subtitle="클릭하여 상세 보기"
+                  icon={<XCircle className="h-8 w-8 text-[#971B2F]" />}
+                  themeColor="#971B2F"
+                  onClick={() => handleStatsCardClick('rejected', true)}
+                />
+                <StatsCard
+                  title="완료"
                   value={adminStats.completed}
                   subtitle="클릭하여 상세 보기"
                   icon={<CheckCheck className="h-8 w-8 text-[#B2B4B8]" />}
@@ -1869,9 +2066,8 @@ export default function DashboardPage() {
                   <SelectContent>
                     <SelectItem value="all">전체 상태</SelectItem>
                     <SelectItem value="pending">검토대기</SelectItem>
-                    <SelectItem value="in_review">검토중</SelectItem>
                     <SelectItem value="approved">승인</SelectItem>
-                    <SelectItem value="rejected">거절</SelectItem>
+                    <SelectItem value="rejected">반려</SelectItem>
                     <SelectItem value="completed">완료</SelectItem>
                   </SelectContent>
                 </Select>
@@ -1891,17 +2087,51 @@ export default function DashboardPage() {
                     <SelectItem value="기타">기타</SelectItem>
                   </SelectContent>
                 </Select>
-                <Select value={adminFilterPeriod} onValueChange={setAdminFilterPeriod}>
-                  <SelectTrigger className="w-full md:w-[130px]">
-                    <SelectValue placeholder="기간" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">전체 기간</SelectItem>
-                    <SelectItem value="today">오늘</SelectItem>
-                    <SelectItem value="week">이번 주</SelectItem>
-                    <SelectItem value="month">이번 달</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        'w-full md:w-[280px] justify-start text-left font-normal',
+                        !adminDateRange && 'text-muted-foreground'
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {adminDateRange?.from ? (
+                        adminDateRange.to ? (
+                          <>
+                            {formatDateRange(adminDateRange.from, 'yyyy-MM-dd', { locale: ko })} -{' '}
+                            {formatDateRange(adminDateRange.to, 'yyyy-MM-dd', { locale: ko })}
+                          </>
+                        ) : (
+                          formatDateRange(adminDateRange.from, 'yyyy-MM-dd', { locale: ko })
+                        )
+                      ) : (
+                        <span>날짜 범위 선택</span>
+                      )}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      initialFocus
+                      mode="range"
+                      defaultMonth={adminDateRange?.from}
+                      selected={adminDateRange}
+                      onSelect={setAdminDateRange}
+                      numberOfMonths={2}
+                      locale={ko}
+                    />
+                    <div className="p-3 border-t">
+                      <Button
+                        variant="ghost"
+                        className="w-full"
+                        onClick={() => setAdminDateRange(undefined)}
+                      >
+                        초기화
+                      </Button>
+                    </div>
+                  </PopoverContent>
+                </Popover>
                 <Select value={adminSortOrder} onValueChange={setAdminSortOrder}>
                   <SelectTrigger className="w-full md:w-[150px]">
                     <SelectValue placeholder="정렬" />
@@ -1940,7 +2170,7 @@ export default function DashboardPage() {
                         <AdminTableHead className="min-w-[150px] bg-white border-b">품목명</AdminTableHead>
                         <AdminTableHead className="min-w-[60px] bg-white border-b">수량</AdminTableHead>
                         <AdminTableHead className="min-w-[120px] bg-white border-b">요청사유</AdminTableHead>
-                        <AdminTableHead className="min-w-[80px] bg-white border-b">가능여부</AdminTableHead>
+                        <AdminTableHead className="min-w-[180px] bg-white border-b">검토 상세</AdminTableHead>
                         <AdminTableHead className="min-w-[80px] bg-white border-b">상태</AdminTableHead>
                         <AdminTableHead className="min-w-[80px] bg-white border-b">완료여부</AdminTableHead>
                       </AdminTableRow>
@@ -1966,22 +2196,8 @@ export default function DashboardPage() {
                             <AdminTableCell className="text-[#4B4F5A]">{r.item_name || '-'}</AdminTableCell>
                             <AdminTableCell className="text-[#4B4F5A]">{r.quantity || 0}</AdminTableCell>
                             <AdminTableCell className="text-[#4B4F5A]">{r.reason_for_request}</AdminTableCell>
-                            <AdminTableCell>
-                              <Badge
-                                variant={
-                                  r.feasibility === 'approved' ? 'default' :
-                                  r.feasibility === 'rejected' ? 'destructive' :
-                                  'secondary'
-                                }
-                                className={
-                                  r.feasibility === 'approved' ? 'bg-green-100 text-green-700 border-green-200' :
-                                  r.feasibility === 'rejected' ? 'bg-red-100 text-red-700 border-red-200' :
-                                  r.feasibility === 'pending' ? 'bg-yellow-100 text-yellow-700 border-yellow-200' :
-                                  'bg-gray-100 text-gray-500 border-gray-200'
-                                }
-                              >
-                                {r.feasibility === 'approved' ? '가능' : r.feasibility === 'rejected' ? '불가능' : r.feasibility === 'pending' ? '보류' : '-'}
-                              </Badge>
+                            <AdminTableCell className="max-w-xs truncate text-[#4B4F5A]" title={r.review_details || '-'}>
+                              {r.review_details || '-'}
                             </AdminTableCell>
                             <AdminTableCell>
                               <Badge
@@ -2242,7 +2458,7 @@ export default function DashboardPage() {
       </AlertDialog>
 
       {/* 요청 추가 다이얼로그 */}
-      <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
+      <Dialog open={addDialogOpen} onOpenChange={handleAddDialogChange}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
@@ -2264,38 +2480,11 @@ export default function DashboardPage() {
                     <SelectValue placeholder="고객을 선택하세요" />
                   </SelectTrigger>
                   <SelectContent>
-                    {/* 해외 법인 및 지사 */}
-                    <SelectItem value="일본(일본법인)">일본(일본법인)</SelectItem>
-                    <SelectItem value="미국(미국법인)">미국(미국법인)</SelectItem>
-                    <SelectItem value="중국(중국법인)">중국(중국법인)</SelectItem>
-                    <SelectItem value="말레이시아(아시아법인)">말레이시아(아시아법인)</SelectItem>
-                    <SelectItem value="인도(인도법인)">인도(인도법인)</SelectItem>
-                    <SelectItem value="네덜란드(유럽법인)">네덜란드(유럽법인)</SelectItem>
-                    <SelectItem value="멕시코(멕시코법인)">멕시코(멕시코법인)</SelectItem>
-                    <SelectItem value="중국(중국법인_생산)">중국(중국법인_생산)</SelectItem>
-                    <SelectItem value="독일(유럽법인_독일지사)">독일(유럽법인_독일지사)</SelectItem>
-                    <SelectItem value="주식회사 코르트">주식회사 코르트</SelectItem>
-                    <SelectItem value="호주(호주법인)">호주(호주법인)</SelectItem>
-                    <SelectItem value="미국(미국동부법인)">미국(미국동부법인)</SelectItem>
-                    <SelectItem value="주식회사 인바디헬스케어">주식회사 인바디헬스케어</SelectItem>
-                    <SelectItem value="영국(유럽법인_영국지사)">영국(유럽법인_영국지사)</SelectItem>
-                    <SelectItem value="베트남(베트남법인)">베트남(베트남법인)</SelectItem>
-                    <SelectItem value="튀르키예(튀르키예법인)">튀르키예(튀르키예법인)</SelectItem>
-                    {/* 국내 지사 */}
-                    <SelectItem value="국내_인바디 서부지사">국내_인바디 서부지사</SelectItem>
-                    <SelectItem value="국내_인바디 남부지사">국내_인바디 남부지사</SelectItem>
-                    <SelectItem value="국내_인바디 강남지사">국내_인바디 강남지사</SelectItem>
-                    <SelectItem value="국내_인바디 대전지사">국내_인바디 대전지사</SelectItem>
-                    <SelectItem value="국내_인바디 대구지사">국내_인바디 대구지사</SelectItem>
-                    <SelectItem value="국내_인바디 광주지사">국내_인바디 광주지사</SelectItem>
-                    <SelectItem value="국내_인바디 강북지사">국내_인바디 강북지사</SelectItem>
-                    <SelectItem value="국내_인바디 강서지사">국내_인바디 강서지사</SelectItem>
-                    <SelectItem value="국내_인바디 강원지사">국내_인바디 강원지사</SelectItem>
-                    <SelectItem value="국내_인바디 중부지사">국내_인바디 중부지사</SelectItem>
-                    <SelectItem value="국내_인바디 부산지사">국내_인바디 부산지사</SelectItem>
-                    {/* 기타 해외 법인 */}
-                    <SelectItem value="태국(InBody Thailand Co., Ltd.)">태국(InBody Thailand Co., Ltd.)</SelectItem>
-                    <SelectItem value="인도네시아(PT. InBody Global Healthcare)">인도네시아(PT. InBody Global Healthcare)</SelectItem>
+                    {availableCustomers.map((customerName) => (
+                      <SelectItem key={customerName} value={customerName}>
+                        {customerName}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -2353,10 +2542,9 @@ export default function DashboardPage() {
                   </SelectTrigger>
                   <SelectContent>
                     {requestType === 'new' ? (
-                      // PO 추가 요청: 품목 추가, 수량 추가만 표시
+                      // PO 추가 요청: 수량 추가 옵션 제거
                       <>
                         <SelectItem value="품목 추가">품목 추가</SelectItem>
-                        <SelectItem value="수량 추가">수량 추가</SelectItem>
                       </>
                     ) : (
                       // PO 수정 요청: 품목 추가, 수량 추가 제외
@@ -2596,7 +2784,7 @@ export default function DashboardPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setAddDialogOpen(false)}>
+            <Button variant="outline" onClick={() => handleAddDialogChange(false)}>
               취소
             </Button>
             <Button onClick={handleSubmitNewRequest} className="bg-[#971B2F] hover:bg-[#7A1626]">
@@ -2675,86 +2863,6 @@ export default function DashboardPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      {/* 요청 접수 내역 Dialog (요청자 페이지) */}
-      <Dialog open={showHistoryDialog} onOpenChange={setShowHistoryDialog}>
-        <DialogContent className="w-[95vw] max-w-none max-h-[90vh] overflow-hidden">
-          <DialogHeader>
-            <DialogTitle>요청 접수 내역</DialogTitle>
-            <DialogDescription>
-              전체 요청 내역입니다. (총 {requests.length}건)
-            </DialogDescription>
-          </DialogHeader>
-          <div className="overflow-x-auto overflow-y-auto max-h-[75vh] mt-4">
-            <AdminTable className="min-w-[1200px]">
-              <AdminTableHeader>
-                <AdminTableRow>
-                  <AdminTableHead className="min-w-[90px]">요청일</AdminTableHead>
-                  <AdminTableHead className="min-w-[110px]">SO번호</AdminTableHead>
-                  <AdminTableHead className="min-w-[90px]">고객</AdminTableHead>
-                  <AdminTableHead className="min-w-[90px]">요청부서</AdminTableHead>
-                  <AdminTableHead className="min-w-[70px]">요청자</AdminTableHead>
-                  <AdminTableHead className="min-w-[90px]">출하일</AdminTableHead>
-                  <AdminTableHead className="min-w-[100px]">요청구분</AdminTableHead>
-                  <AdminTableHead className="min-w-[100px]">품목코드</AdminTableHead>
-                  <AdminTableHead className="min-w-[130px]">품목명</AdminTableHead>
-                  <AdminTableHead className="min-w-[50px]">수량</AdminTableHead>
-                  <AdminTableHead className="min-w-[100px]">요청사유</AdminTableHead>
-                  <AdminTableHead className="min-w-[70px]">상태</AdminTableHead>
-                </AdminTableRow>
-              </AdminTableHeader>
-              <AdminTableBody>
-                {requests.length === 0 ? (
-                  <AdminTableRow>
-                    <AdminTableCell colSpan={12} className="text-center py-8 text-[#67767F]">
-                      요청 데이터가 없습니다.
-                    </AdminTableCell>
-                  </AdminTableRow>
-                ) : (
-                  requests.map((r) => (
-                    <AdminTableRow key={r.id}>
-                      <AdminTableCell className="text-[#4B4F5A]">{r.request_date ? formatDate(r.request_date) : '-'}</AdminTableCell>
-                      <AdminTableCell className="font-medium text-[#101820]">{r.so_number || '-'}</AdminTableCell>
-                      <AdminTableCell className="text-[#4B4F5A]">{r.customer}</AdminTableCell>
-                      <AdminTableCell className="text-[#4B4F5A]">{r.requesting_dept}</AdminTableCell>
-                      <AdminTableCell className="text-[#4B4F5A]">{r.requester_name}</AdminTableCell>
-                      <AdminTableCell className="text-[#4B4F5A]">{r.factory_shipment_date ? formatDate(r.factory_shipment_date) : '-'}</AdminTableCell>
-                      <AdminTableCell className="text-[#4B4F5A]">{r.category_of_request}</AdminTableCell>
-                      <AdminTableCell className="text-[#4B4F5A]">{r.erp_code || '-'}</AdminTableCell>
-                      <AdminTableCell className="text-[#4B4F5A]">{r.item_name || '-'}</AdminTableCell>
-                      <AdminTableCell className="text-[#4B4F5A]">{r.quantity || 0}</AdminTableCell>
-                      <AdminTableCell className="text-[#4B4F5A]">{r.reason_for_request}</AdminTableCell>
-                      <AdminTableCell>
-                        <Badge
-                          variant={
-                            r.status === 'approved' ? 'default' :
-                            r.status === 'rejected' ? 'destructive' :
-                            'secondary'
-                          }
-                          className={
-                            r.status === 'approved' ? 'bg-green-100 text-green-700 border-green-200' :
-                            r.status === 'rejected' ? 'bg-red-100 text-red-700 border-red-200' :
-                            r.status === 'pending' ? 'bg-yellow-100 text-yellow-700 border-yellow-200' :
-                            r.status === 'in_review' ? 'bg-blue-100 text-blue-700 border-blue-200' :
-                            'bg-gray-100 text-gray-500 border-gray-200'
-                          }
-                        >
-                          {r.status === 'pending' ? '검토대기' : r.status === 'approved' ? '승인' : r.status === 'rejected' ? '반려' : r.status === 'in_review' ? '검토중' : r.status === 'completed' ? '완료' : '-'}
-                        </Badge>
-                      </AdminTableCell>
-                    </AdminTableRow>
-                  ))
-                )}
-              </AdminTableBody>
-            </AdminTable>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowHistoryDialog(false)}>
-              닫기
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* 전체 대기 내역 팝업 */}
       <Dialog open={allPendingDialogOpen} onOpenChange={setAllPendingDialogOpen}>
@@ -2931,6 +3039,7 @@ export default function DashboardPage() {
               {statsDialogType === 'total' && '전체 요청'}
               {statsDialogType === 'pending' && '검토 대기 요청'}
               {statsDialogType === 'approved' && '승인된 요청'}
+              {statsDialogType === 'rejected' && '반려된 요청'}
               {statsDialogType === 'completed' && '완료된 요청'}
             </DialogTitle>
             <DialogDescription>
