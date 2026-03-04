@@ -68,7 +68,7 @@ import { formatDate, calculateDaysLeft } from '@/lib/dashboard-utils';
 import { format as formatDateRange } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import type { DateRange } from 'react-day-picker';
-import { Download, CheckCircle2, XCircle, AlertCircle, Edit, Plus, Search, ClipboardList, Clock, CheckCheck, Calendar as CalendarIcon } from 'lucide-react';
+import { Download, CheckCircle2, XCircle, AlertCircle, Edit, Plus, Search, ClipboardList, Clock, Calendar as CalendarIcon } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 
@@ -145,7 +145,6 @@ export default function DashboardPage() {
     pending: 0,
     approved: 0,
     rejected: 0,
-    completed: 0,
   });
   const [loading, setLoading] = useState(false); // 초기값을 false로 변경
   const [searchQuery, setSearchQuery] = useState('');
@@ -179,7 +178,7 @@ export default function DashboardPage() {
 
   // 관리자 페이지 전용 상태
   const [adminRequests, setAdminRequests] = useState<PORequest[]>([]);
-  const [adminStats, setAdminStats] = useState<DashboardStats>({ total: 0, pending: 0, approved: 0, rejected: 0, completed: 0 });
+  const [adminStats, setAdminStats] = useState<DashboardStats>({ total: 0, pending: 0, approved: 0, rejected: 0 });
   const [adminLoading, setAdminLoading] = useState(false);
   const [adminError, setAdminError] = useState<string | null>(null);
 
@@ -193,7 +192,7 @@ export default function DashboardPage() {
 
   // 통계 카드 클릭 Dialog
   const [showStatsDialog, setShowStatsDialog] = useState(false);
-  const [statsDialogType, setStatsDialogType] = useState<'total' | 'pending' | 'approved' | 'rejected' | 'completed'>('total');
+  const [statsDialogType, setStatsDialogType] = useState<'total' | 'pending' | 'approved' | 'rejected'>('total');
   const [statsDialogRequests, setStatsDialogRequests] = useState<PORequest[]>([]);
 
   // 관리자 검색/필터/정렬 상태
@@ -393,9 +392,7 @@ export default function DashboardPage() {
       const pending = transformedData.filter((r) => r.status === 'pending').length;
       const approved = transformedData.filter((r) => r.status === 'approved').length;
       const rejected = transformedData.filter((r) => r.status === 'rejected').length;
-      const completed = transformedData.filter((r) => r.completed).length;
-
-      setStats({ total, pending, approved, rejected, completed });
+      setStats({ total, pending, approved, rejected });
       setIsInitialLoad(false);
     } catch (error: any) {
       console.error('요청 목록 조회 오류:', error);
@@ -409,7 +406,7 @@ export default function DashboardPage() {
         toast.error('요청 목록을 불러오는 중 오류가 발생했습니다.');
       }
       setRequests([]);
-      setStats({ total: 0, pending: 0, approved: 0, rejected: 0, completed: 0 });
+      setStats({ total: 0, pending: 0, approved: 0, rejected: 0 });
       setIsInitialLoad(false);
     } finally {
       setLoading(false);
@@ -466,20 +463,11 @@ export default function DashboardPage() {
         .is('deleted_at', null);
       if (rejectedError) throw rejectedError;
 
-      // 완료 건수
-      const { count: completedCount, error: completedError } = await supabase
-        .from('requests')
-        .select('*', { count: 'exact', head: true })
-        .eq('completed', true)
-        .is('deleted_at', null);
-      if (completedError) throw completedError;
-
       setAdminStats({
         total: totalCount ?? 0,
         pending: pendingCount ?? 0,
         approved: approvedCount ?? 0,
         rejected: rejectedCount ?? 0,
-        completed: completedCount ?? 0,
       });
     } catch (error) {
       console.error('관리자 통계 조회 오류:', error);
@@ -689,7 +677,7 @@ export default function DashboardPage() {
       // 필터링된 데이터를 한글 헤더로 변환
       const exportData = filteredAndSortedAdminRequests.map((r) => ({
         '요청일': r.request_date || '',
-        'SO번호': r.so_number || '',
+        'SO 번호': r.so_number || '',
         '고객': r.customer || '',
         '요청부서': r.requesting_dept || '',
         '요청자': r.requester_name || '',
@@ -699,9 +687,8 @@ export default function DashboardPage() {
         '품목명': r.item_name || '',
         '수량': r.quantity || 0,
         '요청사유': r.reason_for_request || '',
-        '가능여부': r.feasibility === 'approved' ? '가능' : r.feasibility === 'rejected' ? '불가능' : r.feasibility === 'pending' ? '보류' : '-',
+        '검토 상세': r.review_details || '-',
         '상태': r.status === 'pending' ? '검토대기' : r.status === 'approved' ? '승인' : r.status === 'rejected' ? '반려' : r.status === 'in_review' ? '검토중' : r.status === 'completed' ? '완료' : '-',
-        '완료여부': r.completed ? 'O' : 'X',
       }));
 
       const worksheet = XLSX.utils.json_to_sheet(exportData);
@@ -1021,7 +1008,7 @@ export default function DashboardPage() {
   /**
    * 통계 카드 클릭 핸들러
    */
-  const handleStatsCardClick = async (type: 'total' | 'pending' | 'approved' | 'rejected' | 'completed', isAdminMode: boolean = false) => {
+  const handleStatsCardClick = async (type: 'total' | 'pending' | 'approved' | 'rejected', isAdminMode: boolean = false) => {
     try {
       setStatsDialogType(type);
       const supabase = createClient();
@@ -1042,9 +1029,6 @@ export default function DashboardPage() {
           break;
         case 'rejected':
           query = query.eq('status', 'rejected');
-          break;
-        case 'completed':
-          query = query.eq('completed', true);
           break;
         // 'total'은 필터링 없음
       }
@@ -1731,7 +1715,7 @@ export default function DashboardPage() {
           </div>
 
           {/* 요청 진행현황 대시보드 */}
-          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             <StatsCard
               title="전체 요청"
               value={stats.total}
@@ -1763,14 +1747,6 @@ export default function DashboardPage() {
               icon={<XCircle className="h-8 w-8 text-[#971B2F]" />}
               themeColor="#971B2F"
               onClick={() => handleStatsCardClick('rejected')}
-            />
-            <StatsCard
-              title="완료"
-              value={stats.completed}
-              subtitle="클릭하여 상세 보기"
-              icon={<CheckCheck className="h-8 w-8 text-[#B2B4B8]" />}
-              themeColor="#B2B4B8"
-              onClick={() => handleStatsCardClick('completed')}
             />
           </div>
 
@@ -1895,13 +1871,12 @@ export default function DashboardPage() {
                       <AdminTableHead className="bg-white">요청사유</AdminTableHead>
                       <AdminTableHead className="bg-white">검토 상세</AdminTableHead>
                       <AdminTableHead className="bg-white">상태</AdminTableHead>
-                      <AdminTableHead className="bg-white">완료</AdminTableHead>
                     </AdminTableRow>
                   </AdminTableHeader>
                   <AdminTableBody>
                     {sortedRequesterHistoryRequests.length === 0 ? (
                       <AdminTableRow>
-                        <AdminTableCell colSpan={14} className="text-center py-8 text-[#67767F]">
+                        <AdminTableCell colSpan={13} className="text-center py-8 text-[#67767F]">
                           요청 데이터가 없습니다.
                         </AdminTableCell>
                       </AdminTableRow>
@@ -1940,9 +1915,6 @@ export default function DashboardPage() {
                               {getStatusLabel(r.status)}
                             </Badge>
                           </AdminTableCell>
-                          <AdminTableCell className="text-center text-[#4B4F5A]">
-                            {r.completed ? '✓' : '-'}
-                          </AdminTableCell>
                         </AdminTableRow>
                       ))
                     )}
@@ -1967,8 +1939,8 @@ export default function DashboardPage() {
 
             {/* 요청 현황 대시보드 */}
             {adminLoading ? (
-              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4" role="status" aria-label="통계 데이터 로딩 중">
-                {[...Array(5)].map((_, i) => (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4" role="status" aria-label="통계 데이터 로딩 중">
+                {[...Array(4)].map((_, i) => (
                   <div key={i} className="bg-white rounded-lg border border-[#E5E7EB] p-6 space-y-3">
                     <Skeleton className="h-4 w-20" />
                     <Skeleton className="h-8 w-16" />
@@ -1977,7 +1949,7 @@ export default function DashboardPage() {
                 ))}
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <StatsCard
                   title="전체 요청"
                   value={adminStats.total}
@@ -2009,14 +1981,6 @@ export default function DashboardPage() {
                   icon={<XCircle className="h-8 w-8 text-[#971B2F]" />}
                   themeColor="#971B2F"
                   onClick={() => handleStatsCardClick('rejected', true)}
-                />
-                <StatsCard
-                  title="완료"
-                  value={adminStats.completed}
-                  subtitle="클릭하여 상세 보기"
-                  icon={<CheckCheck className="h-8 w-8 text-[#B2B4B8]" />}
-                  themeColor="#B2B4B8"
-                  onClick={() => handleStatsCardClick('completed', true)}
                 />
               </div>
             )}
@@ -2172,13 +2136,12 @@ export default function DashboardPage() {
                         <AdminTableHead className="min-w-[120px] bg-white border-b">요청사유</AdminTableHead>
                         <AdminTableHead className="min-w-[180px] bg-white border-b">검토 상세</AdminTableHead>
                         <AdminTableHead className="min-w-[80px] bg-white border-b">상태</AdminTableHead>
-                        <AdminTableHead className="min-w-[80px] bg-white border-b">완료여부</AdminTableHead>
                       </AdminTableRow>
                     </AdminTableHeader>
                     <AdminTableBody>
                       {filteredAndSortedAdminRequests.length === 0 ? (
                         <AdminTableRow>
-                          <AdminTableCell colSpan={14} className="text-center py-8 text-[#67767F]">
+                          <AdminTableCell colSpan={13} className="text-center py-8 text-[#67767F]">
                             {adminRequests.length === 0 ? '요청 데이터가 없습니다.' : '검색 결과가 없습니다.'}
                           </AdminTableCell>
                         </AdminTableRow>
@@ -2217,13 +2180,6 @@ export default function DashboardPage() {
                               >
                                 {r.status === 'pending' ? '검토대기' : r.status === 'approved' ? '승인' : r.status === 'rejected' ? '반려' : r.status === 'in_review' ? '검토중' : r.status === 'completed' ? '완료' : '-'}
                               </Badge>
-                            </AdminTableCell>
-                            <AdminTableCell className="text-center">
-                              {r.completed ? (
-                                <CheckCircle2 className="h-5 w-5 text-green-600 mx-auto" aria-label="완료됨" />
-                              ) : (
-                                <XCircle className="h-5 w-5 text-gray-400 mx-auto" aria-label="미완료" />
-                              )}
                             </AdminTableCell>
                           </AdminTableRow>
                         ))
@@ -3040,7 +2996,6 @@ export default function DashboardPage() {
               {statsDialogType === 'pending' && '검토 대기 요청'}
               {statsDialogType === 'approved' && '승인된 요청'}
               {statsDialogType === 'rejected' && '반려된 요청'}
-              {statsDialogType === 'completed' && '완료된 요청'}
             </DialogTitle>
             <DialogDescription>
               총 {statsDialogRequests.length}건의 요청이 있습니다.

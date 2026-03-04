@@ -77,7 +77,6 @@ export interface DashboardStats {
   pending: number;
   approved: number;
   rejected: number;
-  completed: number;
 }
 
 /**

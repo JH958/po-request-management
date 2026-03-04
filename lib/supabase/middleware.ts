@@ -6,6 +6,15 @@ import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
 /**
+ * 비로그인 상태에서 발생하는 정상적인 세션 없음 오류인지 확인
+ * @param errorMessage - Supabase Auth 오류 메시지
+ * @returns 정상적인 세션 없음 오류 여부
+ */
+const isExpectedNoSessionError = (errorMessage?: string) => {
+  return errorMessage === 'Auth session missing!';
+};
+
+/**
  * 미들웨어에서 Supabase 세션을 갱신하는 함수
  * @param request - Next.js 요청 객체
  * @returns 세션이 갱신된 응답 객체
@@ -65,15 +74,21 @@ export const updateSession = async (request: NextRequest) => {
       !request.nextUrl.pathname.startsWith('/api') &&
       !request.nextUrl.pathname.includes('.')
     ) {
-      // 만료된 토큰 오류 시 쿠키 정리
-      if (error) {
-        console.warn('미들웨어: 세션 갱신 실패, 쿠키 정리:', error.message);
-        // Supabase 관련 쿠키 삭제
-        request.cookies.getAll().forEach((cookie) => {
-          if (cookie.name.startsWith('sb-')) {
-            supabaseResponse.cookies.delete(cookie.name);
-          }
-        });
+      // 만료된 토큰 오류 시 쿠키 정리 (세션 없음은 정상 케이스이므로 제외)
+      if (error && !isExpectedNoSessionError(error.message)) {
+        // Supabase 관련 쿠키가 존재하는 경우에만 정리/로깅
+        const hasSupabaseCookies = request.cookies
+          .getAll()
+          .some((cookie) => cookie.name.startsWith('sb-'));
+
+        if (hasSupabaseCookies) {
+          console.warn('미들웨어: 세션 갱신 실패, 쿠키 정리:', error.message);
+          request.cookies.getAll().forEach((cookie) => {
+            if (cookie.name.startsWith('sb-')) {
+              supabaseResponse.cookies.delete(cookie.name);
+            }
+          });
+        }
       }
     }
   } catch (error) {
