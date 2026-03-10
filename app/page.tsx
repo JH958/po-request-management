@@ -3,7 +3,7 @@
  */
 'use client';
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { createClient } from '@/lib/supabase/client';
@@ -185,6 +185,15 @@ export default function DashboardPage() {
   // 요청자 페이지 전용 상태
   const [requesterPendingRequests, setRequesterPendingRequests] = useState<PORequest[]>([]);
   const [requesterPendingLoading, setRequesterPendingLoading] = useState(false);
+  const [requesterSearchTerm, setRequesterSearchTerm] = useState('');
+  const [requesterFilterCustomer, setRequesterFilterCustomer] = useState('all');
+  const [requesterFilterStatus, setRequesterFilterStatus] = useState('all');
+  const [requesterSortOrder, setRequesterSortOrder] = useState('request-date-desc');
+
+  const requesterTableScrollRef = useRef<HTMLDivElement | null>(null);
+  const requesterBottomScrollbarRef = useRef<HTMLDivElement | null>(null);
+  const requesterBottomScrollbarInnerRef = useRef<HTMLDivElement | null>(null);
+  const isSyncingRequesterScrollRef = useRef(false);
 
   // 상세보기 Dialog (검토 대기 → 상세)
   const [showDetailDialog, setShowDetailDialog] = useState(false);
@@ -228,17 +237,123 @@ export default function DashboardPage() {
   const availableCustomers = useMemo(() => getAvailableCustomers(), [getAvailableCustomers]);
 
   /**
-   * 요청자/검토자 페이지의 요청 접수 내역을 요청일 최신순으로 정렬하는 메모값
+   * 요청자/검토자 페이지의 고객 필터 옵션 목록
+   */
+  const requesterCustomerOptions = useMemo(() => {
+    return Array.from(
+      new Set(
+        requests
+          .map((request) => request.customer)
+          .filter((customer): customer is string => Boolean(customer))
+      )
+    ).sort((a, b) => a.localeCompare(b, 'ko'));
+  }, [requests]);
+
+  /**
+   * 요청자/검토자 페이지의 검색/필터/정렬이 반영된 요청 내역
    */
   const sortedRequesterHistoryRequests = useMemo(() => {
-    return [...requests].sort((a, b) => {
-      const requestDateDiff = new Date(b.request_date || 0).getTime() - new Date(a.request_date || 0).getTime();
-      if (requestDateDiff !== 0) {
-        return requestDateDiff;
+    let filteredRequests = [...requests];
+    const normalizedSearch = requesterSearchTerm.trim().toLowerCase();
+
+    if (normalizedSearch) {
+      filteredRequests = filteredRequests.filter((request) =>
+        (request.so_number || '').toLowerCase().includes(normalizedSearch) ||
+        (request.customer || '').toLowerCase().includes(normalizedSearch)
+      );
+    }
+
+    if (requesterFilterCustomer !== 'all') {
+      filteredRequests = filteredRequests.filter(
+        (request) => request.customer === requesterFilterCustomer
+      );
+    }
+
+    if (requesterFilterStatus !== 'all') {
+      filteredRequests = filteredRequests.filter(
+        (request) => request.status === requesterFilterStatus
+      );
+    }
+
+    const priorityWeight: Record<string, number> = {
+      긴급: 3,
+      일반: 2,
+      보통: 1,
+    };
+
+    return filteredRequests.sort((a, b) => {
+      switch (requesterSortOrder) {
+        case 'request-date-asc':
+          return new Date(a.request_date || 0).getTime() - new Date(b.request_date || 0).getTime();
+        case 'shipment-date-asc':
+          return new Date(a.factory_shipment_date || 0).getTime() - new Date(b.factory_shipment_date || 0).getTime();
+        case 'shipment-date-desc':
+          return new Date(b.factory_shipment_date || 0).getTime() - new Date(a.factory_shipment_date || 0).getTime();
+        case 'priority-desc':
+          return (priorityWeight[b.priority] || 0) - (priorityWeight[a.priority] || 0);
+        case 'request-date-desc':
+        default: {
+          const requestDateDiff = new Date(b.request_date || 0).getTime() - new Date(a.request_date || 0).getTime();
+          if (requestDateDiff !== 0) {
+            return requestDateDiff;
+          }
+          return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+        }
       }
-      return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
     });
-  }, [requests]);
+  }, [requests, requesterSearchTerm, requesterFilterCustomer, requesterFilterStatus, requesterSortOrder]);
+
+  /**
+   * 상단 고정 가로 스크롤바와 테이블 스크롤바 너비를 동기화
+   */
+  useEffect(() => {
+    const syncRequesterScrollbarWidth = () => {
+      if (!requesterTableScrollRef.current || !requesterBottomScrollbarInnerRef.current) {
+        return;
+      }
+
+      requesterBottomScrollbarInnerRef.current.style.width = `${requesterTableScrollRef.current.scrollWidth}px`;
+    };
+
+    syncRequesterScrollbarWidth();
+    window.addEventListener('resize', syncRequesterScrollbarWidth);
+
+    return () => {
+      window.removeEventListener('resize', syncRequesterScrollbarWidth);
+    };
+  }, [sortedRequesterHistoryRequests]);
+
+  /**
+   * 요청자 테이블 하단 스크롤 움직임을 상단 스크롤바에 동기화
+   */
+  const handleRequesterTableScroll = () => {
+    if (!requesterTableScrollRef.current || !requesterBottomScrollbarRef.current) {
+      return;
+    }
+    if (isSyncingRequesterScrollRef.current) {
+      return;
+    }
+
+    isSyncingRequesterScrollRef.current = true;
+    requesterBottomScrollbarRef.current.scrollLeft = requesterTableScrollRef.current.scrollLeft;
+    isSyncingRequesterScrollRef.current = false;
+  };
+
+  /**
+   * 요청자 하단 고정 스크롤바 움직임을 테이블 가로 스크롤에 동기화
+   */
+  const handleRequesterBottomScrollbarScroll = () => {
+    if (!requesterTableScrollRef.current || !requesterBottomScrollbarRef.current) {
+      return;
+    }
+    if (isSyncingRequesterScrollRef.current) {
+      return;
+    }
+
+    isSyncingRequesterScrollRef.current = true;
+    requesterTableScrollRef.current.scrollLeft = requesterBottomScrollbarRef.current.scrollLeft;
+    isSyncingRequesterScrollRef.current = false;
+  };
 
   /**
    * PO 추가/수정 요청 폼을 초기 상태로 되돌리는 헬퍼
@@ -1854,23 +1969,78 @@ export default function DashboardPage() {
               <p className="text-sm text-[#67767F]">총 {sortedRequesterHistoryRequests.length}건의 요청</p>
             </CardHeader>
             <CardContent>
-              <div className="overflow-x-auto overflow-y-auto max-h-[500px]">
-                <AdminTable className="min-w-[1500px]">
-                  <AdminTableHeader className="sticky top-0 bg-white z-10">
+              {/* 검색/필터/정렬 바 */}
+              <div className="flex flex-col md:flex-row gap-3 mb-4">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-[#67767F]" />
+                  <Input
+                    placeholder="SO 번호, 고객명으로 검색..."
+                    value={requesterSearchTerm}
+                    onChange={(e) => setRequesterSearchTerm(e.target.value)}
+                    className="pl-10"
+                    aria-label="요청자 검색"
+                  />
+                </div>
+                <Select value={requesterFilterStatus} onValueChange={setRequesterFilterStatus}>
+                  <SelectTrigger className="w-full md:w-[140px]">
+                    <SelectValue placeholder="상태" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">전체 상태</SelectItem>
+                    <SelectItem value="pending">검토대기</SelectItem>
+                    <SelectItem value="approved">승인</SelectItem>
+                    <SelectItem value="rejected">반려</SelectItem>
+                    <SelectItem value="completed">완료</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={requesterFilterCustomer} onValueChange={setRequesterFilterCustomer}>
+                  <SelectTrigger className="w-full md:w-[180px]">
+                    <SelectValue placeholder="고객" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">전체 고객</SelectItem>
+                    {requesterCustomerOptions.map((customer) => (
+                      <SelectItem key={customer} value={customer}>
+                        {customer}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={requesterSortOrder} onValueChange={setRequesterSortOrder}>
+                  <SelectTrigger className="w-full md:w-[170px]">
+                    <SelectValue placeholder="정렬" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="request-date-desc">요청일 최신순</SelectItem>
+                    <SelectItem value="request-date-asc">요청일 오래된순</SelectItem>
+                    <SelectItem value="shipment-date-asc">출하일 빠른순</SelectItem>
+                    <SelectItem value="shipment-date-desc">출하일 늦은순</SelectItem>
+                    <SelectItem value="priority-desc">우선순위 높은순</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div
+                ref={requesterTableScrollRef}
+                className="overflow-x-auto overflow-y-auto max-h-[500px] border rounded-lg"
+                onScroll={handleRequesterTableScroll}
+              >
+                <AdminTable className="min-w-[1700px]">
+                  <AdminTableHeader className="sticky top-0 bg-white z-20 shadow-sm">
                     <AdminTableRow>
-                      <AdminTableHead className="bg-white">요청일</AdminTableHead>
-                      <AdminTableHead className="bg-white">SO 번호</AdminTableHead>
-                      <AdminTableHead className="bg-white">고객</AdminTableHead>
-                      <AdminTableHead className="bg-white">요청부서</AdminTableHead>
-                      <AdminTableHead className="bg-white">요청자</AdminTableHead>
-                      <AdminTableHead className="bg-white">출하일</AdminTableHead>
-                      <AdminTableHead className="bg-white">요청구분</AdminTableHead>
-                      <AdminTableHead className="bg-white">품목코드</AdminTableHead>
-                      <AdminTableHead className="bg-white">품목명</AdminTableHead>
-                      <AdminTableHead className="bg-white">수량</AdminTableHead>
-                      <AdminTableHead className="bg-white">요청사유</AdminTableHead>
-                      <AdminTableHead className="bg-white">검토 상세</AdminTableHead>
-                      <AdminTableHead className="bg-white">상태</AdminTableHead>
+                      <AdminTableHead className="sticky top-0 z-20 bg-white">요청일</AdminTableHead>
+                      <AdminTableHead className="sticky top-0 z-20 bg-white">SO 번호</AdminTableHead>
+                      <AdminTableHead className="sticky top-0 z-20 bg-white">고객</AdminTableHead>
+                      <AdminTableHead className="sticky top-0 z-20 bg-white">요청부서</AdminTableHead>
+                      <AdminTableHead className="sticky top-0 z-20 bg-white">요청자</AdminTableHead>
+                      <AdminTableHead className="sticky top-0 z-20 bg-white">출하일</AdminTableHead>
+                      <AdminTableHead className="sticky top-0 z-20 bg-white">요청구분</AdminTableHead>
+                      <AdminTableHead className="sticky top-0 z-20 bg-white">품목코드</AdminTableHead>
+                      <AdminTableHead className="sticky top-0 z-20 bg-white">품목명</AdminTableHead>
+                      <AdminTableHead className="sticky top-0 z-20 bg-white">수량</AdminTableHead>
+                      <AdminTableHead className="sticky top-0 z-20 bg-white">요청사유</AdminTableHead>
+                      <AdminTableHead className="sticky top-0 z-20 bg-white">검토 상세</AdminTableHead>
+                      <AdminTableHead className="sticky top-0 z-20 bg-white">상태</AdminTableHead>
                     </AdminTableRow>
                   </AdminTableHeader>
                   <AdminTableBody>
@@ -1920,6 +2090,15 @@ export default function DashboardPage() {
                     )}
                   </AdminTableBody>
                 </AdminTable>
+              </div>
+              {/* 하단 고정 가로 스크롤바 (세로 끝까지 내리지 않아도 항상 보이도록 처리) */}
+              <div
+                ref={requesterBottomScrollbarRef}
+                className="overflow-x-auto overflow-y-hidden h-4 mt-2 border rounded bg-white"
+                onScroll={handleRequesterBottomScrollbarScroll}
+                aria-label="요청 내역 하단 가로 스크롤바"
+              >
+                <div ref={requesterBottomScrollbarInnerRef} className="h-px" />
               </div>
             </CardContent>
           </Card>
