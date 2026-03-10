@@ -237,6 +237,16 @@ export default function DashboardPage() {
   const availableCustomers = useMemo(() => getAvailableCustomers(), [getAvailableCustomers]);
 
   /**
+   * 현재 로그인한 사용자가 직접 요청한 건인지 확인
+   * @param request - 확인할 요청 데이터
+   * @returns 본인 요청 여부
+   */
+  const isOwnRequest = useCallback((request: PORequest | null | undefined): boolean => {
+    if (!request || !user?.id) return false;
+    return request.requester_id === user.id;
+  }, [user?.id]);
+
+  /**
    * 요청자/검토자 페이지의 고객 필터 옵션 목록
    */
   const requesterCustomerOptions = useMemo(() => {
@@ -878,6 +888,12 @@ export default function DashboardPage() {
       return;
     }
 
+    // 본인이 요청한 건은 본인이 검토할 수 없음
+    if (isOwnRequest(selectedRequest)) {
+      toast.error('본인이 요청한 건은 검토할 수 없습니다.');
+      return;
+    }
+
     // 검토상세 필수 확인
     if (!editingReviewDetails.trim()) {
       toast.error('검토상세 내용을 입력해주세요.');
@@ -965,6 +981,12 @@ export default function DashboardPage() {
       return;
     }
 
+    const targetRequest = requests.find((request) => request.id === requestId);
+    if (isOwnRequest(targetRequest)) {
+      toast.error('본인이 요청한 건은 승인할 수 없습니다.');
+      return;
+    }
+
     setApproveRequestId(requestId);
     setReviewDetails('');
     setApproveDialogOpen(true);
@@ -980,6 +1002,15 @@ export default function DashboardPage() {
     }
 
     if (!user || !profile || !approveRequestId) return;
+
+    const approveTargetRequest = requests.find((request) => request.id === approveRequestId);
+    if (isOwnRequest(approveTargetRequest)) {
+      toast.error('본인이 요청한 건은 승인할 수 없습니다.');
+      setApproveDialogOpen(false);
+      setApproveRequestId(null);
+      setReviewDetails('');
+      return;
+    }
 
     try {
       const supabase = createClient();
@@ -1039,6 +1070,12 @@ export default function DashboardPage() {
       return;
     }
 
+    const targetRequest = requests.find((request) => request.id === requestId);
+    if (isOwnRequest(targetRequest)) {
+      toast.error('본인이 요청한 건은 반려할 수 없습니다.');
+      return;
+    }
+
     setRejectRequestId(requestId);
     setReviewDetails('');
     setRejectDialogOpen(true);
@@ -1054,6 +1091,15 @@ export default function DashboardPage() {
     }
 
     if (!user || !profile || !rejectRequestId) return;
+
+    const rejectTargetRequest = requests.find((request) => request.id === rejectRequestId);
+    if (isOwnRequest(rejectTargetRequest)) {
+      toast.error('본인이 요청한 건은 반려할 수 없습니다.');
+      setRejectDialogOpen(false);
+      setRejectRequestId(null);
+      setReviewDetails('');
+      return;
+    }
 
     try {
       const supabase = createClient();
@@ -1917,11 +1963,20 @@ export default function DashboardPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 flex-1">
                       {requesterPendingRequests.slice(0, 4).map((request) => {
                         const daysLeft = calculateDaysLeft(request.factory_shipment_date);
+                        const ownRequest = isOwnRequest(request);
                         return (
                           <div
                             key={request.id}
-                            className="bg-white rounded-lg border border-[#E5E7EB] p-4 hover:shadow-md transition-shadow cursor-pointer"
-                            onClick={() => handleViewDetails(request.id)}
+                            className={cn(
+                              'bg-white rounded-lg border border-[#E5E7EB] p-4 transition-shadow',
+                              ownRequest
+                                ? 'opacity-70 cursor-not-allowed'
+                                : 'hover:shadow-md cursor-pointer'
+                            )}
+                            onClick={() => {
+                              if (ownRequest) return;
+                              handleViewDetails(request.id);
+                            }}
                           >
                             <div className="flex justify-between items-start mb-1">
                               <span className="text-lg font-semibold text-[#101820]">
@@ -1943,6 +1998,11 @@ export default function DashboardPage() {
                                 출하일: {request.factory_shipment_date ? formatDate(request.factory_shipment_date) : '-'}
                               </span>
                             </div>
+                            {ownRequest && (
+                              <p className="mt-2 text-xs font-medium text-[#971B2F]">
+                                본인 요청 건으로 검토할 수 없습니다.
+                              </p>
+                            )}
                           </div>
                         );
                       })}
@@ -2487,7 +2547,7 @@ export default function DashboardPage() {
                 </div>
                 <div>
                   <p className="text-sm font-medium text-[#67767F] mb-2">가능여부</p>
-                  {(isReviewer || isAdmin) ? (
+                  {(isReviewer || isAdmin) && !isOwnRequest(selectedRequest) ? (
                     <Select
                       value={
                         editingFeasibility === 'approved' ? '가능' :
@@ -2531,7 +2591,7 @@ export default function DashboardPage() {
                 </div>
                 <div className="col-span-2">
                   <p className="text-sm font-medium text-[#67767F] mb-2">검토상세</p>
-                  {(isReviewer || isAdmin) ? (
+                  {(isReviewer || isAdmin) && !isOwnRequest(selectedRequest) ? (
                     <Textarea
                       value={editingReviewDetails}
                       onChange={(e) => setEditingReviewDetails(e.target.value)}
@@ -2544,11 +2604,18 @@ export default function DashboardPage() {
                     </p>
                   )}
                 </div>
+                {(isReviewer || isAdmin) && isOwnRequest(selectedRequest) && (
+                  <div className="col-span-2">
+                    <p className="text-sm font-medium text-[#971B2F]">
+                      본인 요청 건은 검토할 수 없습니다.
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           )}
           <AlertDialogFooter>
-            {(isReviewer || isAdmin) && (
+            {(isReviewer || isAdmin) && !isOwnRequest(selectedRequest) && (
               <Button
                 onClick={handleConfirmClick}
                 className="bg-[#971B2F] hover:bg-[#7A1626] text-white"
@@ -3011,10 +3078,14 @@ export default function DashboardPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 max-h-[70vh] overflow-y-auto p-1">
             {requesterPendingRequests.map((request) => {
               const daysLeft = calculateDaysLeft(request.factory_shipment_date);
+              const ownRequest = isOwnRequest(request);
               return (
                 <div
                   key={request.id}
-                  className="bg-white rounded-lg border border-[#E5E7EB] p-4 hover:shadow-md transition-shadow"
+                  className={cn(
+                    'bg-white rounded-lg border border-[#E5E7EB] p-4 transition-shadow',
+                    ownRequest ? 'opacity-70' : 'hover:shadow-md'
+                  )}
                 >
                   <div className="flex justify-between items-start mb-2">
                     <span className="text-lg font-semibold text-[#101820]">
@@ -3047,25 +3118,44 @@ export default function DashboardPage() {
                       <>
                         <button
                           onClick={() => {
+                            if (ownRequest) return;
                             setAllPendingDialogOpen(false);
                             handleApprove(request.id);
                           }}
-                          className="flex-1 px-3 py-2 text-sm bg-[#4A9B8E] text-white rounded hover:bg-[#3A7B6E] transition-colors"
+                          className={cn(
+                            'flex-1 px-3 py-2 text-sm text-white rounded transition-colors',
+                            ownRequest
+                              ? 'bg-gray-300 cursor-not-allowed'
+                              : 'bg-[#4A9B8E] hover:bg-[#3A7B6E]'
+                          )}
+                          disabled={ownRequest}
                         >
                           승인
                         </button>
                         <button
                           onClick={() => {
+                            if (ownRequest) return;
                             setAllPendingDialogOpen(false);
                             handleReject(request.id);
                           }}
-                          className="flex-1 px-3 py-2 text-sm bg-[#971B2F] text-white rounded hover:bg-[#7A1626] transition-colors"
+                          className={cn(
+                            'flex-1 px-3 py-2 text-sm text-white rounded transition-colors',
+                            ownRequest
+                              ? 'bg-gray-300 cursor-not-allowed'
+                              : 'bg-[#971B2F] hover:bg-[#7A1626]'
+                          )}
+                          disabled={ownRequest}
                         >
                           반려
                         </button>
                       </>
                     )}
                   </div>
+                  {ownRequest && (
+                    <p className="mt-2 text-xs font-medium text-[#971B2F]">
+                      본인 요청 건으로 검토할 수 없습니다.
+                    </p>
+                  )}
                 </div>
               );
             })}
