@@ -105,6 +105,9 @@ const ALL_CUSTOMERS = [
 ] as const;
 
 const HEADQUARTERS_TEAMS = ['영업관리팀', '제조관리팀', '혈압계팀', 'W팀'] as const;
+const DOMESTIC_BRANCH_SHIPPING_METHODS = ['Parcel', 'Pickup', 'Truck', 'Regular'] as const;
+const OVERSEAS_CUSTOMER_SHIPPING_METHODS = ['Ocean', 'Air', 'UPS', 'DHL', 'FEDEX', 'Parcel'] as const;
+const ALL_SHIPPING_METHODS = ['Ocean', 'Air', 'UPS', 'DHL', 'FEDEX', 'Parcel', 'Pickup', 'Truck', 'Regular'] as const;
 
 const getInitialNewRequest = (type: 'existing' | 'new' = 'new') => ({
   customer: '',
@@ -112,7 +115,7 @@ const getInitialNewRequest = (type: 'existing' | 'new' = 'new') => ({
   factory_shipment_date: new Date().toISOString().split('T')[0],
   desired_shipment_date: '',
   confirmed_shipment_date: '',
-  category_of_request: type === 'existing' ? '품목 삭제' : '품목 추가',
+  category_of_request: type === 'existing' ? '수량 삭제' : '품목 추가',
   priority: '보통' as '긴급' | '일반' | '보통',
   shipping_method: '',
   erp_code: '',
@@ -235,6 +238,44 @@ export default function DashboardPage() {
   }, [isAdmin, profile?.department]);
 
   const availableCustomers = useMemo(() => getAvailableCustomers(), [getAvailableCustomers]);
+
+  /**
+   * 로그인 사용자 부서 기준으로 선택 가능한 운송방법 목록을 반환하는 헬퍼
+   */
+  const availableShippingMethods = useMemo((): string[] => {
+    const department = (profile?.department ?? '').trim();
+
+    if (!department) {
+      return [...ALL_SHIPPING_METHODS];
+    }
+
+    const isDomesticBranchDepartment = department.endsWith('지사');
+    if (isDomesticBranchDepartment) {
+      return [...DOMESTIC_BRANCH_SHIPPING_METHODS];
+    }
+
+    const isOverseasCustomerDepartment = (ALL_CUSTOMERS as readonly string[]).includes(department);
+    if (isOverseasCustomerDepartment) {
+      return [...OVERSEAS_CUSTOMER_SHIPPING_METHODS];
+    }
+
+    return [...ALL_SHIPPING_METHODS];
+  }, [profile?.department]);
+
+  /**
+   * 부서 변경 등으로 현재 선택된 운송방법이 허용 목록에서 벗어난 경우 초기화
+   */
+  useEffect(() => {
+    if (newRequest.category_of_request !== '운송방법 변경' || !newRequest.shipping_method) {
+      return;
+    }
+
+    if (availableShippingMethods.includes(newRequest.shipping_method)) {
+      return;
+    }
+
+    setNewRequest((prev) => ({ ...prev, shipping_method: '' }));
+  }, [availableShippingMethods, newRequest.category_of_request, newRequest.shipping_method]);
 
   /**
    * 현재 로그인한 사용자가 직접 요청한 건인지 확인
@@ -1453,6 +1494,16 @@ export default function DashboardPage() {
       return;
     }
 
+    if (
+      requestType === 'existing' &&
+      newRequest.category_of_request === '운송방법 변경' &&
+      newRequest.shipping_method &&
+      !availableShippingMethods.includes(newRequest.shipping_method)
+    ) {
+      toast.error('선택 가능한 운송방법이 아닙니다. 부서별 허용 운송방법을 확인해주세요.');
+      return;
+    }
+
     // 요청상세는 항상 필수
     if (!newRequest.request_details || newRequest.request_details.trim() === '') {
       toast.error('요청상세는 필수 항목입니다.');
@@ -2281,8 +2332,6 @@ export default function DashboardPage() {
                   <SelectContent>
                     <SelectItem value="all">전체 구분</SelectItem>
                     <SelectItem value="품목 추가">품목 추가</SelectItem>
-                    <SelectItem value="수량 추가">수량 추가</SelectItem>
-                    <SelectItem value="품목 삭제">품목 삭제</SelectItem>
                     <SelectItem value="수량 삭제">수량 삭제</SelectItem>
                     <SelectItem value="품목코드 변경">품목코드 변경</SelectItem>
                     <SelectItem value="출하일정 변경">출하일정 변경</SelectItem>
@@ -2751,7 +2800,6 @@ export default function DashboardPage() {
                     ) : (
                       // PO 수정 요청: 품목 추가, 수량 추가 제외
                       <>
-                        <SelectItem value="품목 삭제">품목 삭제</SelectItem>
                         <SelectItem value="수량 삭제">수량 삭제</SelectItem>
                         <SelectItem value="품목코드 변경">품목코드 변경</SelectItem>
                         <SelectItem value="출하일정 변경">출하일정 변경</SelectItem>
@@ -2777,12 +2825,9 @@ export default function DashboardPage() {
                       <SelectValue placeholder="운송방법을 선택하세요" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Ocean">Ocean</SelectItem>
-                      <SelectItem value="Air">Air</SelectItem>
-                      <SelectItem value="UPS">UPS</SelectItem>
-                      <SelectItem value="DHL">DHL</SelectItem>
-                      <SelectItem value="Regular">Regular</SelectItem>
-                      <SelectItem value="HC">HC</SelectItem>
+                      {availableShippingMethods.map((method) => (
+                        <SelectItem key={method} value={method}>{method}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -2835,8 +2880,11 @@ export default function DashboardPage() {
             {newRequest.category_of_request !== '출하일정 변경' && 
              newRequest.category_of_request !== '운송방법 변경' && (
               <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <Label>품목 목록 <span className="text-red-500">*</span></Label>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Label>품목 목록 <span className="text-red-500">*</span></Label>
+                    <p className="text-xs text-[#67767F]">변경 후 최종 수량을 입력해주세요</p>
+                  </div>
                   <div className="flex gap-2">
                     <Button
                       type="button"
