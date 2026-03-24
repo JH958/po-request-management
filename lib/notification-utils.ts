@@ -3,6 +3,79 @@
  */
 import { createClient } from './supabase/client';
 
+const SALES_MANAGEMENT_TEAM = '영업관리팀';
+const CUSTOMER_DEPARTMENT_KEYWORDS = ['법인', '대리점', '지사'] as const;
+
+interface UserProfile {
+  id: string;
+  full_name: string;
+  department: string;
+}
+
+interface RequestRecipientContext {
+  requesterId: string | null;
+  customer: string;
+}
+
+/**
+ * 고객처 소속 부서인지 판별하는 유틸리티 함수
+ *
+ * @param department - 사용자 부서명
+ * @returns 고객처(법인/대리점/지사) 소속 여부
+ */
+const isCustomerDepartment = (department: string): boolean => {
+  const normalizedDepartment = department.trim();
+  return CUSTOMER_DEPARTMENT_KEYWORDS.some((keyword) => normalizedDepartment.includes(keyword));
+};
+
+/**
+ * 요청 정보를 바탕으로 알람 수신자를 계산하는 유틸리티 함수
+ *
+ * @param users - 전체 사용자 목록
+ * @param context - 요청자 및 고객처 정보
+ * @returns 규칙에 따라 선정된 수신자 목록
+ */
+const resolveRecipientsByRequestContext = (
+  users: UserProfile[],
+  context: RequestRecipientContext
+): UserProfile[] => {
+  const requester = context.requesterId ? users.find((user) => user.id === context.requesterId) : null;
+  const recipients = new Map<string, UserProfile>();
+
+  const addRecipient = (user: UserProfile | null | undefined) => {
+    if (user) {
+      recipients.set(user.id, user);
+    }
+  };
+
+  const addRecipients = (targetUsers: UserProfile[]) => {
+    targetUsers.forEach((user) => addRecipient(user));
+  };
+
+  const salesTeamUsers = users.filter((user) => user.department === SALES_MANAGEMENT_TEAM);
+  addRecipients(salesTeamUsers);
+  addRecipient(requester);
+
+  // 요청자 부서를 판별할 수 없으면 영업관리팀 + 요청자만 발송
+  if (!requester) {
+    return Array.from(recipients.values());
+  }
+
+  const requesterIsCustomer = isCustomerDepartment(requester.department);
+
+  if (requesterIsCustomer) {
+    const headquartersUsers = users.filter(
+      (user) => !isCustomerDepartment(user.department) && user.department !== SALES_MANAGEMENT_TEAM
+    );
+    addRecipients(headquartersUsers);
+  } else {
+    const customerUsers = users.filter((user) => user.department === context.customer);
+    addRecipients(customerUsers);
+  }
+
+  return Array.from(recipients.values());
+};
+
 /**
  * 모든 사용자에게 알람 전송
  */
@@ -15,10 +88,10 @@ export async function sendNotificationToAll(
   try {
     const supabase = createClient();
 
-    // 모든 사용자 조회 (이메일 포함)
+    // 수신자 규칙 계산을 위한 사용자 조회
     const { data: users, error: usersError } = await supabase
       .from('user_profiles')
-      .select('id, full_name');
+      .select('id, full_name, department');
 
     if (usersError) {
       console.error('사용자 목록 조회 오류:', usersError);
@@ -28,6 +101,26 @@ export async function sendNotificationToAll(
     if (!users || users.length === 0) {
       console.warn('알람을 받을 사용자가 없습니다.');
       return;
+    }
+
+    let selectedRecipients = users;
+
+    // 요청 ID가 있으면 규칙 기반으로 수신자 선별
+    if (requestId) {
+      const { data: requestRow, error: requestError } = await supabase
+        .from('requests')
+        .select('requester_id, customer')
+        .eq('id', requestId)
+        .single();
+
+      if (requestError) {
+        console.warn('요청 정보 조회 실패로 전체 사용자 대상 전송을 사용합니다:', requestError.message);
+      } else {
+        selectedRecipients = resolveRecipientsByRequestContext(users, {
+          requesterId: requestRow.requester_id,
+          customer: requestRow.customer,
+        });
+      }
     }
 
     // Supabase Edge Function 호출하여 이메일 전송
@@ -44,8 +137,8 @@ export async function sendNotificationToAll(
           message,
           requestId,
           requestLink,
-          // 사용자 ID 목록만 전달 (Edge Function에서 이메일 조회)
-          userIds: users.map(u => u.id),
+          // 규칙 기반으로 선정된 사용자 ID 목록 전달
+          userIds: selectedRecipients.map((user) => user.id),
         },
       }).catch((err) => {
         // Edge Function이 없거나 호출 실패 시 null 반환
@@ -61,21 +154,22 @@ export async function sendNotificationToAll(
           message,
           requestId,
           requestLink,
-          recipients: users.length,
+          recipients: selectedRecipients.length,
         });
       } else if (data) {
         console.log('이메일 알람 전송 완료:', data);
       }
-    } catch (invokeError: any) {
+    } catch (invokeError: unknown) {
       // Edge Function이 없거나 오류가 발생하면 콘솔에만 로깅
       // 에러를 던지지 않아서 요청 생성은 계속 진행됨
+      const errorMessage = invokeError instanceof Error ? invokeError.message : 'Unknown error';
       console.warn('이메일 알람 (Edge Function 미설정 - 콘솔에만 로깅):', {
         subject,
         message,
         requestId,
         requestLink,
-        recipients: users.map(u => u.full_name).join(', '),
-        error: invokeError?.message || 'Unknown error',
+        recipients: selectedRecipients.map((user) => user.full_name).join(', '),
+        error: errorMessage,
       });
     }
   } catch (error) {

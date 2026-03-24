@@ -4,9 +4,77 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+const SALES_MANAGEMENT_TEAM = '영업관리팀';
+const CUSTOMER_DEPARTMENT_KEYWORDS = ['법인', '대리점', '지사'] as const;
+
+interface UserProfile {
+  id: string;
+  full_name: string;
+  department: string;
+}
+
+interface PendingRequest {
+  id: string;
+  so_number: string | null;
+  customer: string;
+  requester_name: string;
+  requester_id: string | null;
+  created_at: string;
+  priority: string;
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+/**
+ * 고객처 소속 부서인지 판별하는 유틸리티 함수
+ *
+ * @param department - 사용자 부서명
+ * @returns 고객처(법인/대리점/지사) 소속 여부
+ */
+const isCustomerDepartment = (department: string): boolean => {
+  const normalizedDepartment = department.trim();
+  return CUSTOMER_DEPARTMENT_KEYWORDS.some((keyword) => normalizedDepartment.includes(keyword));
+};
+
+/**
+ * 단일 요청 기준 수신자 목록을 계산하는 유틸리티 함수
+ *
+ * @param users - 전체 사용자 목록
+ * @param request - 검토 대기 요청 정보
+ * @returns 규칙 기반 수신자 ID 목록
+ */
+const resolveRecipientIdsForRequest = (users: UserProfile[], request: PendingRequest): string[] => {
+  const recipients = new Set<string>();
+  const requester = request.requester_id ? users.find((user) => user.id === request.requester_id) : null;
+
+  users
+    .filter((user) => user.department === SALES_MANAGEMENT_TEAM)
+    .forEach((user) => recipients.add(user.id));
+
+  if (requester) {
+    recipients.add(requester.id);
+  }
+
+  if (!requester) {
+    return Array.from(recipients);
+  }
+
+  const requesterIsCustomer = isCustomerDepartment(requester.department);
+
+  if (requesterIsCustomer) {
+    users
+      .filter((user) => !isCustomerDepartment(user.department) && user.department !== SALES_MANAGEMENT_TEAM)
+      .forEach((user) => recipients.add(user.id));
+  } else {
+    users
+      .filter((user) => user.department === request.customer)
+      .forEach((user) => recipients.add(user.id));
+  }
+
+  return Array.from(recipients);
 };
 
 serve(async (req) => {
@@ -24,7 +92,7 @@ serve(async (req) => {
     // 검토 대기 중인 요청 조회
     const { data: pendingRequests, error } = await supabase
       .from('requests')
-      .select('id, so_number, customer, requester_name, created_at, priority')
+      .select('id, so_number, customer, requester_name, requester_id, created_at, priority')
       .eq('status', 'pending')
       .is('deleted_at', null);
 
@@ -45,7 +113,7 @@ serve(async (req) => {
     // 모든 사용자 조회 (알람을 받을 대상)
     const { data: userProfiles, error: usersError } = await supabase
       .from('user_profiles')
-      .select('id, full_name');
+      .select('id, full_name, department');
 
     if (usersError) {
       throw usersError;
@@ -61,9 +129,20 @@ serve(async (req) => {
       );
     }
 
+    // 요청별 규칙을 적용하여 최종 수신자 ID를 계산
+    const selectedRecipientIds = new Set<string>();
+    for (const pendingRequest of pendingRequests as PendingRequest[]) {
+      const recipientIds = resolveRecipientIdsForRequest(userProfiles as UserProfile[], pendingRequest);
+      recipientIds.forEach((id) => selectedRecipientIds.add(id));
+    }
+
     // 각 사용자의 이메일 주소 가져오기
     const recipients: Array<{ name: string; email: string }> = [];
-    for (const userProfile of userProfiles) {
+    for (const userProfile of userProfiles as UserProfile[]) {
+      if (!selectedRecipientIds.has(userProfile.id)) {
+        continue;
+      }
+
       try {
         // auth.users에서 이메일 조회
         const { data: authUser } = await supabase.auth.admin.getUserById(userProfile.id);
@@ -111,11 +190,12 @@ ${appUrl}
     `;
 
     // 이메일 발송 함수 호출
+    const reminderMessage = createMessage('담당자');
     try {
       const { data: emailResult, error: emailError } = await supabase.functions.invoke('send-email-notification', {
         body: {
           subject,
-          message: createMessage,
+          message: reminderMessage,
           requestLink: appUrl,
           recipients,
         },
@@ -134,17 +214,18 @@ ${appUrl}
       JSON.stringify({
         message: '알람이 전송되었습니다.',
         pendingCount: pendingRequests.length,
-        recipientCount: users?.length || 0,
+        recipientCount: recipients.length,
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200,
       }
     );
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('알람 전송 오류:', error);
+    const errMsg = error instanceof Error ? error.message : 'Internal server error';
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: errMsg }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 500,

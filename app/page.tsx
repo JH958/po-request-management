@@ -72,6 +72,12 @@ import { Download, CheckCircle2, XCircle, AlertCircle, Edit, Plus, Search, Clipb
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 
+/**
+ * 오류 객체에서 Supabase/PostgREST 에러 필드를 안전하게 추출하는 헬퍼
+ */
+const asApiError = (error: unknown): { code?: string; message?: string } =>
+  (typeof error === 'object' && error !== null ? error : {}) as { code?: string; message?: string };
+
 const ALL_CUSTOMERS = [
   '일본(일본법인)',
   '미국(미국법인)',
@@ -149,12 +155,12 @@ export default function DashboardPage() {
     approved: 0,
     rejected: 0,
   });
-  const [loading, setLoading] = useState(false); // 초기값을 false로 변경
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filters, setFilters] = useState<{ request_type?: string; status?: string; completed?: string; priority?: string }>({});
-  const [sortBy, setSortBy] = useState<string>('created_at');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
-  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [, setLoading] = useState(false);
+  const [searchQuery, _setSearchQuery] = useState('');
+  const [filters, _setFilters] = useState<{ request_type?: string; status?: string; completed?: string; priority?: string }>({});
+  const [sortBy, _setSortBy] = useState<string>('created_at');
+  const [sortOrder, _setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [, setIsInitialLoad] = useState(true);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [requestToDelete, setRequestToDelete] = useState<string | null>(null);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
@@ -560,12 +566,13 @@ export default function DashboardPage() {
       const rejected = transformedData.filter((r) => r.status === 'rejected').length;
       setStats({ total, pending, approved, rejected });
       setIsInitialLoad(false);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('요청 목록 조회 오류:', error);
+      const err = asApiError(error);
       // 네트워크 오류나 인증 오류 처리
-      if (error?.code === 'PGRST301' || error?.message?.includes('permission')) {
+      if (err?.code === 'PGRST301' || err?.message?.includes('permission')) {
         toast.error('요청 목록을 조회할 권한이 없습니다.');
-      } else if (error?.message?.includes('JWT') || error?.message?.includes('token')) {
+      } else if (err?.message?.includes('JWT') || err?.message?.includes('token')) {
         toast.error('인증이 만료되었습니다. 다시 로그인해주세요.');
         router.push('/login');
       } else {
@@ -589,7 +596,7 @@ export default function DashboardPage() {
 
     // fetchRequests 함수 호출로 단순화
     fetchRequests();
-  }, [fetchRequests]);
+  }, [fetchRequests, user, authLoading]);
 
   /**
    * 관리자 모드: 통계 데이터 조회
@@ -951,7 +958,7 @@ export default function DashboardPage() {
       
       // 가능여부에 따른 상태 매핑
       let newStatus: RequestStatus;
-      let newFeasibility: FeasibilityStatus = editingFeasibility;
+      const newFeasibility: FeasibilityStatus = editingFeasibility;
       
       if (editingFeasibility === 'approved') {
         newStatus = 'approved';
@@ -994,13 +1001,13 @@ export default function DashboardPage() {
       setConfirmDialogOpen(false);
       setViewDialogOpen(false);
       await fetchRequests();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('가능여부 변경 오류:', error);
-      
-      if (error?.code === 'PGRST301' || error?.message?.includes('permission')) {
+      const err = asApiError(error);
+      if (err?.code === 'PGRST301' || err?.message?.includes('permission')) {
         toast.error('가능여부를 변경할 권한이 없습니다. 관리자에게 문의하세요.');
-      } else if (error?.message) {
-        toast.error(`가능여부 변경 실패: ${error.message}`);
+      } else if (err?.message) {
+        toast.error(`가능여부 변경 실패: ${err.message}`);
       } else {
         toast.error('가능여부 변경 중 오류가 발생했습니다. 콘솔을 확인해주세요.');
       }
@@ -1082,13 +1089,13 @@ export default function DashboardPage() {
       setApproveRequestId(null);
       setReviewDetails('');
       await fetchRequests();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('요청 승인 오류:', error);
-      
-      if (error?.code === 'PGRST301' || error?.message?.includes('permission')) {
+      const err = asApiError(error);
+      if (err?.code === 'PGRST301' || err?.message?.includes('permission')) {
         toast.error('요청을 승인할 권한이 없습니다. 관리자에게 문의하세요.');
-      } else if (error?.message) {
-        toast.error(`요청 승인 실패: ${error.message}`);
+      } else if (err?.message) {
+        toast.error(`요청 승인 실패: ${err.message}`);
       } else {
         toast.error('요청 승인 중 오류가 발생했습니다. 콘솔을 확인해주세요.');
       }
@@ -1171,13 +1178,13 @@ export default function DashboardPage() {
       setRejectRequestId(null);
       setReviewDetails('');
       await fetchRequests();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('요청 거절 오류:', error);
-      
-      if (error?.code === 'PGRST301' || error?.message?.includes('permission')) {
+      const err = asApiError(error);
+      if (err?.code === 'PGRST301' || err?.message?.includes('permission')) {
         toast.error('요청을 거절할 권한이 없습니다. 관리자에게 문의하세요.');
-      } else if (error?.message) {
-        toast.error(`요청 거절 실패: ${error.message}`);
+      } else if (err?.message) {
+        toast.error(`요청 거절 실패: ${err.message}`);
       } else {
         toast.error('요청 거절 중 오류가 발생했습니다. 콘솔을 확인해주세요.');
       }
@@ -1341,7 +1348,7 @@ export default function DashboardPage() {
               header: 1, // 첫 번째 행을 헤더로 사용
               defval: '', // 빈 셀은 빈 문자열로
               raw: false, // 텍스트로 변환
-            }) as any[][];
+            }) as unknown[][];
 
             if (jsonData.length < 2) {
               toast.error('Excel 파일에 데이터가 없습니다.');
@@ -1350,17 +1357,17 @@ export default function DashboardPage() {
 
             // 헤더 행 찾기 (품목코드, 품목명, 수량)
             const headerRow = jsonData[0];
-            const erpCodeIndex = headerRow.findIndex((cell: any) => 
+            const erpCodeIndex = headerRow.findIndex((cell: unknown) => 
               String(cell).toLowerCase().includes('품목코드') || 
               String(cell).toLowerCase().includes('erp') ||
               String(cell).toLowerCase().includes('code')
             );
-            const itemNameIndex = headerRow.findIndex((cell: any) => 
+            const itemNameIndex = headerRow.findIndex((cell: unknown) => 
               String(cell).toLowerCase().includes('품목명') || 
               String(cell).toLowerCase().includes('item') ||
               String(cell).toLowerCase().includes('name')
             );
-            const quantityIndex = headerRow.findIndex((cell: any) => 
+            const quantityIndex = headerRow.findIndex((cell: unknown) => 
               String(cell).toLowerCase().includes('수량') || 
               String(cell).toLowerCase().includes('quantity') ||
               String(cell).toLowerCase().includes('qty')
@@ -1451,16 +1458,18 @@ export default function DashboardPage() {
           } else {
             toast.error('유효한 데이터가 없습니다. Excel 파일 형식을 확인해주세요.');
           }
-        } catch (error: any) {
+        } catch (error: unknown) {
           console.error('Excel 파일 파싱 오류:', error);
-          toast.error(`Excel 파일을 읽는 중 오류가 발생했습니다: ${error?.message || '알 수 없는 오류'}`);
+          const errMsg = asApiError(error)?.message || '알 수 없는 오류';
+          toast.error(`Excel 파일을 읽는 중 오류가 발생했습니다: ${errMsg}`);
         }
       };
       
       reader.readAsArrayBuffer(file);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Excel 파일 업로드 오류:', error);
-      toast.error(`파일 업로드 중 오류가 발생했습니다: ${error?.message || '알 수 없는 오류'}`);
+      const errMsg = asApiError(error)?.message || '알 수 없는 오류';
+      toast.error(`파일 업로드 중 오류가 발생했습니다: ${errMsg}`);
     } finally {
       // 파일 입력 초기화 (같은 파일을 다시 업로드할 수 있도록)
       event.target.value = '';
@@ -1534,7 +1543,7 @@ export default function DashboardPage() {
     const firstItem = newRequest.items.length > 0 ? newRequest.items[0] : null;
 
     // requestData를 try 블록 밖에서 선언 (에러 로깅을 위해)
-    let requestData: any = null;
+    let requestData: Record<string, unknown> | null = null;
 
     try {
       const supabase = createClient();
@@ -1667,31 +1676,30 @@ export default function DashboardPage() {
           console.warn('알람 전송 실패 (무시됨):', notificationError);
         }
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const err = asApiError(error);
       console.error('=== 요청 생성 오류 ===');
       console.error('전체 에러 객체:', error);
       console.error('에러 타입:', typeof error);
-      console.error('에러 코드:', error?.code);
-      console.error('에러 메시지:', error?.message);
-      console.error('에러 상세:', error?.details);
-      console.error('에러 힌트:', error?.hint);
+      console.error('에러 코드:', err?.code);
+      console.error('에러 메시지:', err?.message);
       console.error('전송한 데이터:', requestData);
       
       // 에러 코드별 처리
-      if (error?.code === 'PGRST301' || error?.message?.includes('permission')) {
+      if (err?.code === 'PGRST301' || err?.message?.includes('permission')) {
         toast.error('요청을 생성할 권한이 없습니다.');
-      } else if (error?.code === 'PGRST204') {
+      } else if (err?.code === 'PGRST204') {
         // Schema cache 오류
         toast.error('데이터베이스 스키마 오류입니다. 페이지를 새로고침하거나 관리자에게 문의하세요.');
         console.error('PGRST204: 스키마 캐시에서 컬럼을 찾을 수 없습니다. Supabase 대시보드에서 테이블 구조를 확인하세요.');
-      } else if (error?.code === '23514') {
+      } else if (err?.code === '23514') {
         // CHECK constraint violation
         toast.error('입력값이 유효하지 않습니다. 품목을 1개 이상 추가하고 수량은 양수로 입력해주세요.');
-      } else if (error?.code === '23502') {
+      } else if (err?.code === '23502') {
         // NOT NULL constraint violation
         toast.error('필수 항목이 누락되었습니다. 모든 필수 필드를 입력해주세요.');
-      } else if (error?.message) {
-        toast.error(`요청 생성 실패: ${error.message}`);
+      } else if (err?.message) {
+        toast.error(`요청 생성 실패: ${err.message}`);
       } else {
         // 에러 객체 전체를 문자열로 변환
         const errorString = JSON.stringify(error, Object.getOwnPropertyNames(error));
@@ -1704,7 +1712,7 @@ export default function DashboardPage() {
   /**
    * 요청 저장 핸들러
    */
-  const handleSaveRequest = async (request: PORequest) => {
+  const _handleSaveRequest = async (request: PORequest) => {
     if (!user) {
       toast.error('사용자 정보를 불러올 수 없습니다.');
       return;
@@ -1755,14 +1763,15 @@ export default function DashboardPage() {
 
       toast.success('요청이 수정되었습니다.');
       await fetchRequests();
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const err = asApiError(error);
       console.error('요청 수정 오류:', error);
       console.error('오류 상세:', JSON.stringify(error, null, 2));
       
-      if (error?.code === 'PGRST301' || error?.message?.includes('permission')) {
+      if (err?.code === 'PGRST301' || err?.message?.includes('permission')) {
         toast.error('요청을 수정할 권한이 없습니다.');
-      } else if (error?.message) {
-        toast.error(`요청 수정 실패: ${error.message}`);
+      } else if (err?.message) {
+        toast.error(`요청 수정 실패: ${err.message}`);
       } else {
         toast.error('요청 수정 중 오류가 발생했습니다. 다시 시도해주세요.');
       }
@@ -1813,14 +1822,15 @@ export default function DashboardPage() {
       await fetchRequests();
       setDeleteDialogOpen(false);
       setRequestToDelete(null);
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const err = asApiError(error);
       console.error('요청 삭제 오류:', error);
       console.error('오류 상세:', JSON.stringify(error, null, 2));
       
-      if (error?.code === 'PGRST301' || error?.message?.includes('permission')) {
+      if (err?.code === 'PGRST301' || err?.message?.includes('permission')) {
         toast.error('요청을 삭제할 권한이 없습니다.');
-      } else if (error?.message) {
-        toast.error(`요청 삭제 실패: ${error.message}`);
+      } else if (err?.message) {
+        toast.error(`요청 삭제 실패: ${err.message}`);
       } else {
         toast.error('요청 삭제 중 오류가 발생했습니다. 다시 시도해주세요.');
       }
@@ -1832,7 +1842,7 @@ export default function DashboardPage() {
   /**
    * 삭제 확인 다이얼로그 열기
    */
-  const handleDeleteClick = (id: string) => {
+  const _handleDeleteClick = (id: string) => {
     const request = requests.find((r) => r.id === id);
     if (!request) return;
 

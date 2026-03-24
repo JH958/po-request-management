@@ -34,7 +34,7 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { subject, message, requestId, requestLink, recipients, userIds }: EmailRequest = await req.json();
+    const { subject, message, requestLink, recipients, userIds }: EmailRequest = await req.json();
 
     let finalRecipients: EmailRecipient[] = [];
 
@@ -177,13 +177,14 @@ serve(async (req) => {
           success: true,
           emailId: emailData.id
         });
-      } catch (emailError: any) {
+      } catch (emailError: unknown) {
+        const errMsg = emailError instanceof Error ? emailError.message : 'Unknown error';
         console.error(`이메일 전송 실패 (${recipient.email}):`, emailError);
         emailResults.push({ 
           recipient: recipient.email, 
           status: 'error',
           success: false,
-          error: emailError?.message || 'Unknown error'
+          error: errMsg
         });
       }
     }
@@ -199,10 +200,11 @@ serve(async (req) => {
         status: 200,
       }
     );
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('이메일 알람 전송 오류:', error);
+    const errMsg = error instanceof Error ? error.message : 'Internal server error';
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: errMsg }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 500,

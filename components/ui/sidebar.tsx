@@ -606,10 +606,8 @@ function SidebarMenuSkeleton({
 }: React.ComponentProps<"div"> & {
   showIcon?: boolean
 }) {
-  // Random width between 50 to 90%.
-  const width = React.useMemo(() => {
-    return `${Math.floor(Math.random() * 40) + 50}%`
-  }, [])
+  // 스켈레톤 메뉴 아이템 너비 (50~90% 사이 고정값, 컴포넌트 마운트 시 한 번만 설정)
+  const [width] = React.useState<string>(`${Math.floor(Math.random() * 40) + 50}%`) // eslint-disable-line react-hooks/purity
 
   return (
     <div

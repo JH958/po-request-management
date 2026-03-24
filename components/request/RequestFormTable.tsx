@@ -71,7 +71,7 @@ export const RequestFormTable = ({
   const isAdmin = hasRole('admin');
   
   // 현재 사용자의 역할 (기본값: requester)
-  const userRole = isAdmin ? 'admin' : isReviewer ? 'reviewer' : isRequester ? 'requester' : 'requester';
+  const _userRole = isAdmin ? 'admin' : isReviewer ? 'reviewer' : isRequester ? 'requester' : 'requester';
   
   /**
    * 역할별 필드 편집 가능 여부 확인
@@ -153,7 +153,7 @@ export const RequestFormTable = ({
   /**
    * 저장 핸들러
    */
-  const handleSave = (request: PORequest) => {
+  const _handleSave = (request: PORequest) => {
     if (onSave) {
       onSave(request);
     } else {
@@ -165,7 +165,7 @@ export const RequestFormTable = ({
   /**
    * 취소 핸들러
    */
-  const handleCancel = (id: string) => {
+  const _handleCancel = (id: string) => {
     if (onCancel) {
       onCancel(id);
     }
@@ -197,7 +197,7 @@ export const RequestFormTable = ({
   /**
    * 편집 중 데이터 변경 핸들러
    */
-  const handleFieldChange = (field: keyof PORequest, value: any) => {
+  const handleFieldChange = (field: keyof PORequest, value: unknown) => {
     setEditingData((prev) => ({ ...prev, [field]: value }));
   };
 
@@ -307,8 +307,8 @@ export const RequestFormTable = ({
                   
                   // 역할별 편집 권한
                   const canEditRequester = canEditRequesterFields(request);
-                  const canEditReviewer = canEditReviewerFields();
-                  const canEditAdmin = canEditAdminFields();
+                  const _canEditReviewer = canEditReviewerFields();
+                  const _canEditAdmin = canEditAdminFields();
 
                   // 수정 가능 여부 확인 (등록 후 1일 내)
                   const createdAt = new Date(request.created_at);
@@ -317,7 +317,7 @@ export const RequestFormTable = ({
                   const canEditWithinOneDay = daysSinceCreation <= 1;
                   
                   // 삭제 불가 (요청자는 삭제 불가)
-                  const canDelete = false;
+                  const _canDelete = false;
 
                   return (
                     <TableRow key={request.id}>

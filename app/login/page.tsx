@@ -122,7 +122,7 @@ export default function LoginPage() {
       const supabase = createClient();
 
       // Supabase Auth 로그인
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+      const { error: authError } = await supabase.auth.signInWithPassword({
         email: data.email,
         password: data.password,
       });
@@ -135,11 +135,11 @@ export default function LoginPage() {
       // 세션은 Supabase Auth에서 자동 관리되므로 메인 페이지로 이동
       router.push('/');
       router.refresh(); // 세션 정보 갱신
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('로그인 오류:', error);
       
       // 네트워크 오류 처리
-      if (error?.message === 'Failed to fetch' || error?.name === 'TypeError') {
+      if (error instanceof TypeError && (error.message === 'Failed to fetch' || error.name === 'TypeError')) {
         const errorMsg = '네트워크 연결 오류가 발생했습니다. 다음을 확인해주세요:\n' +
           '1. 인터넷 연결 상태\n' +
           '2. .env.local 파일의 Supabase URL과 API 키가 올바른지\n' +

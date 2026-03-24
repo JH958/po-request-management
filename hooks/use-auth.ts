@@ -149,14 +149,15 @@ export const useAuth = (): UseAuthReturn => {
 
   // 프로필 조회는 별도로 처리 (user가 있을 때만)
   useEffect(() => {
-    if (!user) {
-      setProfile(null);
-      return;
-    }
+    let cancelled = false;
 
-    const supabase = createClient();
-    
     const fetchProfile = async () => {
+      if (!user) {
+        if (!cancelled) setProfile(null);
+        return;
+      }
+
+      const supabase = createClient();
       try {
         const { data } = await supabase
           .from('user_profiles')
@@ -164,7 +165,7 @@ export const useAuth = (): UseAuthReturn => {
           .eq('id', user.id)
           .single();
         
-        if (data) {
+        if (data && !cancelled) {
           setProfile(data as UserProfile);
         }
       } catch (error) {
@@ -174,6 +175,7 @@ export const useAuth = (): UseAuthReturn => {
     };
 
     fetchProfile();
+    return () => { cancelled = true; };
   }, [user]);
 
   // 역할 체크 헬퍼 함수

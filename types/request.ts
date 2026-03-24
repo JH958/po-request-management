@@ -28,7 +28,7 @@ export type PriorityLevel = '긴급' | '일반' | '보통';
 export interface PORequest {
   id: string;
   request_date: string;
-  so_number: string;
+  so_number: string | null;
   customer: string;
   requesting_dept: string;
   requester_id?: string;
