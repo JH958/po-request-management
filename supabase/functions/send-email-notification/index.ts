@@ -42,28 +42,35 @@ serve(async (req) => {
     if (recipients && recipients.length > 0) {
       finalRecipients = recipients;
     } else if (userIds && userIds.length > 0) {
-      // user_profiles에서 사용자 정보 조회
+      // user_profiles에서 사용자 정보와 이메일 직접 조회 (service role key로 RLS 우회)
       const { data: userProfiles, error: profileError } = await supabase
         .from('user_profiles')
-        .select('id, full_name')
+        .select('id, full_name, email')
         .in('id', userIds);
 
       if (profileError) {
         throw profileError;
       }
 
-      // 각 사용자의 이메일 주소 가져오기
-      for (const userProfile of userProfiles || []) {
-        try {
-          const { data: authUser } = await supabase.auth.admin.getUserById(userProfile.id);
-          if (authUser?.user?.email) {
-            finalRecipients.push({
-              name: userProfile.full_name,
-              email: authUser.user.email,
-            });
+      for (const userProfile of (userProfiles || []) as { id: string; full_name: string; email: string | null }[]) {
+        if (userProfile.email) {
+          finalRecipients.push({
+            name: userProfile.full_name,
+            email: userProfile.email,
+          });
+        } else {
+          // user_profiles.email이 없는 경우 auth.admin으로 fallback
+          try {
+            const { data: authUser } = await supabase.auth.admin.getUserById(userProfile.id);
+            if (authUser?.user?.email) {
+              finalRecipients.push({
+                name: userProfile.full_name,
+                email: authUser.user.email,
+              });
+            }
+          } catch (err) {
+            console.warn(`사용자 ${userProfile.id}의 이메일을 가져올 수 없습니다:`, err);
           }
-        } catch (err) {
-          console.warn(`사용자 ${userProfile.id}의 이메일을 가져올 수 없습니다:`, err);
         }
       }
     }
