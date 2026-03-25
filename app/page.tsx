@@ -65,10 +65,16 @@ import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { formatDate, calculateDaysLeft } from '@/lib/dashboard-utils';
-import { format as formatDateRange } from 'date-fns';
+import { format as formatDateRange, format, formatDistanceToNow } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import type { DateRange } from 'react-day-picker';
-import { Download, CheckCircle2, XCircle, AlertCircle, Edit, Plus, Search, ClipboardList, Clock, Calendar as CalendarIcon } from 'lucide-react';
+import { Download, Bell, CheckCircle2, XCircle, AlertCircle, Edit, Plus, Search, ClipboardList, Clock, Calendar as CalendarIcon, Database, Globe } from 'lucide-react';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 
@@ -77,6 +83,50 @@ import { cn } from '@/lib/utils';
  */
 const asApiError = (error: unknown): { code?: string; message?: string } =>
   (typeof error === 'object' && error !== null ? error : {}) as { code?: string; message?: string };
+
+/**
+ * 에러 객체를 문자열로 안전하게 변환하는 헬퍼
+ */
+const getReadableErrorMessage = (error: unknown): string => {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  const apiError = asApiError(error);
+  if (apiError.message) {
+    return apiError.message;
+  }
+  if (typeof error === 'string') {
+    return error;
+  }
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
+};
+
+interface NotificationItem {
+  id: string;
+  user_id: string;
+  request_id: string;
+  type: 'approved' | 'rejected';
+  title: string;
+  message: string | null;
+  is_read: boolean;
+  created_at: string;
+  updated_at: string;
+  requests?: {
+    so_number: string | null;
+    customer: string | null;
+    request_date: string | null;
+    category_of_request: string | null;
+    erp_code: string | null;
+    item_name: string | null;
+    quantity: number | null;
+    review_details: string | null;
+    status: string | null;
+  } | null;
+}
 
 const ALL_CUSTOMERS = [
   '일본(일본법인)',
@@ -132,6 +182,22 @@ const getInitialNewRequest = (type: 'existing' | 'new' = 'new') => ({
   items: [] as Array<{ erp_code: string; item_name: string; quantity: number }>,
 });
 
+/**
+ * SO 번호 형식 검증 (SO + 9자리 숫자)
+ */
+const validateSONumber = (soNumber: string): boolean => {
+  const soPattern = /^SO\d{9}$/;
+  return soPattern.test(soNumber);
+};
+
+/**
+ * ERP 품목 코드 형식 검증 (영문 대소문자+숫자 9자리)
+ */
+const validateERPCode = (erpCode: string): boolean => {
+  const erpPattern = /^[A-Za-z0-9]{9}$/;
+  return erpPattern.test(erpCode);
+};
+
 export default function DashboardPage() {
   const router = useRouter();
   const { user, profile, loading: authLoading } = useAuth();
@@ -172,6 +238,15 @@ export default function DashboardPage() {
   const [approveRequestId, setApproveRequestId] = useState<string | null>(null);
   const [reviewDetails, setReviewDetails] = useState('');
   const [currentItem, setCurrentItem] = useState({ erp_code: '', item_name: '', quantity: 0 });
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [showNotificationDetail, setShowNotificationDetail] = useState(false);
+  const [selectedNotification, setSelectedNotification] = useState<NotificationItem | null>(null);
+  /** PO 수정 요청 SO 번호 필드 검증 메시지 */
+  const [soNumberError, setSONumberError] = useState('');
+  /** 품목 입력 행 ERP 코드 검증 메시지 */
+  const [erpCodeError, setERPCodeError] = useState('');
   const [editingFeasibility, setEditingFeasibility] = useState<FeasibilityStatus | null>(null);
   const [editingReviewDetails, setEditingReviewDetails] = useState('');
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
@@ -222,6 +297,14 @@ export default function DashboardPage() {
   const [adminSortOrder, setAdminSortOrder] = useState('newest');
 
   const [newRequest, setNewRequest] = useState(getInitialNewRequest('new'));
+
+  /** 품목 목록 입력 영역 표시 여부 (출하·운송 변경 시 숨김) */
+  const isItemListVisible = useMemo(
+    () =>
+      newRequest.category_of_request !== '출하일정 변경' &&
+      newRequest.category_of_request !== '운송방법 변경',
+    [newRequest.category_of_request]
+  );
 
   /**
    * 사용자 권한/부서 기준으로 선택 가능한 고객 목록을 반환하는 헬퍼
@@ -418,6 +501,8 @@ export default function DashboardPage() {
   const resetAddRequestForm = useCallback(() => {
     setNewRequest(getInitialNewRequest(requestType));
     setCurrentItem({ erp_code: '', item_name: '', quantity: 0 });
+    setSONumberError('');
+    setERPCodeError('');
   }, [requestType]);
 
   /**
@@ -458,6 +543,26 @@ export default function DashboardPage() {
       router.replace('/login');
     }
   }, [user, authLoading, router]);
+
+  /**
+   * 로그인된 사용자의 알림 목록을 초기 로드
+   */
+  useEffect(() => {
+    if (!user) return;
+    void fetchNotifications();
+    // fetchNotifications는 컴포넌트 내부 함수이며 user 변경 시 재조회면 충분함
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
+  /**
+   * 알림 팝오버가 열릴 때 최신 알림을 재조회
+   */
+  useEffect(() => {
+    if (!showNotifications) return;
+    void fetchNotifications();
+    // 팝오버 오픈 시점 기준으로만 재조회
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showNotifications, user]);
 
   /**
    * 요청 목록 조회 함수 (수동 호출용)
@@ -982,7 +1087,12 @@ export default function DashboardPage() {
         .eq('id', selectedRequest.id);
 
       if (error) {
-        console.error('Supabase 오류:', error);
+        console.error('Supabase 오류:', {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+        });
         throw error;
       }
 
@@ -1002,12 +1112,23 @@ export default function DashboardPage() {
       setViewDialogOpen(false);
       await fetchRequests();
     } catch (error: unknown) {
-      console.error('가능여부 변경 오류:', error);
+      const errMsg = getReadableErrorMessage(error);
       const err = asApiError(error);
-      if (err?.code === 'PGRST301' || err?.message?.includes('permission')) {
+      console.error('가능여부 변경 오류:', {
+        code: err.code,
+        message: errMsg,
+        raw: error,
+      });
+      if (err?.code === 'PGRST301' || errMsg.includes('permission')) {
         toast.error('가능여부를 변경할 권한이 없습니다. 관리자에게 문의하세요.');
-      } else if (err?.message) {
-        toast.error(`가능여부 변경 실패: ${err.message}`);
+      } else if (err?.code === '42P01' || errMsg.includes('notifications') || errMsg.includes('relation')) {
+        // notifications 테이블 미생성으로 인한 트리거 오류: 상태 변경은 완료됐으므로 목록 새로고침
+        toast.warning('가능여부는 변경됐으나 알림 생성에 실패했습니다. (DB 마이그레이션 필요)');
+        setConfirmDialogOpen(false);
+        setViewDialogOpen(false);
+        await fetchRequests();
+      } else if (errMsg) {
+        toast.error(`가능여부 변경 실패: ${errMsg}`);
       } else {
         toast.error('가능여부 변경 중 오류가 발생했습니다. 콘솔을 확인해주세요.');
       }
@@ -1079,7 +1200,12 @@ export default function DashboardPage() {
         .select();
 
       if (error) {
-        console.error('Supabase 오류:', error);
+        console.error('Supabase 오류:', {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+        });
         throw error;
       }
 
@@ -1090,12 +1216,24 @@ export default function DashboardPage() {
       setReviewDetails('');
       await fetchRequests();
     } catch (error: unknown) {
-      console.error('요청 승인 오류:', error);
+      const errMsg = getReadableErrorMessage(error);
       const err = asApiError(error);
-      if (err?.code === 'PGRST301' || err?.message?.includes('permission')) {
+      console.error('요청 승인 오류:', {
+        code: err.code,
+        message: errMsg,
+        raw: error,
+      });
+      if (err?.code === 'PGRST301' || errMsg.includes('permission')) {
         toast.error('요청을 승인할 권한이 없습니다. 관리자에게 문의하세요.');
-      } else if (err?.message) {
-        toast.error(`요청 승인 실패: ${err.message}`);
+      } else if (err?.code === '42P01' || errMsg.includes('notifications') || errMsg.includes('relation')) {
+        // notifications 테이블 미생성으로 인한 트리거 오류: 요청 상태 자체는 업데이트됐을 수 있으므로 목록 새로고침
+        toast.warning('요청은 승인됐으나 알림 생성에 실패했습니다. (DB 마이그레이션 필요)');
+        setApproveDialogOpen(false);
+        setApproveRequestId(null);
+        setReviewDetails('');
+        await fetchRequests();
+      } else if (errMsg) {
+        toast.error(`요청 승인 실패: ${errMsg}`);
       } else {
         toast.error('요청 승인 중 오류가 발생했습니다. 콘솔을 확인해주세요.');
       }
@@ -1168,7 +1306,12 @@ export default function DashboardPage() {
         .select();
 
       if (error) {
-        console.error('Supabase 오류:', error);
+        console.error('Supabase 오류:', {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+        });
         throw error;
       }
 
@@ -1179,12 +1322,24 @@ export default function DashboardPage() {
       setReviewDetails('');
       await fetchRequests();
     } catch (error: unknown) {
-      console.error('요청 거절 오류:', error);
+      const errMsg = getReadableErrorMessage(error);
       const err = asApiError(error);
-      if (err?.code === 'PGRST301' || err?.message?.includes('permission')) {
+      console.error('요청 거절 오류:', {
+        code: err.code,
+        message: errMsg,
+        raw: error,
+      });
+      if (err?.code === 'PGRST301' || errMsg.includes('permission')) {
         toast.error('요청을 거절할 권한이 없습니다. 관리자에게 문의하세요.');
-      } else if (err?.message) {
-        toast.error(`요청 거절 실패: ${err.message}`);
+      } else if (err?.code === '42P01' || errMsg.includes('notifications') || errMsg.includes('relation')) {
+        // notifications 테이블 미생성으로 인한 트리거 오류: 목록 새로고침 후 안내
+        toast.warning('요청은 반려됐으나 알림 생성에 실패했습니다. (DB 마이그레이션 필요)');
+        setRejectDialogOpen(false);
+        setRejectRequestId(null);
+        setReviewDetails('');
+        await fetchRequests();
+      } else if (errMsg) {
+        toast.error(`요청 거절 실패: ${errMsg}`);
       } else {
         toast.error('요청 거절 중 오류가 발생했습니다. 콘솔을 확인해주세요.');
       }
@@ -1212,6 +1367,150 @@ export default function DashboardPage() {
     if (isAdmin) return true;
     const dept = profile?.department;
     return dept === '영업관리팀' || dept === '제조관리팀';
+  };
+
+  /**
+   * 로그인 사용자의 알림 목록을 조회하는 함수
+   */
+  async function fetchNotifications() {
+    if (!user) return;
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('notifications')
+        .select(`
+          id,
+          user_id,
+          request_id,
+          type,
+          title,
+          message,
+          is_read,
+          created_at,
+          updated_at,
+          requests:request_id (
+            so_number,
+            customer,
+            request_date,
+            category_of_request,
+            erp_code,
+            item_name,
+            quantity,
+            review_details,
+            status
+          )
+        `)
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+      if (error) {
+        throw error;
+      }
+
+      const nextNotifications = (data || []) as NotificationItem[];
+      setNotifications(nextNotifications);
+      setUnreadCount(nextNotifications.filter((notification) => !notification.is_read).length);
+    } catch (error: unknown) {
+      const apiError = asApiError(error);
+      const errorMessage = getReadableErrorMessage(error);
+
+      // notifications 테이블/관계 미구성 상태에서는 앱 동작을 유지하고 알림만 비활성화
+      if (
+        apiError.code === '42P01' || // relation does not exist
+        apiError.code === 'PGRST200' ||
+        apiError.code === 'PGRST205' ||
+        errorMessage.includes('notifications') ||
+        errorMessage.includes('Could not find the table')
+      ) {
+        setNotifications([]);
+        setUnreadCount(0);
+        console.warn('알림 테이블 또는 관계가 아직 준비되지 않았습니다:', {
+          code: apiError.code,
+          message: errorMessage,
+        });
+        return;
+      }
+
+      console.error('알림 조회 실패:', {
+        code: apiError.code,
+        message: errorMessage,
+        raw: error,
+      });
+    }
+  }
+
+  /**
+   * 특정 알림을 읽음 처리하는 함수
+   */
+  const markAsRead = async (notificationId: string) => {
+    try {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from('notifications')
+        .update({ is_read: true, updated_at: new Date().toISOString() })
+        .eq('id', notificationId);
+
+      if (error) {
+        throw error;
+      }
+
+      setNotifications((prev) =>
+        prev.map((notification) =>
+          notification.id === notificationId ? { ...notification, is_read: true } : notification
+        )
+      );
+      setUnreadCount((prev) => Math.max(0, prev - 1));
+    } catch (error: unknown) {
+      console.error('알림 읽음 처리 실패:', {
+        code: asApiError(error).code,
+        message: getReadableErrorMessage(error),
+        raw: error,
+      });
+      toast.error('알림 읽음 처리에 실패했습니다.');
+    }
+  };
+
+  /**
+   * 모든 알림을 읽음 처리하는 함수
+   */
+  const handleMarkAllAsRead = async () => {
+    if (!user) return;
+    try {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from('notifications')
+        .update({ is_read: true, updated_at: new Date().toISOString() })
+        .eq('user_id', user.id)
+        .eq('is_read', false);
+
+      if (error) {
+        throw error;
+      }
+
+      setNotifications((prev) => prev.map((notification) => ({ ...notification, is_read: true })));
+      setUnreadCount(0);
+      toast.success('모든 알림을 읽음 처리했습니다.');
+    } catch (error: unknown) {
+      console.error('모두 읽음 처리 실패:', {
+        code: asApiError(error).code,
+        message: getReadableErrorMessage(error),
+        raw: error,
+      });
+      toast.error('알림 처리에 실패했습니다.');
+    }
+  };
+
+  /**
+   * 알림 카드를 클릭하면 읽음 처리 후 상세를 연다
+   */
+  const handleNotificationClick = async (notification: NotificationItem) => {
+    if (!notification.is_read) {
+      await markAsRead(notification.id);
+    }
+    setSelectedNotification(notification);
+    setShowNotificationDetail(true);
+    setShowNotifications(false);
   };
 
   /**
@@ -1262,7 +1561,39 @@ export default function DashboardPage() {
     // 초기값 설정
     setNewRequest(getInitialNewRequest(type));
     setCurrentItem({ erp_code: '', item_name: '', quantity: 0 });
+    setSONumberError('');
+    setERPCodeError('');
     setAddDialogOpen(true);
+  };
+
+  /**
+   * PO 수정 요청 SO 번호 입력 시 실시간 형식 검증
+   */
+  const handleSONumberChange = (value: string) => {
+    setNewRequest((prev) => ({ ...prev, so_number: value }));
+    if (requestType === 'existing') {
+      if (value && !validateSONumber(value)) {
+        setSONumberError(
+          'SO 번호를 다시 확인해주세요. (형식: SO + 9자리 숫자, 예: SO123456789)'
+        );
+      } else {
+        setSONumberError('');
+      }
+    } else {
+      setSONumberError('');
+    }
+  };
+
+  /**
+   * 품목 ERP 코드 입력 시 실시간 형식 검증
+   */
+  const handleERPCodeChange = (value: string) => {
+    setCurrentItem((prev) => ({ ...prev, erp_code: value }));
+    if (value && !validateERPCode(value)) {
+      setERPCodeError('ERP 코드를 다시 확인해주세요. (9자리 영문+숫자)');
+    } else {
+      setERPCodeError('');
+    }
   };
 
   /**
@@ -1287,16 +1618,21 @@ export default function DashboardPage() {
    * 품목 추가 핸들러
    */
   const handleAddItem = () => {
+    if (currentItem.erp_code && !validateERPCode(currentItem.erp_code)) {
+      toast.error('ERP 코드를 다시 확인해주세요. (9자리 영문+숫자)');
+      return;
+    }
     if (!currentItem.erp_code || !currentItem.item_name) {
       toast.error('품목코드와 품목명을 입력해주세요.');
       return;
     }
-    
+
     setNewRequest({
       ...newRequest,
       items: [...newRequest.items, { ...currentItem }],
     });
     setCurrentItem({ erp_code: '', item_name: '', quantity: 0 });
+    setERPCodeError('');
   };
 
   /**
@@ -1494,6 +1830,16 @@ export default function DashboardPage() {
     // SO 번호는 'PO 수정 요청'일 때만 필수
     if (requestType === 'existing' && !newRequest.so_number) {
       toast.error('SO번호는 필수 항목입니다.');
+      return;
+    }
+
+    if (requestType === 'existing' && newRequest.so_number && !validateSONumber(newRequest.so_number)) {
+      toast.error('SO 번호를 다시 확인해주세요. (형식: SO + 9자리 숫자)');
+      return;
+    }
+
+    if (isItemListVisible && erpCodeError) {
+      toast.error('ERP 코드를 다시 확인해주세요. (9자리 영문+숫자)');
       return;
     }
     
@@ -1864,12 +2210,149 @@ export default function DashboardPage() {
 
   // (삭제됨: 최근 요청 카드는 더 이상 사용하지 않음)
 
+  /** 외부 링크 URL 상수 */
+  const EXTERNAL_LINKS = {
+    D365: 'https://inbody.operations.dynamics.com/?cmp=IHQ&mi=DefaultDashboard',
+    GM: 'https://gm.weareinbody.com/',
+  } as const;
+
+  /**
+   * 외부 링크를 새 탭에서 여는 핸들러
+   */
+  const handleExternalLink = (url: string) => {
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
   return (
     <div className="min-h-screen bg-[#F8F9FA]">
       {/* Header */}
       <Header
         userName={profile?.full_name || user.email?.split('@')[0] || '사용자'}
         userEmail={user.email || undefined}
+        rightSlot={
+          <div className="flex items-center gap-1">
+            <TooltipProvider delayDuration={0}>
+              {/* D365 링크 */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    className="relative flex h-9 w-9 items-center justify-center rounded-full p-0 hover:bg-gray-100"
+                    onClick={() => handleExternalLink(EXTERNAL_LINKS.D365)}
+                    aria-label="D365 ERP 시스템을 새 탭에서 열기"
+                  >
+                    <Database className="h-6 w-6 text-[#101820]" strokeWidth={2} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>D365</TooltipContent>
+              </Tooltip>
+
+              {/* GM 링크 */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    className="relative flex h-9 w-9 items-center justify-center rounded-full p-0 hover:bg-gray-100"
+                    onClick={() => handleExternalLink(EXTERNAL_LINKS.GM)}
+                    aria-label="GM 해외 발주 사이트를 새 탭에서 열기"
+                  >
+                    <Globe className="h-6 w-6 text-[#101820]" strokeWidth={2} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>GM</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
+            {/* 기존 알림 아이콘 */}
+            <Popover open={showNotifications} onOpenChange={setShowNotifications}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="ghost"
+                className="relative flex h-9 w-9 items-center justify-center rounded-full p-0 hover:bg-gray-100"
+                aria-label="알림 열기"
+              >
+                <Bell className="h-6 w-6 text-[#101820]" strokeWidth={2} />
+                {unreadCount > 0 ? (
+                  <span className="absolute -top-0.5 -right-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[#971B2F] px-1 text-[10px] font-semibold text-white leading-none">
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                ) : null}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-96 p-0" align="end">
+              <div className="flex items-center justify-between border-b p-4">
+                <h3 className="text-lg font-semibold text-[#101820]">알림</h3>
+                {unreadCount > 0 ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleMarkAllAsRead}
+                    className="text-xs text-[#67767F] hover:text-[#101820]"
+                  >
+                    모두 읽음
+                  </Button>
+                ) : null}
+              </div>
+              <div className="max-h-[400px] overflow-y-auto">
+                {notifications.length === 0 ? (
+                  <div className="p-8 text-center text-sm text-[#67767F]">알림이 없습니다.</div>
+                ) : (
+                  notifications.map((notification) => (
+                    <button
+                      key={notification.id}
+                      type="button"
+                      onClick={() => void handleNotificationClick(notification)}
+                      className={cn(
+                        'w-full border-b p-4 text-left cursor-pointer transition-colors hover:bg-gray-50',
+                        !notification.is_read && 'bg-blue-50'
+                      )}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div
+                          className={cn(
+                            'mt-1 flex h-8 w-8 items-center justify-center rounded-full',
+                            notification.type === 'approved' ? 'bg-green-100' : 'bg-red-100'
+                          )}
+                        >
+                          {notification.type === 'approved' ? (
+                            <CheckCircle2 className="h-4 w-4 text-green-600" />
+                          ) : (
+                            <XCircle className="h-4 w-4 text-red-600" />
+                          )}
+                        </div>
+                        <div className="flex-1 space-y-1">
+                          <div className="flex items-center justify-between">
+                            <p
+                              className={cn(
+                                'text-sm font-medium',
+                                !notification.is_read ? 'text-[#101820]' : 'text-[#67767F]'
+                              )}
+                            >
+                              {notification.title}
+                            </p>
+                            {!notification.is_read ? (
+                              <span className="h-2 w-2 rounded-full bg-[#971B2F]" />
+                            ) : null}
+                          </div>
+                          <p className="text-xs text-[#67767F]">
+                            SO 번호: {notification.requests?.so_number || '-'}
+                          </p>
+                          <p className="text-xs text-[#67767F]">
+                            {formatDistanceToNow(new Date(notification.created_at), {
+                              addSuffix: true,
+                              locale: ko,
+                            })}
+                          </p>
+                        </div>
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+            </PopoverContent>
+          </Popover>
+          </div>
+        }
       />
 
       <div className="container mx-auto p-6">
@@ -1981,20 +2464,28 @@ export default function DashboardPage() {
               </CardHeader>
               <CardContent className="flex-1 flex flex-col space-y-4 p-6">
                 <Button
-                  className="flex-1 w-full text-xl font-semibold bg-[#971B2F] hover:bg-[#7A1626] text-white"
+                  className="flex-1 w-full flex-col gap-1 text-xl font-semibold bg-[#971B2F] hover:bg-[#7A1626] text-white"
                   onClick={() => handleAddRequest('existing')}
                   aria-label="PO 수정 요청 작성"
                 >
-                  <Edit className="mr-2 h-6 w-6" />
-                  PO 수정 요청
+                  <span className="flex items-center">
+                    <Edit className="mr-2 h-6 w-6" />
+                    PO 수정 요청
+                  </span>
+                  <span className="text-xs font-normal opacity-80">
+                    수량 삭제 / 품목코드 변경 / 출하일정 변경 / 운송방법 변경 / 기타
+                  </span>
                 </Button>
                 <Button
-                  className="flex-1 w-full text-xl font-semibold bg-[#A2B2C8] hover:bg-[#8A9BB1] text-[#101820]"
+                  className="flex-1 w-full flex-col gap-1 text-xl font-semibold bg-[#A2B2C8] hover:bg-[#8A9BB1] text-[#101820]"
                   onClick={() => handleAddRequest('new')}
                   aria-label="PO 추가 요청 작성"
                 >
-                  <Plus className="mr-2 h-6 w-6" />
-                  PO 추가 요청
+                  <span className="flex items-center">
+                    <Plus className="mr-2 h-6 w-6" />
+                    PO 추가 요청
+                  </span>
+                  <span className="text-xs font-normal opacity-80">품목 추가</span>
                 </Button>
               </CardContent>
             </Card>
@@ -2722,12 +3213,9 @@ export default function DashboardPage() {
       <Dialog open={addDialogOpen} onOpenChange={handleAddDialogChange}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>
+            <DialogTitle className="text-xl font-bold text-[#101820]">
               {requestType === 'existing' ? 'PO 수정 요청' : 'PO 추가 요청'}
             </DialogTitle>
-            <DialogDescription>
-              PO 변경 요청 정보를 입력해주세요.
-            </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-2 gap-4">
@@ -2752,15 +3240,29 @@ export default function DashboardPage() {
               {/* SO 번호 필드 */}
               <div className="space-y-2">
                 <Label htmlFor="so_number">
-                  SO번호 
-                  {requestType === 'existing' && <span className="text-red-500">*</span>}
+                  SO 번호{' '}
+                  {requestType === 'existing' && <span className="text-[#971B2F]">*</span>}
                 </Label>
                 <Input
                   id="so_number"
                   value={newRequest.so_number}
-                  onChange={(e) => setNewRequest({ ...newRequest, so_number: e.target.value })}
-                  placeholder="SO번호를 입력하세요"
+                  onChange={(e) => handleSONumberChange(e.target.value)}
+                  placeholder="예: SO123456789"
+                  aria-invalid={requestType === 'existing' && Boolean(soNumberError)}
+                  aria-describedby={
+                    requestType === 'existing' && soNumberError ? 'so-number-error-msg' : undefined
+                  }
+                  className={cn(
+                    requestType === 'existing' &&
+                      soNumberError &&
+                      'border-red-500 focus-visible:border-red-500 focus-visible:ring-red-500'
+                  )}
                 />
+                {requestType === 'existing' && soNumberError ? (
+                  <p id="so-number-error-msg" className="text-xs text-red-500" role="alert">
+                    {soNumberError}
+                  </p>
+                ) : null}
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -2917,15 +3419,28 @@ export default function DashboardPage() {
                 
                 {/* 품목 추가 입력 필드 */}
                 <div className="grid grid-cols-12 gap-2 items-end">
-                  <div className="col-span-4 space-y-1">
-                    <Label htmlFor="current_erp_code" className="text-xs">품목코드</Label>
+                  <div className="col-span-4 flex flex-col gap-1">
+                    <Label htmlFor="current_erp_code" className="text-xs">
+                      품목 코드 <span className="text-[#971B2F]">*</span>
+                    </Label>
                     <Input
                       id="current_erp_code"
                       value={currentItem.erp_code}
-                      onChange={(e) => setCurrentItem({ ...currentItem, erp_code: e.target.value })}
-                      placeholder="ERP 코드"
-                      className="text-sm"
+                      onChange={(e) => handleERPCodeChange(e.target.value)}
+                      placeholder="예: I9U800002"
+                      className={cn(
+                        'text-sm',
+                        erpCodeError &&
+                          'border-red-500 focus-visible:border-red-500 focus-visible:ring-red-500'
+                      )}
+                      aria-invalid={Boolean(erpCodeError)}
+                      aria-describedby={erpCodeError ? 'erp-code-error-msg' : undefined}
                     />
+                    {erpCodeError ? (
+                      <p id="erp-code-error-msg" className="text-xs text-red-500" role="alert">
+                        {erpCodeError}
+                      </p>
+                    ) : null}
                   </div>
                   <div className="col-span-4 space-y-1">
                     <Label htmlFor="current_item_name" className="text-xs">품목명</Label>
@@ -3047,8 +3562,113 @@ export default function DashboardPage() {
             <Button variant="outline" onClick={() => handleAddDialogChange(false)}>
               취소
             </Button>
-            <Button onClick={handleSubmitNewRequest} className="bg-[#971B2F] hover:bg-[#7A1626]">
+            <Button
+              onClick={handleSubmitNewRequest}
+              className="bg-[#971B2F] hover:bg-[#7A1626]"
+              disabled={
+                (requestType === 'existing' && Boolean(soNumberError)) ||
+                (isItemListVisible && Boolean(erpCodeError))
+              }
+            >
               추가
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 알림 상세 보기 다이얼로그 */}
+      <Dialog open={showNotificationDetail} onOpenChange={setShowNotificationDetail}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold text-[#101820]">요청 상세 정보</DialogTitle>
+          </DialogHeader>
+          {selectedNotification ? (
+            <div className="space-y-6">
+              <div className="flex items-center gap-2">
+                {selectedNotification.type === 'approved' ? (
+                  <>
+                    <CheckCircle2 className="h-6 w-6 text-green-600" />
+                    <span className="text-lg font-semibold text-green-600">승인됨</span>
+                  </>
+                ) : (
+                  <>
+                    <XCircle className="h-6 w-6 text-red-600" />
+                    <span className="text-lg font-semibold text-red-600">반려됨</span>
+                  </>
+                )}
+                <span className="ml-auto text-sm text-[#67767F]">
+                  {format(new Date(selectedNotification.created_at), 'yyyy-MM-dd HH:mm')}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-sm text-[#67767F]">SO 번호</Label>
+                  <p className="mt-1 text-[#101820] font-medium">
+                    {selectedNotification.requests?.so_number || '-'}
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-sm text-[#67767F]">요청일</Label>
+                  <p className="mt-1 text-[#101820]">
+                    {selectedNotification.requests?.request_date
+                      ? format(new Date(selectedNotification.requests.request_date), 'yyyy-MM-dd')
+                      : '-'}
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-sm text-[#67767F]">고객</Label>
+                  <p className="mt-1 text-[#101820]">{selectedNotification.requests?.customer || '-'}</p>
+                </div>
+                <div>
+                  <Label className="text-sm text-[#67767F]">요청구분</Label>
+                  <p className="mt-1 text-[#101820]">
+                    {selectedNotification.requests?.category_of_request || '-'}
+                  </p>
+                </div>
+              </div>
+
+              {selectedNotification.requests?.review_details ? (
+                <div>
+                  <Label className="text-sm text-[#67767F]">
+                    {selectedNotification.type === 'approved' ? '승인 메모' : '반려 사유'}
+                  </Label>
+                  <div className="mt-2 rounded-md border bg-gray-50 p-4">
+                    <p className="text-sm text-[#101820] whitespace-pre-wrap">
+                      {selectedNotification.requests.review_details}
+                    </p>
+                  </div>
+                </div>
+              ) : null}
+
+              <div>
+                <Label className="text-sm text-[#67767F]">품목 정보</Label>
+                <div className="mt-2 rounded-md border">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b bg-gray-50">
+                        <th className="px-4 py-2 text-left font-medium">품목 코드</th>
+                        <th className="px-4 py-2 text-left font-medium">품목명</th>
+                        <th className="px-4 py-2 text-right font-medium">수량</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td className="px-4 py-2 font-medium">{selectedNotification.requests?.erp_code || '-'}</td>
+                        <td className="px-4 py-2">{selectedNotification.requests?.item_name || '-'}</td>
+                        <td className="px-4 py-2 text-right">
+                          {selectedNotification.requests?.quantity?.toLocaleString() || '-'}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button onClick={() => setShowNotificationDetail(false)} variant="outline">
+              닫기
             </Button>
           </DialogFooter>
         </DialogContent>

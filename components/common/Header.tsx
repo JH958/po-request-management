@@ -3,6 +3,7 @@
  */
 'use client';
 
+import type { ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -19,9 +20,10 @@ import { createClient } from '@/lib/supabase/client';
 interface HeaderProps {
   userName?: string;
   userEmail?: string;
+  rightSlot?: ReactNode;
 }
 
-export const Header = ({ userName, userEmail }: HeaderProps) => {
+export const Header = ({ userName, userEmail, rightSlot }: HeaderProps) => {
   const router = useRouter();
 
   /**
@@ -66,7 +68,8 @@ export const Header = ({ userName, userEmail }: HeaderProps) => {
         </div>
 
         {/* 사용자 정보 및 로그아웃 */}
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-1">
+          {rightSlot}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="flex items-center gap-2">
