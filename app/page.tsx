@@ -105,6 +105,35 @@ const getReadableErrorMessage = (error: unknown): string => {
   }
 };
 
+/**
+ * 품목/제품 추가 요청 여부를 확인하는 헬퍼
+ */
+const isItemAdditionCategory = (category: string | null | undefined): boolean =>
+  category === '품목 추가' || category === '제품 추가';
+
+/**
+ * 확정 수량 입력값을 검증하는 헬퍼
+ */
+/**
+ * 승인용 확정 수량 검증: 최소 1개 이상 (0은 반려 전용)
+ */
+const validateApproveConfirmedQuantity = (confirmed: number | null, requested: number): boolean => {
+  if (confirmed === null) return true; // 입력 안 함 (전체 가능)
+  if (confirmed < 1) return false; // 승인 시 최소 1개 (0 불가)
+  if (confirmed > requested) return false; // 요청 수량 초과 불가
+  return true;
+};
+
+/**
+ * 반려용 확정 수량 검증: 0개 허용 (전량 대응 불가)
+ */
+const validateRejectConfirmedQuantity = (confirmed: number | null, requested: number): boolean => {
+  if (confirmed === null) return true; // 입력 안 함
+  if (confirmed < 0) return false; // 음수 불가
+  if (confirmed > requested) return false; // 요청 수량 초과 불가
+  return true;
+};
+
 interface NotificationItem {
   id: string;
   user_id: string;
@@ -123,6 +152,7 @@ interface NotificationItem {
     erp_code: string | null;
     item_name: string | null;
     quantity: number | null;
+    confirmed_quantity: number | null;
     review_details: string | null;
     status: string | null;
   } | null;
@@ -237,6 +267,7 @@ export default function DashboardPage() {
   const [approveDialogOpen, setApproveDialogOpen] = useState(false);
   const [approveRequestId, setApproveRequestId] = useState<string | null>(null);
   const [reviewDetails, setReviewDetails] = useState('');
+  const [confirmedQuantity, setConfirmedQuantity] = useState<number | null>(null);
   const [currentItem, setCurrentItem] = useState({ erp_code: '', item_name: '', quantity: 0 });
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -646,6 +677,7 @@ export default function DashboardPage() {
         erp_code: item.erp_code || '',
         item_name: item.item_name || '',
         quantity: item.quantity || 0,
+        confirmed_quantity: item.confirmed_quantity ?? null,
         reason_for_request: item.reason_for_request,
         request_details: item.request_details || undefined,
         items: item.items ? (typeof item.items === 'string' ? JSON.parse(item.items) : item.items) : undefined,
@@ -1158,6 +1190,7 @@ export default function DashboardPage() {
 
     setApproveRequestId(requestId);
     setReviewDetails('');
+    setConfirmedQuantity(targetRequest?.confirmed_quantity ?? null);
     setApproveDialogOpen(true);
   };
 
@@ -1178,7 +1211,17 @@ export default function DashboardPage() {
       setApproveDialogOpen(false);
       setApproveRequestId(null);
       setReviewDetails('');
+      setConfirmedQuantity(null);
       return;
+    }
+
+    const requestedQty = approveTargetRequest?.quantity ?? 0;
+    const isItemAdditionRequest = isItemAdditionCategory(approveTargetRequest?.category_of_request);
+    if (isItemAdditionRequest) {
+      if (!validateApproveConfirmedQuantity(confirmedQuantity, requestedQty)) {
+        toast.error('승인 시 확정 수량은 1개 이상이어야 합니다. 전량 불가인 경우 반려를 이용해주세요.');
+        return;
+      }
     }
 
     try {
@@ -1191,6 +1234,7 @@ export default function DashboardPage() {
           feasibility: 'approved',
           status: 'approved',
           review_details: reviewDetails,
+          confirmed_quantity: isItemAdditionRequest ? confirmedQuantity : null,
           reviewer_id: user.id,
           reviewer_name: profile.full_name,
           reviewing_dept: profile.department,
@@ -1210,10 +1254,19 @@ export default function DashboardPage() {
       }
 
       console.log('승인 성공:', data);
-      toast.success('요청이 승인되었습니다.');
+      if (isItemAdditionRequest && confirmedQuantity !== null) {
+        if (confirmedQuantity < requestedQty) {
+          toast.success(`확정 수량 ${confirmedQuantity}개로 승인되었습니다. (요청: ${requestedQty}개)`);
+        } else {
+          toast.success(`확정 수량 ${confirmedQuantity}개로 승인되었습니다.`);
+        }
+      } else {
+        toast.success('요청이 승인되었습니다.');
+      }
       setApproveDialogOpen(false);
       setApproveRequestId(null);
       setReviewDetails('');
+      setConfirmedQuantity(null);
       await fetchRequests();
     } catch (error: unknown) {
       const errMsg = getReadableErrorMessage(error);
@@ -1231,6 +1284,7 @@ export default function DashboardPage() {
         setApproveDialogOpen(false);
         setApproveRequestId(null);
         setReviewDetails('');
+        setConfirmedQuantity(null);
         await fetchRequests();
       } else if (errMsg) {
         toast.error(`요청 승인 실패: ${errMsg}`);
@@ -1264,6 +1318,7 @@ export default function DashboardPage() {
 
     setRejectRequestId(requestId);
     setReviewDetails('');
+    setConfirmedQuantity(targetRequest?.confirmed_quantity ?? null);
     setRejectDialogOpen(true);
   };
 
@@ -1284,7 +1339,17 @@ export default function DashboardPage() {
       setRejectDialogOpen(false);
       setRejectRequestId(null);
       setReviewDetails('');
+      setConfirmedQuantity(null);
       return;
+    }
+
+    const requestedQty = rejectTargetRequest?.quantity ?? 0;
+    const isItemAdditionRequest = isItemAdditionCategory(rejectTargetRequest?.category_of_request);
+    if (isItemAdditionRequest) {
+      if (!validateRejectConfirmedQuantity(confirmedQuantity, requestedQty)) {
+        toast.error('확정 수량은 0개 이상이며 요청 수량을 초과할 수 없습니다.');
+        return;
+      }
     }
 
     try {
@@ -1297,6 +1362,7 @@ export default function DashboardPage() {
           feasibility: 'rejected',
           status: 'rejected',
           review_details: reviewDetails,
+          confirmed_quantity: isItemAdditionRequest ? confirmedQuantity : null,
           reviewer_id: user.id,
           reviewer_name: profile.full_name,
           reviewing_dept: profile.department,
@@ -1316,10 +1382,19 @@ export default function DashboardPage() {
       }
 
       console.log('거절 성공:', data);
-      toast.success('요청이 거절되었습니다.');
+      if (isItemAdditionRequest && confirmedQuantity !== null) {
+        if (confirmedQuantity === 0) {
+          toast.success('전량 대응 불가(확정 0개)로 반려되었습니다.');
+        } else {
+          toast.success(`확정 수량 ${confirmedQuantity}개만 가능합니다. 확정 수량만큼만 PO를 추가해주시기 바랍니다.`);
+        }
+      } else {
+        toast.success('요청이 거절되었습니다.');
+      }
       setRejectDialogOpen(false);
       setRejectRequestId(null);
       setReviewDetails('');
+      setConfirmedQuantity(null);
       await fetchRequests();
     } catch (error: unknown) {
       const errMsg = getReadableErrorMessage(error);
@@ -1337,6 +1412,7 @@ export default function DashboardPage() {
         setRejectDialogOpen(false);
         setRejectRequestId(null);
         setReviewDetails('');
+        setConfirmedQuantity(null);
         await fetchRequests();
       } else if (errMsg) {
         toast.error(`요청 거절 실패: ${errMsg}`);
@@ -1396,6 +1472,7 @@ export default function DashboardPage() {
             erp_code,
             item_name,
             quantity,
+            confirmed_quantity,
             review_details,
             status
           )
@@ -2650,6 +2727,7 @@ export default function DashboardPage() {
                       <AdminTableHead className="sticky top-0 z-20 bg-white">품목코드</AdminTableHead>
                       <AdminTableHead className="sticky top-0 z-20 bg-white">품목명</AdminTableHead>
                       <AdminTableHead className="sticky top-0 z-20 bg-white">수량</AdminTableHead>
+                      <AdminTableHead className="sticky top-0 z-20 bg-white">확정 수량</AdminTableHead>
                       <AdminTableHead className="sticky top-0 z-20 bg-white">요청사유</AdminTableHead>
                       <AdminTableHead className="sticky top-0 z-20 bg-white">검토 상세</AdminTableHead>
                       <AdminTableHead className="sticky top-0 z-20 bg-white">상태</AdminTableHead>
@@ -2658,7 +2736,7 @@ export default function DashboardPage() {
                   <AdminTableBody>
                     {sortedRequesterHistoryRequests.length === 0 ? (
                       <AdminTableRow>
-                        <AdminTableCell colSpan={13} className="text-center py-8 text-[#67767F]">
+                        <AdminTableCell colSpan={14} className="text-center py-8 text-[#67767F]">
                           요청 데이터가 없습니다.
                         </AdminTableCell>
                       </AdminTableRow>
@@ -2675,6 +2753,29 @@ export default function DashboardPage() {
                           <AdminTableCell className="text-[#4B4F5A]">{r.erp_code || '-'}</AdminTableCell>
                           <AdminTableCell className="text-[#4B4F5A]">{r.item_name || '-'}</AdminTableCell>
                           <AdminTableCell className="text-[#4B4F5A]">{r.quantity || 0}</AdminTableCell>
+                          <AdminTableCell className="text-right">
+                            {isItemAdditionCategory(r.category_of_request) &&
+                            r.confirmed_quantity !== null &&
+                            r.confirmed_quantity !== undefined ? (
+                              <div className="flex flex-col items-end">
+                                <span
+                                  className={cn(
+                                    'font-semibold',
+                                    r.confirmed_quantity < (r.quantity || 0) ? 'text-orange-600' : 'text-green-600'
+                                  )}
+                                >
+                                  {r.confirmed_quantity.toLocaleString()}
+                                </span>
+                                {r.confirmed_quantity < (r.quantity || 0) && (
+                                  <span className="text-xs text-orange-500">
+                                    ({(r.quantity || 0) - r.confirmed_quantity} 부족)
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-[#B2B4B8]">-</span>
+                            )}
+                          </AdminTableCell>
                           <AdminTableCell className="text-[#4B4F5A]">{r.reason_for_request}</AdminTableCell>
                           <AdminTableCell className="max-w-xs truncate text-[#4B4F5A]" title={r.review_details || '-'}>
                             {r.review_details || '-'}
@@ -2922,6 +3023,7 @@ export default function DashboardPage() {
                         <AdminTableHead className="min-w-[120px] bg-white border-b">품목코드</AdminTableHead>
                         <AdminTableHead className="min-w-[150px] bg-white border-b">품목명</AdminTableHead>
                         <AdminTableHead className="min-w-[60px] bg-white border-b">수량</AdminTableHead>
+                        <AdminTableHead className="min-w-[90px] bg-white border-b">확정 수량</AdminTableHead>
                         <AdminTableHead className="min-w-[120px] bg-white border-b">요청사유</AdminTableHead>
                         <AdminTableHead className="min-w-[180px] bg-white border-b">검토 상세</AdminTableHead>
                         <AdminTableHead className="min-w-[80px] bg-white border-b">상태</AdminTableHead>
@@ -2930,7 +3032,7 @@ export default function DashboardPage() {
                     <AdminTableBody>
                       {filteredAndSortedAdminRequests.length === 0 ? (
                         <AdminTableRow>
-                          <AdminTableCell colSpan={13} className="text-center py-8 text-[#67767F]">
+                          <AdminTableCell colSpan={14} className="text-center py-8 text-[#67767F]">
                             {adminRequests.length === 0 ? '요청 데이터가 없습니다.' : '검색 결과가 없습니다.'}
                           </AdminTableCell>
                         </AdminTableRow>
@@ -2947,6 +3049,29 @@ export default function DashboardPage() {
                             <AdminTableCell className="text-[#4B4F5A]">{r.erp_code || '-'}</AdminTableCell>
                             <AdminTableCell className="text-[#4B4F5A]">{r.item_name || '-'}</AdminTableCell>
                             <AdminTableCell className="text-[#4B4F5A]">{r.quantity || 0}</AdminTableCell>
+                            <AdminTableCell className="text-right">
+                              {isItemAdditionCategory(r.category_of_request) &&
+                              r.confirmed_quantity !== null &&
+                              r.confirmed_quantity !== undefined ? (
+                                <div className="flex flex-col items-end">
+                                  <span
+                                    className={cn(
+                                      'font-semibold',
+                                      r.confirmed_quantity < (r.quantity || 0) ? 'text-orange-600' : 'text-green-600'
+                                    )}
+                                  >
+                                    {r.confirmed_quantity.toLocaleString()}
+                                  </span>
+                                  {r.confirmed_quantity < (r.quantity || 0) && (
+                                    <span className="text-xs text-orange-500">
+                                      ({(r.quantity || 0) - r.confirmed_quantity} 부족)
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-[#B2B4B8]">-</span>
+                              )}
+                            </AdminTableCell>
                             <AdminTableCell className="text-[#4B4F5A]">{r.reason_for_request}</AdminTableCell>
                             <AdminTableCell className="max-w-xs truncate text-[#4B4F5A]" title={r.review_details || '-'}>
                               {r.review_details || '-'}
@@ -3087,6 +3212,28 @@ export default function DashboardPage() {
                   <p className="text-sm font-medium text-[#67767F]">수량</p>
                   <p className="text-[#101820]">{selectedRequest.quantity}</p>
                 </div>
+                {isItemAdditionCategory(selectedRequest.category_of_request) &&
+                  selectedRequest.confirmed_quantity !== null &&
+                  selectedRequest.confirmed_quantity !== undefined && (
+                    <div>
+                      <p className="text-sm font-medium text-[#67767F]">확정 수량</p>
+                      <p
+                        className={cn(
+                          'font-semibold',
+                          selectedRequest.confirmed_quantity < selectedRequest.quantity
+                            ? 'text-orange-600'
+                            : 'text-green-600'
+                        )}
+                      >
+                        {selectedRequest.confirmed_quantity}
+                      </p>
+                      {selectedRequest.confirmed_quantity < selectedRequest.quantity && (
+                        <p className="mt-1 text-xs text-orange-600">
+                          요청 수량보다 {selectedRequest.quantity - selectedRequest.confirmed_quantity}개 적습니다
+                        </p>
+                      )}
+                    </div>
+                  )}
                 <div>
                   <p className="text-sm font-medium text-[#67767F]">요청사유</p>
                   <p className="text-[#101820]">{selectedRequest.reason_for_request}</p>
@@ -3584,6 +3731,35 @@ export default function DashboardPage() {
           </DialogHeader>
           {selectedNotification ? (
             <div className="space-y-6">
+              {isItemAdditionCategory(selectedNotification.requests?.category_of_request) &&
+                selectedNotification.requests?.confirmed_quantity !== null &&
+                selectedNotification.requests?.confirmed_quantity !== undefined &&
+                selectedNotification.requests.confirmed_quantity < (selectedNotification.requests.quantity || 0) && (
+                  <div className="rounded-md border border-orange-200 bg-orange-50 p-4">
+                    <div className="flex items-start gap-3">
+                      <AlertCircle className="h-5 w-5 text-orange-600 mt-0.5" />
+                      <div className="flex-1">
+                        {selectedNotification.requests.confirmed_quantity === 0 ? (
+                          <>
+                            <p className="font-semibold text-orange-900">전량 대응 불가</p>
+                            <p className="mt-1 text-sm text-orange-800">
+                              요청 수량: {selectedNotification.requests.quantity}개 → 확정 수량: 0개
+                            </p>
+                          </>
+                        ) : (
+                          <>
+                            <p className="font-semibold text-orange-900">일부 수량만 가능합니다</p>
+                            <p className="mt-1 text-sm text-orange-800">
+                              요청 수량: {selectedNotification.requests.quantity}개 → 확정 수량:{' '}
+                              {selectedNotification.requests.confirmed_quantity}개
+                            </p>
+                            <p className="mt-1 text-sm text-orange-700">확정 수량만큼만 PO를 추가해주시기 바랍니다.</p>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
               <div className="flex items-center gap-2">
                 {selectedNotification.type === 'approved' ? (
                   <>
@@ -3628,6 +3804,33 @@ export default function DashboardPage() {
                 </div>
               </div>
 
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-sm text-[#67767F]">요청 수량</Label>
+                  <p className="mt-1 text-[#101820] font-medium">
+                    {selectedNotification.requests?.quantity?.toLocaleString() || '-'}
+                  </p>
+                </div>
+                {isItemAdditionCategory(selectedNotification.requests?.category_of_request) &&
+                  selectedNotification.requests?.confirmed_quantity !== null &&
+                  selectedNotification.requests?.confirmed_quantity !== undefined && (
+                    <div>
+                      <Label className="text-sm text-[#67767F]">확정 수량</Label>
+                      <p
+                        className={cn(
+                          'mt-1 font-semibold',
+                          selectedNotification.requests.confirmed_quantity <
+                            (selectedNotification.requests.quantity || 0)
+                            ? 'text-orange-600'
+                            : 'text-green-600'
+                        )}
+                      >
+                        {selectedNotification.requests.confirmed_quantity.toLocaleString()}
+                      </p>
+                    </div>
+                  )}
+              </div>
+
               {selectedNotification.requests?.review_details ? (
                 <div>
                   <Label className="text-sm text-[#67767F]">
@@ -3650,6 +3853,7 @@ export default function DashboardPage() {
                         <th className="px-4 py-2 text-left font-medium">품목 코드</th>
                         <th className="px-4 py-2 text-left font-medium">품목명</th>
                         <th className="px-4 py-2 text-right font-medium">수량</th>
+                        <th className="px-4 py-2 text-right font-medium">확정 수량</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -3658,6 +3862,25 @@ export default function DashboardPage() {
                         <td className="px-4 py-2">{selectedNotification.requests?.item_name || '-'}</td>
                         <td className="px-4 py-2 text-right">
                           {selectedNotification.requests?.quantity?.toLocaleString() || '-'}
+                        </td>
+                        <td className="px-4 py-2 text-right">
+                          {isItemAdditionCategory(selectedNotification.requests?.category_of_request) &&
+                          selectedNotification.requests?.confirmed_quantity !== null &&
+                          selectedNotification.requests?.confirmed_quantity !== undefined ? (
+                            <span
+                              className={cn(
+                                'font-semibold',
+                                selectedNotification.requests.confirmed_quantity <
+                                  (selectedNotification.requests.quantity || 0)
+                                  ? 'text-orange-600'
+                                  : 'text-green-600'
+                              )}
+                            >
+                              {selectedNotification.requests.confirmed_quantity.toLocaleString()}
+                            </span>
+                          ) : (
+                            <span className="text-[#B2B4B8]">-</span>
+                          )}
                         </td>
                       </tr>
                     </tbody>
@@ -3675,7 +3898,17 @@ export default function DashboardPage() {
       </Dialog>
 
       {/* 거절 사유 입력 다이얼로그 */}
-      <AlertDialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
+      <AlertDialog
+        open={rejectDialogOpen}
+        onOpenChange={(open) => {
+          setRejectDialogOpen(open);
+          if (!open) {
+            setReviewDetails('');
+            setRejectRequestId(null);
+            setConfirmedQuantity(null);
+          }
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>요청 거절 사유 입력</AlertDialogTitle>
@@ -3683,7 +3916,61 @@ export default function DashboardPage() {
               거절 사유를 입력해주세요. (필수)
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <div className="py-4">
+          <div className="py-4 space-y-4">
+            {(() => {
+              const rejectTargetRequest = rejectRequestId
+                ? requests.find((request) => request.id === rejectRequestId)
+                : null;
+              const isItemAdditionRequest = isItemAdditionCategory(rejectTargetRequest?.category_of_request);
+              const requestedQty = rejectTargetRequest?.quantity ?? 0;
+
+              if (!isItemAdditionRequest) return null;
+
+              return (
+                <div>
+                  <Label htmlFor="confirmed-quantity-reject" className="text-[#67767F]">
+                    확정 수량
+                    <span className="ml-2 text-xs text-[#67767F]">
+                      (재고 부족 등의 이유로 요청 수량보다 적은 수량만 가능한 경우 입력)
+                    </span>
+                  </Label>
+                  <div className="mt-2 flex items-center gap-4">
+                    <div className="flex-1">
+                      <Input
+                        id="confirmed-quantity-reject"
+                        type="number"
+                        min={0}
+                        max={requestedQty}
+                        value={confirmedQuantity ?? ''}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          if (raw === '') {
+                            setConfirmedQuantity(null);
+                            return;
+                          }
+                          const nextValue = Number(raw);
+                          if (Number.isNaN(nextValue)) {
+                            setConfirmedQuantity(null);
+                            return;
+                          }
+                          setConfirmedQuantity(nextValue);
+                        }}
+                        placeholder={`최대 ${requestedQty}개`}
+                      />
+                    </div>
+                    <div className="text-sm text-[#67767F]">
+                      <p>
+                        요청 수량:{' '}
+                        <span className="font-semibold text-[#101820]">{requestedQty}</span>
+                      </p>
+                    </div>
+                  </div>
+                  <p className="mt-1 text-xs text-[#67767F]">
+                    * 입력하지 않으면 요청 수량 전체가 가능한 것으로 처리됩니다.
+                  </p>
+                </div>
+              );
+            })()}
             <textarea
               className="w-full min-h-[120px] p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#971B2F]"
               placeholder="거절 사유를 상세히 입력해주세요..."
@@ -3696,6 +3983,7 @@ export default function DashboardPage() {
               setRejectDialogOpen(false);
               setReviewDetails('');
               setRejectRequestId(null);
+              setConfirmedQuantity(null);
             }}>
               취소
             </AlertDialogCancel>
@@ -3710,7 +3998,17 @@ export default function DashboardPage() {
       </AlertDialog>
 
       {/* 승인 사유 입력 다이얼로그 */}
-      <AlertDialog open={approveDialogOpen} onOpenChange={setApproveDialogOpen}>
+      <AlertDialog
+        open={approveDialogOpen}
+        onOpenChange={(open) => {
+          setApproveDialogOpen(open);
+          if (!open) {
+            setReviewDetails('');
+            setApproveRequestId(null);
+            setConfirmedQuantity(null);
+          }
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>요청 승인 사유 입력</AlertDialogTitle>
@@ -3718,7 +4016,61 @@ export default function DashboardPage() {
               승인 사유를 입력해주세요. (필수)
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <div className="py-4">
+          <div className="py-4 space-y-4">
+            {(() => {
+              const approveTargetRequest = approveRequestId
+                ? requests.find((request) => request.id === approveRequestId)
+                : null;
+              const isItemAdditionRequest = isItemAdditionCategory(approveTargetRequest?.category_of_request);
+              const requestedQty = approveTargetRequest?.quantity ?? 0;
+
+              if (!isItemAdditionRequest) return null;
+
+              return (
+                <div>
+                  <Label htmlFor="confirmed-quantity-approve" className="text-[#67767F]">
+                    확정 수량
+                    <span className="ml-2 text-xs text-[#67767F]">
+                      (재고 부족 등의 이유로 요청 수량보다 적은 수량만 가능한 경우 입력)
+                    </span>
+                  </Label>
+                  <div className="mt-2 flex items-center gap-4">
+                    <div className="flex-1">
+                      <Input
+                        id="confirmed-quantity-approve"
+                        type="number"
+                        min={1}
+                        max={requestedQty}
+                        value={confirmedQuantity ?? ''}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          if (raw === '') {
+                            setConfirmedQuantity(null);
+                            return;
+                          }
+                          const nextValue = Number(raw);
+                          if (Number.isNaN(nextValue)) {
+                            setConfirmedQuantity(null);
+                            return;
+                          }
+                          setConfirmedQuantity(nextValue);
+                        }}
+                        placeholder={`최대 ${requestedQty}개`}
+                      />
+                    </div>
+                    <div className="text-sm text-[#67767F]">
+                      <p>
+                        요청 수량:{' '}
+                        <span className="font-semibold text-[#101820]">{requestedQty}</span>
+                      </p>
+                    </div>
+                  </div>
+                  <p className="mt-1 text-xs text-[#67767F]">
+                    * 입력하지 않으면 요청 수량 전체가 가능한 것으로 처리됩니다.
+                  </p>
+                </div>
+              );
+            })()}
             <textarea
               className="w-full min-h-[120px] p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#971B2F]"
               placeholder="승인 사유를 상세히 입력해주세요..."
@@ -3731,6 +4083,7 @@ export default function DashboardPage() {
               setApproveDialogOpen(false);
               setReviewDetails('');
               setApproveRequestId(null);
+              setConfirmedQuantity(null);
             }}>
               취소
             </AlertDialogCancel>
@@ -3894,6 +4247,28 @@ export default function DashboardPage() {
                   <p className="text-sm font-medium text-[#67767F]">수량</p>
                   <p className="text-[#101820]">{detailRequest.quantity || 0}</p>
                 </div>
+                {isItemAdditionCategory(detailRequest.category_of_request) &&
+                  detailRequest.confirmed_quantity !== null &&
+                  detailRequest.confirmed_quantity !== undefined && (
+                    <div>
+                      <p className="text-sm font-medium text-[#67767F]">확정 수량</p>
+                      <p
+                        className={cn(
+                          'font-semibold',
+                          (detailRequest.confirmed_quantity || 0) < (detailRequest.quantity || 0)
+                            ? 'text-orange-600'
+                            : 'text-green-600'
+                        )}
+                      >
+                        {(detailRequest.confirmed_quantity || 0).toLocaleString()}
+                      </p>
+                      {(detailRequest.confirmed_quantity || 0) < (detailRequest.quantity || 0) && (
+                        <p className="mt-1 text-xs text-orange-600">
+                          요청 수량보다 {(detailRequest.quantity || 0) - (detailRequest.confirmed_quantity || 0)}개 적습니다
+                        </p>
+                      )}
+                    </div>
+                  )}
                 <div>
                   <p className="text-sm font-medium text-[#67767F]">우선순위</p>
                   <p className="text-[#101820]">{detailRequest.priority || '-'}</p>
@@ -3962,6 +4337,7 @@ export default function DashboardPage() {
                   <AdminTableHead className="bg-white">품목코드</AdminTableHead>
                   <AdminTableHead className="bg-white">품목명</AdminTableHead>
                   <AdminTableHead className="bg-white">수량</AdminTableHead>
+                  <AdminTableHead className="bg-white">확정 수량</AdminTableHead>
                   <AdminTableHead className="bg-white">요청사유</AdminTableHead>
                   <AdminTableHead className="bg-white">상태</AdminTableHead>
                 </AdminTableRow>
@@ -3969,7 +4345,7 @@ export default function DashboardPage() {
               <AdminTableBody>
                 {statsDialogRequests.length === 0 ? (
                   <AdminTableRow>
-                    <AdminTableCell colSpan={12} className="text-center py-8 text-[#67767F]">
+                    <AdminTableCell colSpan={13} className="text-center py-8 text-[#67767F]">
                       해당하는 요청이 없습니다.
                     </AdminTableCell>
                   </AdminTableRow>
@@ -3986,6 +4362,22 @@ export default function DashboardPage() {
                       <AdminTableCell className="text-[#4B4F5A]">{request.erp_code || '-'}</AdminTableCell>
                       <AdminTableCell className="text-[#4B4F5A]">{request.item_name || '-'}</AdminTableCell>
                       <AdminTableCell className="text-[#4B4F5A]">{request.quantity || 0}</AdminTableCell>
+                      <AdminTableCell className="text-right">
+                        {isItemAdditionCategory(request.category_of_request) &&
+                        request.confirmed_quantity !== null &&
+                        request.confirmed_quantity !== undefined ? (
+                          <span
+                            className={cn(
+                              'font-semibold',
+                              request.confirmed_quantity < (request.quantity || 0) ? 'text-orange-600' : 'text-green-600'
+                            )}
+                          >
+                            {request.confirmed_quantity.toLocaleString()}
+                          </span>
+                        ) : (
+                          <span className="text-[#B2B4B8]">-</span>
+                        )}
+                      </AdminTableCell>
                       <AdminTableCell className="text-[#4B4F5A]">{request.reason_for_request}</AdminTableCell>
                       <AdminTableCell>
                         <Badge

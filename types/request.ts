@@ -44,6 +44,7 @@ export interface PORequest {
   erp_code: string;
   item_name: string;
   quantity: number;
+  confirmed_quantity?: number | null; // 확정 수량 (품목/제품 추가 요청 시 실제 가능한 수량)
   reason_for_request: string;
   request_details?: string;
   items?: RequestItem[]; // 품목 목록 (여러 품목 지원)
