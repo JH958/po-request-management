@@ -1640,7 +1640,7 @@ export default function DashboardPage() {
         throw error;
       }
 
-      const nextNotifications = (data || []) as NotificationItem[];
+      const nextNotifications = (data || []) as unknown as NotificationItem[];
       setNotifications(nextNotifications);
       setUnreadCount(nextNotifications.filter((notification) => !notification.is_read).length);
     } catch (error: unknown) {

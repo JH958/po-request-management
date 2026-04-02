@@ -419,7 +419,7 @@ export const RequestFormTable = ({
                       <TableCell>
                         {isEditing && canEditRequester ? (
                           <Input
-                            value={currentData.so_number}
+                            value={currentData.so_number ?? ''}
                             onChange={(e) => handleFieldChange('so_number', e.target.value)}
                             className="w-full"
                           />
