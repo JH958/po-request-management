@@ -48,6 +48,7 @@ export interface PORequest {
   reason_for_request: string;
   request_details?: string;
   items?: RequestItem[]; // 품목 목록 (여러 품목 지원)
+  product_category?: string | null; // 품목 구분 (InBody, BSM, BPBIO, Wellness, Spare parts, ALL)
   feasibility?: FeasibilityStatus;
   review_details?: string;
   reviewing_dept?: string;

@@ -50,6 +50,7 @@ import { StatsCard } from '@/components/dashboard/StatsCard';
 import type { PORequest, DashboardStats, FeasibilityStatus, RequestStatus } from '@/types/request';
 import { sendUrgentRequestNotification, sendNewRequestNotification } from '@/lib/notification-utils';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Table as AdminTable,
@@ -68,7 +69,7 @@ import { formatDate, calculateDaysLeft } from '@/lib/dashboard-utils';
 import { format as formatDateRange, format, formatDistanceToNow } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import type { DateRange } from 'react-day-picker';
-import { Download, Bell, CheckCircle2, XCircle, AlertCircle, Edit, Plus, Search, ClipboardList, Clock, Calendar as CalendarIcon, Database, Globe } from 'lucide-react';
+import { Download, Bell, CheckCircle2, XCircle, AlertCircle, Edit, Plus, Search, ClipboardList, Clock, Calendar as CalendarIcon, Database, Globe, Package } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
@@ -112,6 +113,54 @@ const isItemAdditionCategory = (category: string | null | undefined): boolean =>
   category === '품목 추가' || category === '제품 추가';
 
 /**
+ * 품목 구분 옵션 목록
+ */
+const PRODUCT_CATEGORIES = [
+  { value: 'InBody', label: 'InBody', color: 'bg-blue-100 text-blue-800' },
+  { value: 'BSM', label: 'BSM', color: 'bg-green-100 text-green-800' },
+  { value: 'BPBIO', label: 'BPBIO', color: 'bg-purple-100 text-purple-800' },
+  { value: 'Wellness', label: 'Wellness', color: 'bg-pink-100 text-pink-800' },
+  { value: 'Spare parts', label: 'Spare parts', color: 'bg-gray-100 text-gray-800' },
+  { value: 'ALL', label: 'ALL', color: 'bg-orange-100 text-orange-800' },
+] as const;
+
+/**
+ * 품목 구분별 색상 클래스를 반환하는 헬퍼
+ */
+const getProductCategoryColor = (category: string): string => {
+  const found = PRODUCT_CATEGORIES.find((c) => c.value === category);
+  return found?.color ?? 'bg-gray-100 text-gray-800';
+};
+
+/**
+ * 품목 구분 문자열(쉼표 구분)을 색상 뱃지 배열로 렌더링하는 헬퍼
+ */
+const renderProductCategoryBadges = (category: string | null | undefined, size: 'sm' | 'md' = 'sm') => {
+  if (!category) return null;
+  const categories = category.split(',').map((c) => c.trim()).filter(Boolean);
+  if (categories.length === 0) return null;
+  const padding = size === 'md' ? 'px-3 py-1 text-sm' : 'px-2 py-0.5 text-xs';
+  return (
+    <div className="flex flex-wrap gap-1">
+      {categories.map((cat) => (
+        <span
+          key={cat}
+          className={`inline-flex items-center rounded-full font-medium ${padding} ${getProductCategoryColor(cat)}`}
+        >
+          {cat}
+        </span>
+      ))}
+    </div>
+  );
+};
+
+/**
+ * 품목 구분 선택이 필요한 요청 구분인지 확인하는 헬퍼
+ */
+const needsProductCategory = (categoryOfRequest: string): boolean =>
+  ['수량 삭제', '품목 추가', '제품 추가'].includes(categoryOfRequest);
+
+/**
  * 확정 수량 입력값을 검증하는 헬퍼
  */
 /**
@@ -149,6 +198,7 @@ interface NotificationItem {
     customer: string | null;
     request_date: string | null;
     category_of_request: string | null;
+    product_category: string | null;
     erp_code: string | null;
     item_name: string | null;
     quantity: number | null;
@@ -274,6 +324,8 @@ export default function DashboardPage() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showNotificationDetail, setShowNotificationDetail] = useState(false);
   const [selectedNotification, setSelectedNotification] = useState<NotificationItem | null>(null);
+  /** 품목 구분 선택값 목록 (수량 삭제 / 품목 추가 / 제품 추가 요청 시, 복수 선택 가능) */
+  const [productCategory, setProductCategory] = useState<string[]>([]);
   /** PO 수정 요청 SO 번호 필드 검증 메시지 */
   const [soNumberError, setSONumberError] = useState('');
   /** 품목 입력 행 ERP 코드 검증 메시지 */
@@ -532,6 +584,7 @@ export default function DashboardPage() {
   const resetAddRequestForm = useCallback(() => {
     setNewRequest(getInitialNewRequest(requestType));
     setCurrentItem({ erp_code: '', item_name: '', quantity: 0 });
+    setProductCategory([]);
     setSONumberError('');
     setERPCodeError('');
   }, [requestType]);
@@ -1469,6 +1522,7 @@ export default function DashboardPage() {
             customer,
             request_date,
             category_of_request,
+            product_category,
             erp_code,
             item_name,
             quantity,
@@ -1638,6 +1692,7 @@ export default function DashboardPage() {
     // 초기값 설정
     setNewRequest(getInitialNewRequest(type));
     setCurrentItem({ erp_code: '', item_name: '', quantity: 0 });
+    setProductCategory([]);
     setSONumberError('');
     setERPCodeError('');
     setAddDialogOpen(true);
@@ -1919,6 +1974,12 @@ export default function DashboardPage() {
       toast.error('ERP 코드를 다시 확인해주세요. (9자리 영문+숫자)');
       return;
     }
+
+    // 품목 구분 필수 입력 확인 (수량 삭제 / 품목 추가 / 제품 추가 요청 시)
+    if (needsProductCategory(newRequest.category_of_request) && productCategory.length === 0) {
+      toast.error('품목 구분을 선택해주세요.');
+      return;
+    }
     
     // 운송방법은 'PO 수정 요청'이고 '운송방법 변경'일 때 필수
     if (requestType === 'existing' && newRequest.category_of_request === '운송방법 변경' && !newRequest.shipping_method) {
@@ -2026,6 +2087,11 @@ export default function DashboardPage() {
         requestData.shipping_method = newRequest.shipping_method;
       }
 
+      // 품목 구분 저장 (수량 삭제 / 품목 추가 / 제품 추가 요청 시, 복수 선택 쉼표 구분 저장)
+      if (needsProductCategory(newRequest.category_of_request) && productCategory.length > 0) {
+        requestData.product_category = productCategory.join(', ');
+      }
+
       // 품목 정보는 선택적으로 추가 (기본값: 빈 문자열 또는 0)
       requestData.erp_code = (firstItem && firstItem.erp_code) ? firstItem.erp_code : '';
       requestData.item_name = (firstItem && firstItem.item_name) ? firstItem.item_name : '';
@@ -2051,8 +2117,12 @@ export default function DashboardPage() {
 
       console.log('=== 요청 생성 성공 ===');
       console.log('생성된 요청 ID:', createdRequest.id);
-      
-      toast.success('새 요청이 생성되었습니다.');
+
+      if (productCategory.length > 0 && needsProductCategory(newRequest.category_of_request)) {
+        toast.success(`품목 구분 [${productCategory.join(', ')}]로 요청이 접수되었습니다.`);
+      } else {
+        toast.success('새 요청이 생성되었습니다.');
+      }
 
       // 성공 시 폼 초기화
       resetAddRequestForm();
@@ -2411,6 +2481,12 @@ export default function DashboardPage() {
                               <span className="h-2 w-2 rounded-full bg-[#971B2F]" />
                             ) : null}
                           </div>
+                          {notification.requests?.product_category && (
+                            <div className="flex flex-wrap gap-1">
+                              <span className="text-xs text-[#67767F]">📦</span>
+                              {renderProductCategoryBadges(notification.requests.product_category)}
+                            </div>
+                          )}
                           <p className="text-xs text-[#67767F]">
                             SO 번호: {notification.requests?.so_number || '-'}
                           </p>
@@ -2724,6 +2800,7 @@ export default function DashboardPage() {
                       <AdminTableHead className="sticky top-0 z-20 bg-white">요청자</AdminTableHead>
                       <AdminTableHead className="sticky top-0 z-20 bg-white">출하일</AdminTableHead>
                       <AdminTableHead className="sticky top-0 z-20 bg-white">요청구분</AdminTableHead>
+                      <AdminTableHead className="sticky top-0 z-20 bg-white">품목구분</AdminTableHead>
                       <AdminTableHead className="sticky top-0 z-20 bg-white">품목코드</AdminTableHead>
                       <AdminTableHead className="sticky top-0 z-20 bg-white">품목명</AdminTableHead>
                       <AdminTableHead className="sticky top-0 z-20 bg-white">수량</AdminTableHead>
@@ -2750,6 +2827,11 @@ export default function DashboardPage() {
                           <AdminTableCell className="text-[#4B4F5A]">{r.requester_name}</AdminTableCell>
                           <AdminTableCell className="text-[#4B4F5A]">{r.factory_shipment_date ? formatDate(r.factory_shipment_date) : '-'}</AdminTableCell>
                           <AdminTableCell className="text-[#4B4F5A]">{r.category_of_request}</AdminTableCell>
+                          <AdminTableCell>
+                            {needsProductCategory(r.category_of_request) && r.product_category
+                              ? renderProductCategoryBadges(r.product_category)
+                              : <span className="text-[#B2B4B8]">-</span>}
+                          </AdminTableCell>
                           <AdminTableCell className="text-[#4B4F5A]">{r.erp_code || '-'}</AdminTableCell>
                           <AdminTableCell className="text-[#4B4F5A]">{r.item_name || '-'}</AdminTableCell>
                           <AdminTableCell className="text-[#4B4F5A]">{r.quantity || 0}</AdminTableCell>
@@ -3020,6 +3102,7 @@ export default function DashboardPage() {
                         <AdminTableHead className="min-w-[80px] bg-white border-b">요청자</AdminTableHead>
                         <AdminTableHead className="min-w-[100px] bg-white border-b">출하일</AdminTableHead>
                         <AdminTableHead className="min-w-[120px] bg-white border-b">요청구분</AdminTableHead>
+                        <AdminTableHead className="min-w-[100px] bg-white border-b">품목구분</AdminTableHead>
                         <AdminTableHead className="min-w-[120px] bg-white border-b">품목코드</AdminTableHead>
                         <AdminTableHead className="min-w-[150px] bg-white border-b">품목명</AdminTableHead>
                         <AdminTableHead className="min-w-[60px] bg-white border-b">수량</AdminTableHead>
@@ -3046,6 +3129,11 @@ export default function DashboardPage() {
                             <AdminTableCell className="text-[#4B4F5A]">{r.requester_name}</AdminTableCell>
                             <AdminTableCell className="text-[#4B4F5A]">{r.factory_shipment_date ? formatDate(r.factory_shipment_date) : '-'}</AdminTableCell>
                             <AdminTableCell className="text-[#4B4F5A]">{r.category_of_request}</AdminTableCell>
+                            <AdminTableCell>
+                              {needsProductCategory(r.category_of_request) && r.product_category
+                                ? renderProductCategoryBadges(r.product_category)
+                                : <span className="text-[#B2B4B8]">-</span>}
+                            </AdminTableCell>
                             <AdminTableCell className="text-[#4B4F5A]">{r.erp_code || '-'}</AdminTableCell>
                             <AdminTableCell className="text-[#4B4F5A]">{r.item_name || '-'}</AdminTableCell>
                             <AdminTableCell className="text-[#4B4F5A]">{r.quantity || 0}</AdminTableCell>
@@ -3175,6 +3263,23 @@ export default function DashboardPage() {
           </AlertDialogHeader>
           {selectedRequest && (
             <div className="space-y-4 max-h-[60vh] overflow-y-auto">
+              {/* 검토자용 품목 구분 강조 박스 */}
+              {(isReviewer || isAdmin) && !isOwnRequest(selectedRequest) && selectedRequest.product_category && (
+                <div className="rounded-lg border-2 border-[#971B2F]/30 bg-gradient-to-r from-[#971B2F]/5 to-[#971B2F]/10 p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#971B2F]/15">
+                      <Package className="h-5 w-5 text-[#971B2F]" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="mb-1.5 text-sm font-medium text-[#971B2F]">품목 구분</p>
+                      <div>{renderProductCategoryBadges(selectedRequest.product_category, 'md')}</div>
+                      <p className="mt-1.5 text-xs text-[#67767F]">
+                        📦 담당 부서 배정에 사용됩니다.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm font-medium text-[#67767F]">고객</p>
@@ -3200,6 +3305,16 @@ export default function DashboardPage() {
                   <p className="text-sm font-medium text-[#67767F]">요청구분</p>
                   <p className="text-[#101820]">{selectedRequest.category_of_request}</p>
                 </div>
+                {needsProductCategory(selectedRequest.category_of_request) && (
+                  <div>
+                    <p className="text-sm font-medium text-[#67767F]">품목구분</p>
+                    <div className="mt-1">
+                      {renderProductCategoryBadges(selectedRequest.product_category, 'md') ?? (
+                        <p className="text-[#B2B4B8]">-</p>
+                      )}
+                    </div>
+                  </div>
+                )}
                 <div>
                   <p className="text-sm font-medium text-[#67767F]">품목코드</p>
                   <p className="text-[#101820]">{selectedRequest.erp_code}</p>
@@ -3563,7 +3678,77 @@ export default function DashboardPage() {
                     />
                   </div>
                 </div>
-                
+
+                {/* 품목 구분 선택 (수량 삭제 / 품목 추가 / 제품 추가 요청 시에만 표시) */}
+                {needsProductCategory(newRequest.category_of_request) && (
+                  <div className="rounded-lg border-2 border-[#971B2F]/20 bg-[#971B2F]/5 p-4">
+                    <div className="mb-2 flex items-center justify-between">
+                      <Label className="text-sm font-semibold text-[#101820]">
+                        품목 구분 <span className="text-[#971B2F]">*</span>
+                      </Label>
+                      <Package className="h-4 w-4 text-[#971B2F]" />
+                    </div>
+                    <p className="mb-3 text-xs text-[#67767F]">
+                      요청하려는 품목의 구분을 선택해주세요. 중복 선택 가능하며, 선택 후 다시 클릭하면 취소됩니다.
+                    </p>
+                    <div className="grid grid-cols-3 gap-3">
+                      {PRODUCT_CATEGORIES.map((category) => {
+                        const isChecked = productCategory.includes(category.value);
+                        return (
+                          <div
+                            key={category.value}
+                            className={`flex cursor-pointer items-center space-x-2 rounded-md border px-3 py-2 transition-colors ${
+                              isChecked
+                                ? 'border-[#971B2F] bg-[#971B2F]/10'
+                                : 'border-gray-200 bg-white hover:border-[#971B2F]/40 hover:bg-[#971B2F]/5'
+                            }`}
+                            onClick={() => {
+                              setProductCategory((prev) =>
+                                prev.includes(category.value)
+                                  ? prev.filter((v) => v !== category.value)
+                                  : [...prev, category.value]
+                              );
+                            }}
+                          >
+                            <Checkbox
+                              id={`product-category-${category.value}`}
+                              checked={isChecked}
+                              onCheckedChange={(checked) => {
+                                setProductCategory((prev) =>
+                                  checked
+                                    ? [...prev, category.value]
+                                    : prev.filter((v) => v !== category.value)
+                                );
+                              }}
+                              className="border-[#971B2F] data-[state=checked]:bg-[#971B2F] data-[state=checked]:border-[#971B2F]"
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                            <Label
+                              htmlFor={`product-category-${category.value}`}
+                              className="cursor-pointer text-sm font-medium"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {category.label}
+                            </Label>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {productCategory.length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {productCategory.map((cat) => (
+                          <span
+                            key={cat}
+                            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${getProductCategoryColor(cat)}`}
+                          >
+                            {cat}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* 품목 추가 입력 필드 */}
                 <div className="grid grid-cols-12 gap-2 items-end">
                   <div className="col-span-4 flex flex-col gap-1">
@@ -3760,7 +3945,7 @@ export default function DashboardPage() {
                     </div>
                   </div>
                 )}
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-3 flex-wrap">
                 {selectedNotification.type === 'approved' ? (
                   <>
                     <CheckCircle2 className="h-6 w-6 text-green-600" />
@@ -3771,6 +3956,12 @@ export default function DashboardPage() {
                     <XCircle className="h-6 w-6 text-red-600" />
                     <span className="text-lg font-semibold text-red-600">반려됨</span>
                   </>
+                )}
+                {selectedNotification.requests?.product_category && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm">📦</span>
+                    {renderProductCategoryBadges(selectedNotification.requests.product_category, 'md')}
+                  </div>
                 )}
                 <span className="ml-auto text-sm text-[#67767F]">
                   {format(new Date(selectedNotification.created_at), 'yyyy-MM-dd HH:mm')}
@@ -3802,6 +3993,17 @@ export default function DashboardPage() {
                     {selectedNotification.requests?.category_of_request || '-'}
                   </p>
                 </div>
+                {selectedNotification.requests?.category_of_request &&
+                  needsProductCategory(selectedNotification.requests.category_of_request) && (
+                    <div>
+                      <Label className="text-sm text-[#67767F]">품목구분</Label>
+                      <div className="mt-1">
+                        {renderProductCategoryBadges(selectedNotification.requests?.product_category, 'md') ?? (
+                          <p className="text-[#B2B4B8]">-</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -4235,6 +4437,16 @@ export default function DashboardPage() {
                   <p className="text-sm font-medium text-[#67767F]">요청구분</p>
                   <p className="text-[#101820]">{detailRequest.category_of_request}</p>
                 </div>
+                {needsProductCategory(detailRequest.category_of_request) && (
+                  <div>
+                    <p className="text-sm font-medium text-[#67767F]">품목구분</p>
+                    <div className="mt-1">
+                      {renderProductCategoryBadges(detailRequest.product_category, 'md') ?? (
+                        <p className="text-[#B2B4B8]">-</p>
+                      )}
+                    </div>
+                  </div>
+                )}
                 <div>
                   <p className="text-sm font-medium text-[#67767F]">품목코드</p>
                   <p className="text-[#101820]">{detailRequest.erp_code || '-'}</p>
