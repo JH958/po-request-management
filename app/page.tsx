@@ -69,7 +69,7 @@ import { formatDate, calculateDaysLeft } from '@/lib/dashboard-utils';
 import { format as formatDateRange, format, formatDistanceToNow } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import type { DateRange } from 'react-day-picker';
-import { Download, Bell, CheckCircle2, XCircle, AlertCircle, Edit, Plus, Search, ClipboardList, Clock, Calendar as CalendarIcon, Database, Globe, Package } from 'lucide-react';
+import { Download, Bell, CheckCircle2, XCircle, AlertCircle, Edit, Plus, Search, ClipboardList, Clock, Calendar as CalendarIcon, Database, Globe, Package, RefreshCw, BarChart3 } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
@@ -78,6 +78,19 @@ import {
 } from '@/components/ui/tooltip';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import {
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+  Legend,
+  ResponsiveContainer,
+} from 'recharts';
 
 /**
  * 오류 객체에서 Supabase/PostgREST 에러 필드를 안전하게 추출하는 헬퍼
@@ -159,6 +172,9 @@ const renderProductCategoryBadges = (category: string | null | undefined, size: 
  */
 const needsProductCategory = (categoryOfRequest: string): boolean =>
   ['수량 삭제', '품목 추가', '제품 추가'].includes(categoryOfRequest);
+
+type ChartData = { name: string; count: number };
+type StatusData = { name: '승인' | '반려' | '대기'; value: number; percentage: number };
 
 /**
  * 확정 수량 입력값을 검증하는 헬퍼
@@ -345,9 +361,17 @@ export default function DashboardPage() {
 
   // 관리자 페이지 전용 상태
   const [adminRequests, setAdminRequests] = useState<PORequest[]>([]);
-  const [adminStats, setAdminStats] = useState<DashboardStats>({ total: 0, pending: 0, approved: 0, rejected: 0 });
+  const [, setAdminStats] = useState<DashboardStats>({ total: 0, pending: 0, approved: 0, rejected: 0 });
   const [adminLoading, setAdminLoading] = useState(false);
   const [adminError, setAdminError] = useState<string | null>(null);
+
+  // 관리자 대시보드(차트) 전용 상태
+  const [customerStats, setCustomerStats] = useState<ChartData[]>([]);
+  const [departmentStats, setDepartmentStats] = useState<ChartData[]>([]);
+  const [categoryStats, setCategoryStats] = useState<ChartData[]>([]);
+  const [reasonStats, setReasonStats] = useState<ChartData[]>([]);
+  const [statusStats, setStatusStats] = useState<StatusData[]>([]);
+  const [activeTab, setActiveTab] = useState<'customer' | 'department'>('customer');
 
   // 요청자 페이지 전용 상태
   const [requesterPendingRequests, setRequesterPendingRequests] = useState<PORequest[]>([]);
@@ -861,6 +885,75 @@ export default function DashboardPage() {
   }, []);
 
   /**
+   * 관리자 대시보드(차트) 통계를 계산하는 헬퍼
+   */
+  const calculateStatistics = useCallback((requests: PORequest[]) => {
+    if (!requests || requests.length === 0) {
+      setCustomerStats([]);
+      setDepartmentStats([]);
+      setCategoryStats([]);
+      setReasonStats([]);
+      setStatusStats([]);
+      return;
+    }
+
+    const reduceCounts = (values: Array<string | null | undefined>) =>
+      values.reduce<Record<string, number>>((acc, v) => {
+        const raw = (v ?? '').toString();
+        const key = raw.trim() ? raw.trim() : '-';
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      }, {});
+
+    // 1) 고객처별 (상위 10개)
+    const customerCounts = reduceCounts(requests.map((r) => r.customer));
+    const customerData: ChartData[] = Object.entries(customerCounts)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+    setCustomerStats(customerData);
+
+    // 2) 부서별
+    const deptCounts = reduceCounts(requests.map((r) => r.requesting_dept));
+    const deptData: ChartData[] = Object.entries(deptCounts)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+    setDepartmentStats(deptData);
+
+    // 3) 요청 구분별
+    const categoryCounts = reduceCounts(requests.map((r) => r.category_of_request));
+    const categoryData: ChartData[] = Object.entries(categoryCounts)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+    setCategoryStats(categoryData);
+
+    // 4) 요청 사유별 (reason_for_request 기준)
+    const reasonCounts = reduceCounts(requests.map((r) => r.reason_for_request));
+    const reasonData: ChartData[] = Object.entries(reasonCounts)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+    setReasonStats(reasonData);
+
+    // 5) 상태별 (승인/반려/대기)
+    const total = requests.length;
+    const statusCounts = requests.reduce<Record<string, number>>((acc, r) => {
+      const key = r.status ?? 'pending';
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {});
+
+    const approved = statusCounts.approved || 0;
+    const rejected = statusCounts.rejected || 0;
+    const pending = statusCounts.pending || 0;
+    const statusData: StatusData[] = [
+      { name: '승인', value: approved, percentage: total ? Math.round((approved / total) * 100) : 0 },
+      { name: '반려', value: rejected, percentage: total ? Math.round((rejected / total) * 100) : 0 },
+      { name: '대기', value: pending, percentage: total ? Math.round((pending / total) * 100) : 0 },
+    ];
+    setStatusStats(statusData);
+  }, []);
+
+  /**
    * 요청자 모드: 검토 대기 요청 조회 (출하일 기준 정렬, 부서별 필터링)
    */
   const fetchRequesterPendingRequests = useCallback(async () => {
@@ -995,6 +1088,14 @@ export default function DashboardPage() {
       loadAdminData();
     }
   }, [pageMode, isAdminAuthenticated, user, fetchAdminStats, fetchAdminRequests]);
+
+  /**
+   * 관리자 요청 목록 변경 시 차트 통계 재계산
+   */
+  useEffect(() => {
+    if (pageMode !== 'admin' || !isAdminAuthenticated) return;
+    calculateStatistics(adminRequests);
+  }, [pageMode, isAdminAuthenticated, adminRequests, calculateStatistics]);
 
   /**
    * 페이지 모드 변경 핸들러
@@ -2911,51 +3012,211 @@ export default function DashboardPage() {
               <p className="text-[#67767F] mt-1">전체 요청 현황을 관리합니다.</p>
             </div>
 
-            {/* 요청 현황 대시보드 */}
-            {adminLoading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4" role="status" aria-label="통계 데이터 로딩 중">
-                {[...Array(4)].map((_, i) => (
-                  <div key={i} className="bg-white rounded-lg border border-[#E5E7EB] p-6 space-y-3">
-                    <Skeleton className="h-4 w-20" />
-                    <Skeleton className="h-8 w-16" />
-                    <Skeleton className="h-3 w-24" />
+            {/* 관리자 전용 대시보드 (차트) */}
+            {isReviewer && (
+              <div className="mb-8">
+                <div className="mb-6 flex items-center justify-between">
+                  <h2 className="text-2xl font-bold text-[#101820]">📊 대시보드</h2>
+                  <div className="flex items-center gap-4">
+                    <p className="text-sm text-[#67767F]">전체 {adminRequests.length}건</p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={async () => {
+                        setAdminLoading(true);
+                        setAdminError(null);
+                        try {
+                          await Promise.all([fetchAdminStats(), fetchAdminRequests()]);
+                        } finally {
+                          setAdminLoading(false);
+                        }
+                      }}
+                    >
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                      새로고침
+                    </Button>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <StatsCard
-                  title="전체 요청"
-                  value={adminStats.total}
-                  subtitle="클릭하여 상세 보기"
-                  icon={<ClipboardList className="h-8 w-8 text-[#971B2F]" />}
-                  themeColor="#A2B2C8"
-                  onClick={() => handleStatsCardClick('total', true)}
-                />
-                <StatsCard
-                  title="검토 대기"
-                  value={adminStats.pending}
-                  subtitle="클릭하여 상세 보기"
-                  icon={<Clock className="h-8 w-8 text-[#67767F]" />}
-                  themeColor="#67767F"
-                  onClick={() => handleStatsCardClick('pending', true)}
-                />
-                <StatsCard
-                  title="승인"
-                  value={adminStats.approved}
-                  subtitle="클릭하여 상세 보기"
-                  icon={<CheckCircle2 className="h-8 w-8 text-[#A2B2C8]" />}
-                  themeColor="#A2B2C8"
-                  onClick={() => handleStatsCardClick('approved', true)}
-                />
-                <StatsCard
-                  title="반려"
-                  value={adminStats.rejected}
-                  subtitle="클릭하여 상세 보기"
-                  icon={<XCircle className="h-8 w-8 text-[#971B2F]" />}
-                  themeColor="#971B2F"
-                  onClick={() => handleStatsCardClick('rejected', true)}
-                />
+                </div>
+
+                {adminRequests.length === 0 ? (
+                  <div className="rounded-lg border bg-gray-50 p-12 text-center">
+                    <BarChart3 className="mx-auto mb-4 h-12 w-12 text-gray-400" />
+                    <p className="text-sm text-[#67767F]">표시할 데이터가 없습니다.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {/* 차트 1: 고객처/부서별 */}
+                    <div className="rounded-lg border bg-white p-6">
+                      <div className="mb-4 flex items-center justify-between">
+                        <h3 className="text-lg font-semibold text-[#101820]">요청 건수 분석</h3>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className={cn(
+                              activeTab === 'customer' && 'border-[#971B2F] bg-[#971B2F] text-white hover:bg-[#7A1626] hover:text-white'
+                            )}
+                            onClick={() => setActiveTab('customer')}
+                          >
+                            고객처별
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className={cn(
+                              activeTab === 'department' && 'border-[#971B2F] bg-[#971B2F] text-white hover:bg-[#7A1626] hover:text-white'
+                            )}
+                            onClick={() => setActiveTab('department')}
+                          >
+                            부서별
+                          </Button>
+                        </div>
+                      </div>
+
+                      <ResponsiveContainer width="100%" height={400}>
+                        <BarChart data={activeTab === 'customer' ? customerStats : departmentStats}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                          <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} tick={{ fill: '#4B4F5A', fontSize: 12 }} />
+                          <YAxis tick={{ fill: '#4B4F5A', fontSize: 12 }} />
+                          <RechartsTooltip
+                            content={({ active, payload }) => {
+                              if (active && payload && payload.length) {
+                                return (
+                                  <div className="rounded-lg border-2 border-[#971B2F] bg-white p-3 shadow-xl">
+                                    <p className="mb-1 font-bold text-[#101820]">{(payload[0].payload as ChartData).name}</p>
+                                    <p className="text-sm font-semibold text-[#971B2F]">📊 {payload[0].value}건</p>
+                                  </div>
+                                );
+                              }
+                              return null;
+                            }}
+                          />
+                          <Bar dataKey="count" fill="#971B2F" radius={[8, 8, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    {/* 차트 2-3: 요청 구분/사유 */}
+                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                      {/* 차트 2: 요청 구분별 */}
+                      <div className="rounded-lg border bg-white p-6">
+                        <h3 className="mb-4 text-lg font-semibold text-[#101820]">요청 구분별 분석</h3>
+                        <ResponsiveContainer width="100%" height={300}>
+                          <BarChart data={categoryStats} layout="vertical" margin={{ left: 90 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                            <XAxis type="number" tick={{ fill: '#4B4F5A', fontSize: 12 }} />
+                            <YAxis dataKey="name" type="category" width={85} tick={{ fill: '#4B4F5A', fontSize: 11 }} />
+                            <RechartsTooltip
+                              content={({ active, payload }) => {
+                                if (active && payload && payload.length) {
+                                  const total = categoryStats.reduce((sum, item) => sum + item.count, 0);
+                                  const value = Number(payload[0].value || 0);
+                                  const percentage = total > 0 ? Math.round((value / total) * 100) : 0;
+                                  return (
+                                    <div className="rounded-lg border-2 border-[#971B2F] bg-white p-3 shadow-xl">
+                                      <p className="mb-1 font-bold text-[#101820]">{(payload[0].payload as ChartData).name}</p>
+                                      <p className="text-sm font-semibold text-[#971B2F]">📊 {value}건</p>
+                                      <p className="text-xs text-[#67767F]">전체의 {percentage}%</p>
+                                    </div>
+                                  );
+                                }
+                                return null;
+                              }}
+                            />
+                            <Bar dataKey="count" fill="#4B4F5A" radius={[0, 8, 8, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+
+                      {/* 차트 3: 요청 사유별 */}
+                      <div className="rounded-lg border bg-white p-6">
+                        <h3 className="mb-4 text-lg font-semibold text-[#101820]">요청 사유별 분석</h3>
+                        <ResponsiveContainer width="100%" height={300}>
+                          <BarChart data={reasonStats} layout="vertical" margin={{ left: 90 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                            <XAxis type="number" tick={{ fill: '#4B4F5A', fontSize: 12 }} />
+                            <YAxis dataKey="name" type="category" width={85} tick={{ fill: '#4B4F5A', fontSize: 11 }} />
+                            <RechartsTooltip
+                              content={({ active, payload }) => {
+                                if (active && payload && payload.length) {
+                                  const total = reasonStats.reduce((sum, item) => sum + item.count, 0);
+                                  const value = Number(payload[0].value || 0);
+                                  const percentage = total > 0 ? Math.round((value / total) * 100) : 0;
+                                  return (
+                                    <div className="rounded-lg border-2 border-[#971B2F] bg-white p-3 shadow-xl">
+                                      <p className="mb-1 font-bold text-[#101820]">{(payload[0].payload as ChartData).name}</p>
+                                      <p className="text-sm font-semibold text-[#971B2F]">📊 {value}건</p>
+                                      <p className="text-xs text-[#67767F]">전체의 {percentage}%</p>
+                                    </div>
+                                  );
+                                }
+                                return null;
+                              }}
+                            />
+                            <Bar dataKey="count" fill="#67767F" radius={[0, 8, 8, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+
+                    {/* 차트 4: 승인/반려 비율 */}
+                    <div className="flex justify-center">
+                      <div className="w-full max-w-2xl rounded-lg border bg-white p-6">
+                        <h3 className="mb-4 text-center text-lg font-semibold text-[#101820]">승인/반려 비율</h3>
+                        <ResponsiveContainer width="100%" height={400}>
+                          <PieChart>
+                            <Pie
+                              data={statusStats}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={80}
+                              outerRadius={130}
+                              paddingAngle={5}
+                              dataKey="value"
+                              label={({ name, percentage }) => `${name} ${percentage}%`}
+                            >
+                              {statusStats.map((entry, index) => {
+                                const colors: Record<string, string> = {
+                                  승인: '#10B981',
+                                  반려: '#EF4444',
+                                  대기: '#F59E0B',
+                                };
+                                return <Cell key={`cell-${index}`} fill={colors[entry.name] || '#6B7280'} />;
+                              })}
+                            </Pie>
+                            <RechartsTooltip
+                              content={({ active, payload }) => {
+                                if (active && payload && payload.length) {
+                                  const data = payload[0].payload as StatusData;
+                                  return (
+                                    <div className="rounded-lg border-2 border-[#971B2F] bg-white p-3 shadow-xl">
+                                      <p className="mb-1 font-bold text-[#101820]">{data.name}</p>
+                                      <p className="text-sm font-semibold text-[#971B2F]">📊 {data.value}건</p>
+                                      <p className="text-xs text-[#67767F]">전체의 {data.percentage}%</p>
+                                    </div>
+                                  );
+                                }
+                                return null;
+                              }}
+                            />
+                            <Legend
+                              verticalAlign="bottom"
+                              height={50}
+                              formatter={(value, entry) => {
+                                const data = (entry as unknown as { payload: StatusData }).payload;
+                                return (
+                                  <span className="text-sm">
+                                    {value}: <strong>{data.value}건</strong> ({data.percentage}%)
+                                  </span>
+                                );
+                              }}
+                            />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
