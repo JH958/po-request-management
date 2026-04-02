@@ -61,7 +61,7 @@ export const Header = ({ userName, userEmail, rightSlot }: HeaderProps) => {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-white shadow-sm">
-      <div className="container mx-auto flex h-16 items-center justify-between px-6">
+      <div className="flex h-16 w-full items-center justify-between px-8 lg:px-14 xl:px-20">
         {/* 서비스 로고/이름 */}
         <div className="flex items-center gap-2">
           <h1 className="text-2xl font-bold text-[#971B2F]">Purchase On - PO 변경 요청 관리 시스템</h1>

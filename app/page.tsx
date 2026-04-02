@@ -2609,8 +2609,8 @@ export default function DashboardPage() {
         }
       />
 
-      <div className="container mx-auto p-6">
-        <div className="max-w-7xl mx-auto space-y-6">
+      <div className="w-full px-8 py-6 lg:px-14 xl:px-20">
+        <div className="space-y-6">
           {/* Breadcrumb */}
           <Breadcrumb>
             <BreadcrumbList>
@@ -2709,10 +2709,10 @@ export default function DashboardPage() {
             />
           </div>
 
-          {/* 요청 접수 + 검토 대기 2열 레이아웃 */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-[600px] mb-6">
+          {/* 요청 접수 + 검토 대기: PC에서 1:2 비율 3열 */}
+          <div className="grid grid-cols-1 gap-6 mb-6 lg:grid-cols-3">
             {/* 요청 접수 영역 */}
-            <Card className="border-[#E5E7EB] flex flex-col">
+            <Card className="border-[#E5E7EB] flex flex-col min-h-[380px]">
               <CardHeader>
                 <CardTitle className="text-xl text-[#101820]">요청 접수</CardTitle>
               </CardHeader>
@@ -2745,13 +2745,13 @@ export default function DashboardPage() {
             </Card>
 
             {/* 검토 대기 영역 */}
-            <Card className="border-[#E5E7EB] flex flex-col">
+            <Card className="border-[#E5E7EB] flex flex-col min-h-[380px] lg:col-span-2">
               <CardHeader>
                 <CardTitle className="text-xl text-[#101820]">검토 대기</CardTitle>
               </CardHeader>
               <CardContent className="flex-1 p-6">
                 {requesterPendingLoading ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3" role="status" aria-label="검토 대기 로딩 중">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" role="status" aria-label="검토 대기 로딩 중">
                     {[...Array(4)].map((_, i) => (
                       <div key={i} className="bg-white rounded-lg border border-[#E5E7EB] p-4 space-y-2">
                         <Skeleton className="h-5 w-32" />
@@ -2766,7 +2766,7 @@ export default function DashboardPage() {
                   </div>
                 ) : (
                   <div className="flex flex-col h-full">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 flex-1">
+                    <div className="grid grid-cols-1 gap-3 flex-1 sm:grid-cols-2 xl:grid-cols-4">
                       {requesterPendingRequests.slice(0, 4).map((request) => {
                         const daysLeft = calculateDaysLeft(request.factory_shipment_date);
                         const ownRequest = isOwnRequest(request);
@@ -3161,10 +3161,27 @@ export default function DashboardPage() {
 
                     {/* 차트 4: 승인/반려 비율 */}
                     <div className="flex justify-center">
-                      <div className="w-full max-w-2xl rounded-lg border bg-white p-6">
+                      <div className="w-full max-w-3xl rounded-lg border bg-white p-6">
                         <h3 className="mb-4 text-center text-lg font-semibold text-[#101820]">승인/반려 비율</h3>
                         <ResponsiveContainer width="100%" height={400}>
                           <PieChart>
+                            <defs>
+                              {/* 승인: 버건디 그라디언트 */}
+                              <linearGradient id="gradApproved" x1="0" y1="0" x2="1" y2="1">
+                                <stop offset="0%" stopColor="#971B2F" />
+                                <stop offset="100%" stopColor="#C9485E" />
+                              </linearGradient>
+                              {/* 반려: 다크 그레이 그라디언트 */}
+                              <linearGradient id="gradRejected" x1="0" y1="0" x2="1" y2="1">
+                                <stop offset="0%" stopColor="#4B4F5A" />
+                                <stop offset="100%" stopColor="#767B88" />
+                              </linearGradient>
+                              {/* 대기: 블루 그레이 그라디언트 */}
+                              <linearGradient id="gradPending" x1="0" y1="0" x2="1" y2="1">
+                                <stop offset="0%" stopColor="#A2B2C8" />
+                                <stop offset="100%" stopColor="#C8D4E2" />
+                              </linearGradient>
+                            </defs>
                             <Pie
                               data={statusStats}
                               cx="50%"
@@ -3176,12 +3193,24 @@ export default function DashboardPage() {
                               label={({ name, percentage }) => `${name} ${percentage}%`}
                             >
                               {statusStats.map((entry, index) => {
-                                const colors: Record<string, string> = {
-                                  승인: '#10B981',
-                                  반려: '#EF4444',
-                                  대기: '#F59E0B',
+                                const gradients: Record<string, string> = {
+                                  승인: 'url(#gradApproved)',
+                                  반려: 'url(#gradRejected)',
+                                  대기: 'url(#gradPending)',
                                 };
-                                return <Cell key={`cell-${index}`} fill={colors[entry.name] || '#6B7280'} />;
+                                const solidColors: Record<string, string> = {
+                                  승인: '#971B2F',
+                                  반려: '#4B4F5A',
+                                  대기: '#A2B2C8',
+                                };
+                                return (
+                                  <Cell
+                                    key={`cell-${index}`}
+                                    fill={gradients[entry.name] || '#6B7280'}
+                                    stroke={solidColors[entry.name] || '#6B7280'}
+                                    strokeWidth={1}
+                                  />
+                                );
                               })}
                             </Pie>
                             <RechartsTooltip
@@ -3204,8 +3233,17 @@ export default function DashboardPage() {
                               height={50}
                               formatter={(value, entry) => {
                                 const data = (entry as unknown as { payload: StatusData }).payload;
+                                const dotColors: Record<string, string> = {
+                                  승인: '#971B2F',
+                                  반려: '#4B4F5A',
+                                  대기: '#A2B2C8',
+                                };
                                 return (
-                                  <span className="text-sm">
+                                  <span className="inline-flex items-center gap-1 text-sm">
+                                    <span
+                                      className="inline-block h-2.5 w-2.5 rounded-full"
+                                      style={{ background: dotColors[value] || '#6B7280' }}
+                                    />
                                     {value}: <strong>{data.value}건</strong> ({data.percentage}%)
                                   </span>
                                 );
