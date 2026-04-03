@@ -2856,7 +2856,6 @@ export default function DashboardPage() {
                     <SelectItem value="pending">검토대기</SelectItem>
                     <SelectItem value="approved">승인</SelectItem>
                     <SelectItem value="rejected">반려</SelectItem>
-                    <SelectItem value="completed">완료</SelectItem>
                   </SelectContent>
                 </Select>
                 <Select value={requesterFilterCustomer} onValueChange={setRequesterFilterCustomer}>
@@ -3305,7 +3304,6 @@ export default function DashboardPage() {
                     <SelectItem value="pending">검토대기</SelectItem>
                     <SelectItem value="approved">승인</SelectItem>
                     <SelectItem value="rejected">반려</SelectItem>
-                    <SelectItem value="completed">완료</SelectItem>
                   </SelectContent>
                 </Select>
                 <Select value={adminFilterCategory} onValueChange={setAdminFilterCategory}>
