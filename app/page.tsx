@@ -66,7 +66,14 @@ import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { formatDate, calculateDaysLeft } from '@/lib/dashboard-utils';
-import { format as formatDateRange, format, formatDistanceToNow } from 'date-fns';
+import {
+  format as formatDateRange,
+  format,
+  formatDistanceToNow,
+  isSameDay,
+  isSameMonth,
+  isSameWeek,
+} from 'date-fns';
 import { ko } from 'date-fns/locale';
 import type { DateRange } from 'react-day-picker';
 import { Download, Bell, CheckCircle2, XCircle, AlertCircle, Edit, Plus, Search, ClipboardList, Clock, Calendar as CalendarIcon, Database, Globe, Package, RefreshCw, BarChart3 } from 'lucide-react';
@@ -91,6 +98,54 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
+
+/**
+ * 요청 부서를 고객처/본사로 분류하는 헬퍼 (대시보드 필터용)
+ */
+const classifyDepartment = (department: string): 'customer' | 'headquarters' => {
+  if (department.endsWith('팀')) {
+    return 'headquarters';
+  }
+  return 'customer';
+};
+
+/**
+ * 고객처/본사 필터 적용
+ */
+const filterRequestsByLocation = (
+  requests: PORequest[],
+  filter: 'all' | 'customer' | 'headquarters'
+): PORequest[] => {
+  if (filter === 'all') return requests;
+  return requests.filter((req) => {
+    const type = classifyDepartment(req.requesting_dept || '');
+    return filter === 'customer' ? type === 'customer' : type === 'headquarters';
+  });
+};
+
+/**
+ * 일/주/월 기간 필터 적용 (현재 날짜 기준)
+ */
+const filterRequestsByPeriod = (
+  requests: PORequest[],
+  period: 'all' | 'daily' | 'weekly' | 'monthly'
+): PORequest[] => {
+  if (period === 'all') return requests; // 전체 기간
+  const now = new Date();
+  return requests.filter((req) => {
+    const requestDate = new Date(req.request_date);
+    if (Number.isNaN(requestDate.getTime())) return false;
+    if (period === 'daily') return isSameDay(requestDate, now);
+    if (period === 'weekly') return isSameWeek(requestDate, now, { weekStartsOn: 1 });
+    return isSameMonth(requestDate, now);
+  });
+};
+
+/**
+ * 가로 막대 Y축 라벨 말줄임
+ */
+const truncateChartLabel = (value: string, maxLen = 15): string =>
+  value.length > maxLen ? `${value.slice(0, maxLen)}...` : value;
 
 /**
  * 오류 객체에서 Supabase/PostgREST 에러 필드를 안전하게 추출하는 헬퍼
@@ -366,12 +421,13 @@ export default function DashboardPage() {
   const [adminError, setAdminError] = useState<string | null>(null);
 
   // 관리자 대시보드(차트) 전용 상태
-  const [customerStats, setCustomerStats] = useState<ChartData[]>([]);
   const [departmentStats, setDepartmentStats] = useState<ChartData[]>([]);
   const [categoryStats, setCategoryStats] = useState<ChartData[]>([]);
   const [reasonStats, setReasonStats] = useState<ChartData[]>([]);
   const [statusStats, setStatusStats] = useState<StatusData[]>([]);
-  const [activeTab, setActiveTab] = useState<'customer' | 'department'>('customer');
+  const [locationFilter, setLocationFilter] = useState<'all' | 'customer' | 'headquarters'>('all');
+  const [periodFilter, setPeriodFilter] = useState<'all' | 'daily' | 'weekly' | 'monthly'>('all');
+  const [showAllDeptCounts, setShowAllDeptCounts] = useState(false);
 
   // 요청자 페이지 전용 상태
   const [requesterPendingRequests, setRequesterPendingRequests] = useState<PORequest[]>([]);
@@ -402,6 +458,16 @@ export default function DashboardPage() {
   const [adminFilterCategory, setAdminFilterCategory] = useState('all');
   const [adminDateRange, setAdminDateRange] = useState<DateRange | undefined>();
   const [adminSortOrder, setAdminSortOrder] = useState('newest');
+
+  /**
+   * 관리자 차트용: 고객처/본사·기간 필터가 적용된 요청 목록
+   */
+  const filteredChartRequests = useMemo(() => {
+    let filtered = adminRequests;
+    filtered = filterRequestsByLocation(filtered, locationFilter);
+    filtered = filterRequestsByPeriod(filtered, periodFilter);
+    return filtered;
+  }, [adminRequests, locationFilter, periodFilter]);
 
   const [newRequest, setNewRequest] = useState(getInitialNewRequest('new'));
 
@@ -889,7 +955,6 @@ export default function DashboardPage() {
    */
   const calculateStatistics = useCallback((requests: PORequest[]) => {
     if (!requests || requests.length === 0) {
-      setCustomerStats([]);
       setDepartmentStats([]);
       setCategoryStats([]);
       setReasonStats([]);
@@ -905,15 +970,7 @@ export default function DashboardPage() {
         return acc;
       }, {});
 
-    // 1) 고객처별 (상위 10개)
-    const customerCounts = reduceCounts(requests.map((r) => r.customer));
-    const customerData: ChartData[] = Object.entries(customerCounts)
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 10);
-    setCustomerStats(customerData);
-
-    // 2) 부서별
+    // 1) 요청 건수: 요청 부서(requesting_dept) 기준 통합 집계
     const deptCounts = reduceCounts(requests.map((r) => r.requesting_dept));
     const deptData: ChartData[] = Object.entries(deptCounts)
       .map(([name, count]) => ({ name, count }))
@@ -1094,8 +1151,15 @@ export default function DashboardPage() {
    */
   useEffect(() => {
     if (pageMode !== 'admin' || !isAdminAuthenticated) return;
-    calculateStatistics(adminRequests);
-  }, [pageMode, isAdminAuthenticated, adminRequests, calculateStatistics]);
+    calculateStatistics(filteredChartRequests);
+  }, [pageMode, isAdminAuthenticated, filteredChartRequests, calculateStatistics]);
+
+  /**
+   * 차트 구분/기간 필터 변경 시 요청 건수 전체보기 상태 초기화
+   */
+  useEffect(() => {
+    setShowAllDeptCounts(false);
+  }, [locationFilter, periodFilter]);
 
   /**
    * 페이지 모드 변경 핸들러
@@ -3014,27 +3078,24 @@ export default function DashboardPage() {
             {/* 관리자 전용 대시보드 (차트) */}
             {isReviewer && (
               <div className="mb-8">
-                <div className="mb-6 flex items-center justify-between">
-                  <h2 className="text-2xl font-bold text-[#101820]">📊 대시보드</h2>
-                  <div className="flex items-center gap-4">
-                    <p className="text-sm text-[#67767F]">전체 {adminRequests.length}건</p>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={async () => {
-                        setAdminLoading(true);
-                        setAdminError(null);
-                        try {
-                          await Promise.all([fetchAdminStats(), fetchAdminRequests()]);
-                        } finally {
-                          setAdminLoading(false);
-                        }
-                      }}
-                    >
-                      <RefreshCw className="mr-2 h-4 w-4" />
-                      새로고침
-                    </Button>
-                  </div>
+                <div className="mb-4 flex flex-wrap items-center justify-end gap-4">
+                  <p className="text-sm text-[#67767F]">전체 {adminRequests.length}건</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      setAdminLoading(true);
+                      setAdminError(null);
+                      try {
+                        await Promise.all([fetchAdminStats(), fetchAdminRequests()]);
+                      } finally {
+                        setAdminLoading(false);
+                      }
+                    }}
+                  >
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    새로고침
+                  </Button>
                 </div>
 
                 {adminRequests.length === 0 ? (
@@ -3043,216 +3104,322 @@ export default function DashboardPage() {
                     <p className="text-sm text-[#67767F]">표시할 데이터가 없습니다.</p>
                   </div>
                 ) : (
-                  <div className="space-y-6">
-                    {/* 차트 1: 고객처/부서별 */}
-                    <div className="rounded-lg border bg-white p-6">
-                      <div className="mb-4 flex items-center justify-between">
-                        <h3 className="text-lg font-semibold text-[#101820]">요청 건수 분석</h3>
-                        <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className={cn(
-                              activeTab === 'customer' && 'border-[#971B2F] bg-[#971B2F] text-white hover:bg-[#7A1626] hover:text-white'
-                            )}
-                            onClick={() => setActiveTab('customer')}
-                          >
-                            고객처별
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className={cn(
-                              activeTab === 'department' && 'border-[#971B2F] bg-[#971B2F] text-white hover:bg-[#7A1626] hover:text-white'
-                            )}
-                            onClick={() => setActiveTab('department')}
-                          >
-                            부서별
-                          </Button>
+                  <>
+                    <div className="mb-6 rounded-lg border bg-white p-4">
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                        <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:gap-6">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Label className="text-sm font-semibold text-[#67767F]">구분</Label>
+                            <div className="flex flex-wrap gap-1">
+                              <Button
+                                variant={locationFilter === 'all' ? 'default' : 'outline'}
+                                size="sm"
+                                onClick={() => setLocationFilter('all')}
+                              >
+                                전체
+                              </Button>
+                              <Button
+                                variant={locationFilter === 'customer' ? 'default' : 'outline'}
+                                size="sm"
+                                onClick={() => setLocationFilter('customer')}
+                              >
+                                고객처
+                              </Button>
+                              <Button
+                                variant={locationFilter === 'headquarters' ? 'default' : 'outline'}
+                                size="sm"
+                                onClick={() => setLocationFilter('headquarters')}
+                              >
+                                본사
+                              </Button>
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Label className="text-sm font-semibold text-[#67767F]">기간</Label>
+                            <div className="flex flex-wrap gap-1">
+                              <Button
+                                variant={periodFilter === 'all' ? 'default' : 'outline'}
+                                size="sm"
+                                onClick={() => setPeriodFilter('all')}
+                              >
+                                전체
+                              </Button>
+                              <Button
+                                variant={periodFilter === 'daily' ? 'default' : 'outline'}
+                                size="sm"
+                                onClick={() => setPeriodFilter('daily')}
+                              >
+                                일별
+                              </Button>
+                              <Button
+                                variant={periodFilter === 'weekly' ? 'default' : 'outline'}
+                                size="sm"
+                                onClick={() => setPeriodFilter('weekly')}
+                              >
+                                주별
+                              </Button>
+                              <Button
+                                variant={periodFilter === 'monthly' ? 'default' : 'outline'}
+                                size="sm"
+                                onClick={() => setPeriodFilter('monthly')}
+                              >
+                                월별
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                        <p className="text-sm text-[#67767F]">
+                          필터 결과:{' '}
+                          <span className="font-semibold text-[#971B2F]">{filteredChartRequests.length}</span>건
+                        </p>
+                      </div>
+                    </div>
+
+                    {filteredChartRequests.length === 0 ? (
+                      <div className="rounded-lg border bg-gray-50 p-12 text-center">
+                        <BarChart3 className="mx-auto mb-4 h-12 w-12 text-gray-400" />
+                        <p className="text-gray-600">필터 조건에 맞는 데이터가 없습니다.</p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                        {/* 좌상: 승인/반려 비율 */}
+                        <div>
+                          <h3 className="mb-3 text-lg font-semibold text-[#101820]">승인/반려 비율</h3>
+                          <div className="rounded-lg border bg-white p-6">
+                            <ResponsiveContainer width="100%" height={350}>
+                              <PieChart>
+                                <defs>
+                                  <linearGradient id="gradApproved" x1="0" y1="0" x2="1" y2="1">
+                                    <stop offset="0%" stopColor="#971B2F" />
+                                    <stop offset="100%" stopColor="#C9485E" />
+                                  </linearGradient>
+                                  <linearGradient id="gradRejected" x1="0" y1="0" x2="1" y2="1">
+                                    <stop offset="0%" stopColor="#4B4F5A" />
+                                    <stop offset="100%" stopColor="#767B88" />
+                                  </linearGradient>
+                                  <linearGradient id="gradPending" x1="0" y1="0" x2="1" y2="1">
+                                    <stop offset="0%" stopColor="#A2B2C8" />
+                                    <stop offset="100%" stopColor="#C8D4E2" />
+                                  </linearGradient>
+                                </defs>
+                                <Pie
+                                  data={statusStats}
+                                  cx="50%"
+                                  cy="50%"
+                                  innerRadius={60}
+                                  outerRadius={100}
+                                  paddingAngle={5}
+                                  dataKey="value"
+                                  label={false}
+                                >
+                                  {statusStats.map((entry, index) => {
+                                    const gradients: Record<string, string> = {
+                                      승인: 'url(#gradApproved)',
+                                      반려: 'url(#gradRejected)',
+                                      대기: 'url(#gradPending)',
+                                    };
+                                    const solidColors: Record<string, string> = {
+                                      승인: '#971B2F',
+                                      반려: '#4B4F5A',
+                                      대기: '#A2B2C8',
+                                    };
+                                    return (
+                                      <Cell
+                                        key={`cell-${index}`}
+                                        fill={gradients[entry.name] || '#6B7280'}
+                                        stroke={solidColors[entry.name] || '#6B7280'}
+                                        strokeWidth={1}
+                                      />
+                                    );
+                                  })}
+                                </Pie>
+                                <RechartsTooltip
+                                  content={({ active, payload }) => {
+                                    if (active && payload && payload.length) {
+                                      const data = payload[0].payload as StatusData;
+                                      return (
+                                        <div className="rounded-lg border-2 border-[#971B2F] bg-white p-3 shadow-xl">
+                                          <p className="mb-1 font-bold text-[#101820]">{data.name}</p>
+                                          <p className="text-sm font-semibold text-[#971B2F]">📊 {data.value}건</p>
+                                          <p className="text-xs text-[#67767F]">전체의 {data.percentage}%</p>
+                                        </div>
+                                      );
+                                    }
+                                    return null;
+                                  }}
+                                />
+                                <Legend
+                                  verticalAlign="bottom"
+                                  height={50}
+                                  iconType="circle"
+                                  formatter={(value, entry) => {
+                                    const data = (entry as unknown as { payload: StatusData }).payload;
+                                    return `${value}: ${data.value}건 (${data.percentage}%)`;
+                                  }}
+                                />
+                              </PieChart>
+                            </ResponsiveContainer>
+                          </div>
+                        </div>
+
+                        {/* 우상: 요청 건수 (요청 부서 통합) */}
+                        <div>
+                          <h3 className="mb-3 text-lg font-semibold text-[#101820]">요청 건수</h3>
+                          <div className="rounded-lg border bg-white p-6">
+                            <div className="mb-4 flex justify-end">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setShowAllDeptCounts((v) => !v)}
+                              >
+                                {showAllDeptCounts ? '상위 5개만 보기' : '전체보기'}
+                              </Button>
+                            </div>
+                            <ResponsiveContainer width="100%" height={300}>
+                              <BarChart
+                                data={
+                                  showAllDeptCounts ? departmentStats : departmentStats.slice(0, 5)
+                                }
+                              >
+                                <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                                <XAxis
+                                  dataKey="name"
+                                  angle={-45}
+                                  textAnchor="end"
+                                  height={80}
+                                  tick={{ fill: '#4B4F5A', fontSize: 11 }}
+                                  tickFormatter={(v) => truncateChartLabel(String(v), 15)}
+                                />
+                                <YAxis tick={{ fill: '#4B4F5A', fontSize: 12 }} />
+                                <RechartsTooltip
+                                  content={({ active, payload }) => {
+                                    if (active && payload && payload.length) {
+                                      return (
+                                        <div className="rounded-lg border-2 border-[#971B2F] bg-white p-3 shadow-xl">
+                                          <p className="mb-1 font-bold text-[#101820]">
+                                            {(payload[0].payload as ChartData).name}
+                                          </p>
+                                          <p className="text-sm font-semibold text-[#971B2F]">
+                                            📊 {payload[0].value}건
+                                          </p>
+                                        </div>
+                                      );
+                                    }
+                                    return null;
+                                  }}
+                                />
+                                <Bar dataKey="count" fill="#971B2F" radius={[8, 8, 0, 0]} />
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
+                        </div>
+
+                        {/* 좌하: 요청 구분별 */}
+                        <div>
+                          <h3 className="mb-3 text-lg font-semibold text-[#101820]">요청 구분별 분석</h3>
+                          <div className="rounded-lg border bg-white p-6">
+                            <ResponsiveContainer width="100%" height={300}>
+                              <BarChart data={categoryStats} layout="vertical" margin={{ left: 8, right: 16, top: 4, bottom: 4 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                                <XAxis type="number" tick={{ fill: '#4B4F5A', fontSize: 12 }} />
+                                <YAxis
+                                  dataKey="name"
+                                  type="category"
+                                  width={120}
+                                  tick={(props: { x: number; y: number; payload: { value: string } }) => (
+                                    <g transform={`translate(${props.x},${props.y})`}>
+                                      <text
+                                        x={-112}
+                                        y={0}
+                                        dy="0.35em"
+                                        textAnchor="start"
+                                        fill="#4B4F5A"
+                                        fontSize={11}
+                                      >
+                                        {truncateChartLabel(String(props.payload.value), 14)}
+                                      </text>
+                                    </g>
+                                  )}
+                                />
+                                <RechartsTooltip
+                                  content={({ active, payload }) => {
+                                    if (active && payload && payload.length) {
+                                      const total = categoryStats.reduce((sum, item) => sum + item.count, 0);
+                                      const value = Number(payload[0].value || 0);
+                                      const percentage = total > 0 ? Math.round((value / total) * 100) : 0;
+                                      return (
+                                        <div className="rounded-lg border-2 border-[#971B2F] bg-white p-3 shadow-xl">
+                                          <p className="mb-1 font-bold text-[#101820]">
+                                            {(payload[0].payload as ChartData).name}
+                                          </p>
+                                          <p className="text-sm font-semibold text-[#971B2F]">📊 {value}건</p>
+                                          <p className="text-xs text-[#67767F]">전체의 {percentage}%</p>
+                                        </div>
+                                      );
+                                    }
+                                    return null;
+                                  }}
+                                />
+                                <Bar dataKey="count" fill="#4B4F5A" radius={[0, 8, 8, 0]} />
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
+                        </div>
+
+                        {/* 우하: 요청 사유별 */}
+                        <div>
+                          <h3 className="mb-3 text-lg font-semibold text-[#101820]">요청 사유별 분석</h3>
+                          <div className="rounded-lg border bg-white p-6">
+                            <ResponsiveContainer width="100%" height={300}>
+                              <BarChart data={reasonStats} layout="vertical" margin={{ left: 8, right: 16, top: 4, bottom: 4 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                                <XAxis type="number" tick={{ fill: '#4B4F5A', fontSize: 12 }} />
+                                <YAxis
+                                  dataKey="name"
+                                  type="category"
+                                  width={120}
+                                  tick={(props: { x: number; y: number; payload: { value: string } }) => (
+                                    <g transform={`translate(${props.x},${props.y})`}>
+                                      <text
+                                        x={-112}
+                                        y={0}
+                                        dy="0.35em"
+                                        textAnchor="start"
+                                        fill="#4B4F5A"
+                                        fontSize={11}
+                                      >
+                                        {truncateChartLabel(String(props.payload.value), 14)}
+                                      </text>
+                                    </g>
+                                  )}
+                                />
+                                <RechartsTooltip
+                                  content={({ active, payload }) => {
+                                    if (active && payload && payload.length) {
+                                      const total = reasonStats.reduce((sum, item) => sum + item.count, 0);
+                                      const value = Number(payload[0].value || 0);
+                                      const percentage = total > 0 ? Math.round((value / total) * 100) : 0;
+                                      return (
+                                        <div className="rounded-lg border-2 border-[#971B2F] bg-white p-3 shadow-xl">
+                                          <p className="mb-1 font-bold text-[#101820]">
+                                            {(payload[0].payload as ChartData).name}
+                                          </p>
+                                          <p className="text-sm font-semibold text-[#971B2F]">📊 {value}건</p>
+                                          <p className="text-xs text-[#67767F]">전체의 {percentage}%</p>
+                                        </div>
+                                      );
+                                    }
+                                    return null;
+                                  }}
+                                />
+                                <Bar dataKey="count" fill="#67767F" radius={[0, 8, 8, 0]} />
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
                         </div>
                       </div>
-
-                      <ResponsiveContainer width="100%" height={400}>
-                        <BarChart data={activeTab === 'customer' ? customerStats : departmentStats}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                          <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} tick={{ fill: '#4B4F5A', fontSize: 12 }} />
-                          <YAxis tick={{ fill: '#4B4F5A', fontSize: 12 }} />
-                          <RechartsTooltip
-                            content={({ active, payload }) => {
-                              if (active && payload && payload.length) {
-                                return (
-                                  <div className="rounded-lg border-2 border-[#971B2F] bg-white p-3 shadow-xl">
-                                    <p className="mb-1 font-bold text-[#101820]">{(payload[0].payload as ChartData).name}</p>
-                                    <p className="text-sm font-semibold text-[#971B2F]">📊 {payload[0].value}건</p>
-                                  </div>
-                                );
-                              }
-                              return null;
-                            }}
-                          />
-                          <Bar dataKey="count" fill="#971B2F" radius={[8, 8, 0, 0]} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-
-                    {/* 차트 2-3: 요청 구분/사유 */}
-                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                      {/* 차트 2: 요청 구분별 */}
-                      <div className="rounded-lg border bg-white p-6">
-                        <h3 className="mb-4 text-lg font-semibold text-[#101820]">요청 구분별 분석</h3>
-                        <ResponsiveContainer width="100%" height={300}>
-                          <BarChart data={categoryStats} layout="vertical" margin={{ left: 90 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                            <XAxis type="number" tick={{ fill: '#4B4F5A', fontSize: 12 }} />
-                            <YAxis dataKey="name" type="category" width={85} tick={{ fill: '#4B4F5A', fontSize: 11 }} />
-                            <RechartsTooltip
-                              content={({ active, payload }) => {
-                                if (active && payload && payload.length) {
-                                  const total = categoryStats.reduce((sum, item) => sum + item.count, 0);
-                                  const value = Number(payload[0].value || 0);
-                                  const percentage = total > 0 ? Math.round((value / total) * 100) : 0;
-                                  return (
-                                    <div className="rounded-lg border-2 border-[#971B2F] bg-white p-3 shadow-xl">
-                                      <p className="mb-1 font-bold text-[#101820]">{(payload[0].payload as ChartData).name}</p>
-                                      <p className="text-sm font-semibold text-[#971B2F]">📊 {value}건</p>
-                                      <p className="text-xs text-[#67767F]">전체의 {percentage}%</p>
-                                    </div>
-                                  );
-                                }
-                                return null;
-                              }}
-                            />
-                            <Bar dataKey="count" fill="#4B4F5A" radius={[0, 8, 8, 0]} />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
-
-                      {/* 차트 3: 요청 사유별 */}
-                      <div className="rounded-lg border bg-white p-6">
-                        <h3 className="mb-4 text-lg font-semibold text-[#101820]">요청 사유별 분석</h3>
-                        <ResponsiveContainer width="100%" height={300}>
-                          <BarChart data={reasonStats} layout="vertical" margin={{ left: 90 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                            <XAxis type="number" tick={{ fill: '#4B4F5A', fontSize: 12 }} />
-                            <YAxis dataKey="name" type="category" width={85} tick={{ fill: '#4B4F5A', fontSize: 11 }} />
-                            <RechartsTooltip
-                              content={({ active, payload }) => {
-                                if (active && payload && payload.length) {
-                                  const total = reasonStats.reduce((sum, item) => sum + item.count, 0);
-                                  const value = Number(payload[0].value || 0);
-                                  const percentage = total > 0 ? Math.round((value / total) * 100) : 0;
-                                  return (
-                                    <div className="rounded-lg border-2 border-[#971B2F] bg-white p-3 shadow-xl">
-                                      <p className="mb-1 font-bold text-[#101820]">{(payload[0].payload as ChartData).name}</p>
-                                      <p className="text-sm font-semibold text-[#971B2F]">📊 {value}건</p>
-                                      <p className="text-xs text-[#67767F]">전체의 {percentage}%</p>
-                                    </div>
-                                  );
-                                }
-                                return null;
-                              }}
-                            />
-                            <Bar dataKey="count" fill="#67767F" radius={[0, 8, 8, 0]} />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </div>
-
-                    {/* 차트 4: 승인/반려 비율 */}
-                    <div className="flex justify-center">
-                      <div className="w-full max-w-3xl rounded-lg border bg-white p-6">
-                        <h3 className="mb-4 text-center text-lg font-semibold text-[#101820]">승인/반려 비율</h3>
-                        <ResponsiveContainer width="100%" height={400}>
-                          <PieChart>
-                            <defs>
-                              {/* 승인: 버건디 그라디언트 */}
-                              <linearGradient id="gradApproved" x1="0" y1="0" x2="1" y2="1">
-                                <stop offset="0%" stopColor="#971B2F" />
-                                <stop offset="100%" stopColor="#C9485E" />
-                              </linearGradient>
-                              {/* 반려: 다크 그레이 그라디언트 */}
-                              <linearGradient id="gradRejected" x1="0" y1="0" x2="1" y2="1">
-                                <stop offset="0%" stopColor="#4B4F5A" />
-                                <stop offset="100%" stopColor="#767B88" />
-                              </linearGradient>
-                              {/* 대기: 블루 그레이 그라디언트 */}
-                              <linearGradient id="gradPending" x1="0" y1="0" x2="1" y2="1">
-                                <stop offset="0%" stopColor="#A2B2C8" />
-                                <stop offset="100%" stopColor="#C8D4E2" />
-                              </linearGradient>
-                            </defs>
-                            <Pie
-                              data={statusStats}
-                              cx="50%"
-                              cy="50%"
-                              innerRadius={80}
-                              outerRadius={130}
-                              paddingAngle={5}
-                              dataKey="value"
-                              label={({ name, percentage }) => `${name} ${percentage}%`}
-                            >
-                              {statusStats.map((entry, index) => {
-                                const gradients: Record<string, string> = {
-                                  승인: 'url(#gradApproved)',
-                                  반려: 'url(#gradRejected)',
-                                  대기: 'url(#gradPending)',
-                                };
-                                const solidColors: Record<string, string> = {
-                                  승인: '#971B2F',
-                                  반려: '#4B4F5A',
-                                  대기: '#A2B2C8',
-                                };
-                                return (
-                                  <Cell
-                                    key={`cell-${index}`}
-                                    fill={gradients[entry.name] || '#6B7280'}
-                                    stroke={solidColors[entry.name] || '#6B7280'}
-                                    strokeWidth={1}
-                                  />
-                                );
-                              })}
-                            </Pie>
-                            <RechartsTooltip
-                              content={({ active, payload }) => {
-                                if (active && payload && payload.length) {
-                                  const data = payload[0].payload as StatusData;
-                                  return (
-                                    <div className="rounded-lg border-2 border-[#971B2F] bg-white p-3 shadow-xl">
-                                      <p className="mb-1 font-bold text-[#101820]">{data.name}</p>
-                                      <p className="text-sm font-semibold text-[#971B2F]">📊 {data.value}건</p>
-                                      <p className="text-xs text-[#67767F]">전체의 {data.percentage}%</p>
-                                    </div>
-                                  );
-                                }
-                                return null;
-                              }}
-                            />
-                            <Legend
-                              verticalAlign="bottom"
-                              height={50}
-                              formatter={(value, entry) => {
-                                const data = (entry as unknown as { payload: StatusData }).payload;
-                                const dotColors: Record<string, string> = {
-                                  승인: '#971B2F',
-                                  반려: '#4B4F5A',
-                                  대기: '#A2B2C8',
-                                };
-                                return (
-                                  <span className="inline-flex items-center gap-1 text-sm">
-                                    <span
-                                      className="inline-block h-2.5 w-2.5 rounded-full"
-                                      style={{ background: dotColors[value] || '#6B7280' }}
-                                    />
-                                    {value}: <strong>{data.value}건</strong> ({data.percentage}%)
-                                  </span>
-                                );
-                              }}
-                            />
-                          </PieChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </div>
-                  </div>
+                    )}
+                  </>
                 )}
               </div>
             )}
