@@ -362,9 +362,8 @@ export default function DashboardPage() {
     return roles.includes(role);
   };
 
-  // jhee105@inbody.com 계정은 요청자와 검토자 권한 모두 가짐
-  const isRequester = hasRole('requester') || user?.email === 'jhee105@inbody.com';
-  const isReviewer = hasRole('reviewer') || hasRole('admin') || user?.email === 'jhee105@inbody.com';
+  const isRequester = hasRole('requester');
+  const isReviewer = hasRole('reviewer') || hasRole('admin');
   const isAdmin = hasRole('admin');
   const [requests, setRequests] = useState<PORequest[]>([]);
   const [stats, setStats] = useState<DashboardStats>({
@@ -418,6 +417,8 @@ export default function DashboardPage() {
   const [passwordInput, setPasswordInput] = useState('');
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
   const [passwordError, setPasswordError] = useState('');
+  /** 관리자 비밀번호 API 전송 중 */
+  const [passwordSubmitting, setPasswordSubmitting] = useState(false);
 
   // 관리자 페이지 전용 상태
   const [adminRequests, setAdminRequests] = useState<PORequest[]>([]);
@@ -740,6 +741,30 @@ export default function DashboardPage() {
   }, [authLoading, user]);
 
   /**
+   * 관리자 HttpOnly 세션 쿠키가 있으면 새로고침 후에도 관리자 인증 상태 복원
+   */
+  useEffect(() => {
+    if (authLoading || !user) {
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch('/api/admin/session', { credentials: 'include' });
+        const data = (await res.json()) as { ok?: boolean };
+        if (!cancelled && data.ok) {
+          setIsAdminAuthenticated(true);
+        }
+      } catch {
+        /* 세션 확인 실패 시 요청자 모드 유지 */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading, user]);
+
+  /**
    * 로그인된 사용자의 알림 목록을 초기 로드
    */
   useEffect(() => {
@@ -786,9 +811,11 @@ export default function DashboardPage() {
       }
 
       // 검색 필터 적용 (고객, 요청부서, 요청자, SO번호)
+      // PostgREST ilike의 와일드카드 특수문자(%, _)를 이스케이프 처리
       if (searchQuery.trim()) {
+        const escapedQuery = searchQuery.replace(/%/g, '\\%').replace(/_/g, '\\_');
         query = query.or(
-          `customer.ilike.%${searchQuery}%,requesting_dept.ilike.%${searchQuery}%,requester_name.ilike.%${searchQuery}%,so_number.ilike.%${searchQuery}%`
+          `customer.ilike.%${escapedQuery}%,requesting_dept.ilike.%${escapedQuery}%,requester_name.ilike.%${escapedQuery}%,so_number.ilike.%${escapedQuery}%`
         );
       }
 
@@ -1195,24 +1222,48 @@ export default function DashboardPage() {
         setPageMode('admin');
       }
     } else {
-      setPageMode('requester');
+      void (async () => {
+        try {
+          await fetch('/api/admin/logout', { method: 'POST', credentials: 'include' });
+        } catch {
+          /* 쿠키 삭제 실패해도 UI는 요청자 모드로 전환 */
+        }
+        setIsAdminAuthenticated(false);
+        setPageMode('requester');
+      })();
     }
   };
 
   /**
-   * 관리자 비밀번호 확인 핸들러
+   * 관리자 비밀번호 확인 핸들러 (서버 API 검증 + HttpOnly 쿠키)
    */
-  const handlePasswordSubmit = () => {
-    if (passwordInput === 'admin1234') {
-      setIsAdminAuthenticated(true);
-      setPageMode('admin');
-      setShowPasswordDialog(false);
-      setPasswordInput('');
-      setPasswordError('');
-      toast.success('관리자 모드로 전환되었습니다.');
-    } else {
-      setPasswordError('비밀번호가 올바르지 않습니다.');
+  const handlePasswordSubmit = async () => {
+    setPasswordSubmitting(true);
+    setPasswordError('');
+    try {
+      const res = await fetch('/api/admin/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ password: passwordInput }),
+      });
+      const data = (await res.json()) as { ok?: boolean; error?: string };
+      if (res.ok && data.ok) {
+        setIsAdminAuthenticated(true);
+        setPageMode('admin');
+        setShowPasswordDialog(false);
+        setPasswordInput('');
+        setPasswordError('');
+        toast.success('관리자 모드로 전환되었습니다.');
+      } else {
+        setPasswordError(data.error ?? '비밀번호가 올바르지 않습니다.');
+        setPageMode('requester');
+      }
+    } catch {
+      setPasswordError('서버와 통신할 수 없습니다. 잠시 후 다시 시도해주세요.');
       setPageMode('requester');
+    } finally {
+      setPasswordSubmitting(false);
     }
   };
 
@@ -1467,7 +1518,7 @@ export default function DashboardPage() {
       const supabase = createClient();
       
       // feasibility와 status를 모두 'approved'로 업데이트
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('requests')
         .update({
           feasibility: 'approved',
@@ -1479,20 +1530,12 @@ export default function DashboardPage() {
           reviewing_dept: profile.department,
           reviewed_at: new Date().toISOString(),
         })
-        .eq('id', approveRequestId)
-        .select();
+        .eq('id', approveRequestId);
 
       if (error) {
-        console.error('Supabase 오류:', {
-          code: error.code,
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-        });
         throw error;
       }
 
-      console.log('승인 성공:', data);
       if (isItemAdditionRequest && confirmedQuantity !== null) {
         if (confirmedQuantity < requestedQty) {
           toast.success(`확정 수량 ${confirmedQuantity}개로 승인되었습니다. (요청: ${requestedQty}개)`);
@@ -1595,7 +1638,7 @@ export default function DashboardPage() {
       const supabase = createClient();
       
       // feasibility와 status를 모두 'rejected'로 업데이트
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('requests')
         .update({
           feasibility: 'rejected',
@@ -1607,20 +1650,12 @@ export default function DashboardPage() {
           reviewing_dept: profile.department,
           reviewed_at: new Date().toISOString(),
         })
-        .eq('id', rejectRequestId)
-        .select();
+        .eq('id', rejectRequestId);
 
       if (error) {
-        console.error('Supabase 오류:', {
-          code: error.code,
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-        });
         throw error;
       }
 
-      console.log('거절 성공:', data);
       if (isItemAdditionRequest && confirmedQuantity !== null) {
         if (confirmedQuantity === 0) {
           toast.success('전량 대응 불가(확정 0개)로 반려되었습니다.');
@@ -2288,9 +2323,6 @@ export default function DashboardPage() {
         requestData.items = itemsData;
       }
       
-      console.log('=== 요청 생성 시작 ===');
-      console.log('전송할 데이터:', JSON.stringify(requestData, null, 2));
-
       const { data: createdRequest, error } = await supabase
         .from('requests')
         .insert(requestData)
@@ -2300,9 +2332,6 @@ export default function DashboardPage() {
       if (error) {
         throw error;
       }
-
-      console.log('=== 요청 생성 성공 ===');
-      console.log('생성된 요청 ID:', createdRequest.id);
 
       if (productCategory.length > 0 && needsProductCategory(newRequest.category_of_request)) {
         toast.success(`품목 구분 [${productCategory.join(', ')}]로 요청이 접수되었습니다.`);
@@ -2338,7 +2367,6 @@ export default function DashboardPage() {
               newRequest.customer,
               profile.full_name
             );
-            console.log('긴급 알람 전송 완료');
           } else {
             // 신규 접수된 건 알람 전송 (모든 사용자에게)
             await sendNewRequestNotification(
@@ -2348,7 +2376,6 @@ export default function DashboardPage() {
               profile.full_name,
               newRequest.priority
             );
-            console.log('신규 접수 알람 전송 완료');
           }
         } catch (notificationError) {
           // 알람 전송 실패는 무시 (콘솔에만 로깅)
@@ -3722,8 +3749,8 @@ export default function DashboardPage() {
                   setPasswordError('');
                 }}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    handlePasswordSubmit();
+                  if (e.key === 'Enter' && !passwordSubmitting) {
+                    void handlePasswordSubmit();
                   }
                 }}
                 placeholder="비밀번호를 입력하세요"
@@ -3740,11 +3767,15 @@ export default function DashboardPage() {
               setPasswordInput('');
               setPasswordError('');
               setPageMode('requester');
-            }}>
+            }} disabled={passwordSubmitting}>
               취소
             </Button>
-            <Button onClick={handlePasswordSubmit} className="bg-[#971B2F] hover:bg-[#7A1626]">
-              확인
+            <Button
+              onClick={() => void handlePasswordSubmit()}
+              className="bg-[#971B2F] hover:bg-[#7A1626]"
+              disabled={passwordSubmitting}
+            >
+              {passwordSubmitting ? '확인 중...' : '확인'}
             </Button>
           </DialogFooter>
         </DialogContent>

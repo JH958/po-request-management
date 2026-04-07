@@ -190,8 +190,8 @@ export const useAuth = (): UseAuthReturn => {
     user,
     profile,
     loading,
-    isRequester: hasRole('requester') || user?.email === 'jhee105@inbody.com',
-    isReviewer: hasRole('reviewer') || hasRole('admin') || user?.email === 'jhee105@inbody.com',
+    isRequester: hasRole('requester'),
+    isReviewer: hasRole('reviewer') || hasRole('admin'),
     isAdmin: hasRole('admin'),
   };
 };
