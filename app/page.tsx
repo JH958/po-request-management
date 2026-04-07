@@ -46,6 +46,8 @@ import {
 } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Header } from '@/components/common/Header';
+import { ManualModal } from '@/components/manual/ManualModal';
+import { shouldShowManual } from '@/lib/manualUtils';
 import { StatsCard } from '@/components/dashboard/StatsCard';
 import type { PORequest, DashboardStats, FeasibilityStatus, RequestStatus } from '@/types/request';
 import { sendUrgentRequestNotification, sendNewRequestNotification } from '@/lib/notification-utils';
@@ -80,7 +82,6 @@ import { Download, Bell, CheckCircle2, XCircle, AlertCircle, Edit, Plus, Search,
 import {
   Tooltip,
   TooltipContent,
-  TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -393,6 +394,10 @@ export default function DashboardPage() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNotifications, setShowNotifications] = useState(false);
+  /** 사용 가이드(매뉴얼) 모달 */
+  const [showManual, setShowManual] = useState(false);
+  /** 모달을 열 때마다 증가시켜 ManualModal을 리마운트(체크박스 등 초기화) */
+  const [manualModalKey, setManualModalKey] = useState(0);
   const [showNotificationDetail, setShowNotificationDetail] = useState(false);
   const [selectedNotification, setSelectedNotification] = useState<NotificationItem | null>(null);
   /** 품목 구분 선택값 목록 (수량 삭제 / 품목 추가 / 제품 추가 요청 시, 복수 선택 가능) */
@@ -717,6 +722,22 @@ export default function DashboardPage() {
       router.replace('/login');
     }
   }, [user, authLoading, router]);
+
+  /**
+   * 메인 진입 1초 후 매뉴얼 자동 표시 (localStorage·버전 조건 반영)
+   */
+  useEffect(() => {
+    if (authLoading || !user) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      if (shouldShowManual()) {
+        setManualModalKey((k) => k + 1);
+        setShowManual(true);
+      }
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [authLoading, user]);
 
   /**
    * 로그인된 사용자의 알림 목록을 초기 로드
@@ -2541,41 +2562,44 @@ export default function DashboardPage() {
       <Header
         userName={profile?.full_name || user.email?.split('@')[0] || '사용자'}
         userEmail={user.email || undefined}
-        rightSlot={
-          <div className="flex items-center gap-1">
-            <TooltipProvider delayDuration={0}>
-              {/* D365 링크 */}
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    className="relative flex h-9 w-9 items-center justify-center rounded-full p-0 hover:bg-gray-100"
-                    onClick={() => handleExternalLink(EXTERNAL_LINKS.D365)}
-                    aria-label="D365 ERP 시스템을 새 탭에서 열기"
-                  >
-                    <Database className="h-6 w-6 text-[#101820]" strokeWidth={2} />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>D365</TooltipContent>
-              </Tooltip>
+        onOpenManual={() => {
+          setManualModalKey((k) => k + 1);
+          setShowManual(true);
+        }}
+        toolbarStart={
+          <>
+            {/* D365 링크 */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  className="relative flex h-9 w-9 items-center justify-center rounded-full p-0 hover:bg-gray-100"
+                  onClick={() => handleExternalLink(EXTERNAL_LINKS.D365)}
+                  aria-label="D365 ERP 시스템을 새 탭에서 열기"
+                >
+                  <Database className="h-6 w-6 text-[#101820]" strokeWidth={2} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>D365</TooltipContent>
+            </Tooltip>
 
-              {/* GM 링크 */}
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    className="relative flex h-9 w-9 items-center justify-center rounded-full p-0 hover:bg-gray-100"
-                    onClick={() => handleExternalLink(EXTERNAL_LINKS.GM)}
-                    aria-label="GM 해외 발주 사이트를 새 탭에서 열기"
-                  >
-                    <Globe className="h-6 w-6 text-[#101820]" strokeWidth={2} />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>GM</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-
-            {/* 기존 알림 아이콘 */}
+            {/* GM 링크 */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  className="relative flex h-9 w-9 items-center justify-center rounded-full p-0 hover:bg-gray-100"
+                  onClick={() => handleExternalLink(EXTERNAL_LINKS.GM)}
+                  aria-label="GM 해외 발주 사이트를 새 탭에서 열기"
+                >
+                  <Globe className="h-6 w-6 text-[#101820]" strokeWidth={2} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>GM</TooltipContent>
+            </Tooltip>
+          </>
+        }
+        toolbarEnd={
             <Popover open={showNotifications} onOpenChange={setShowNotifications}>
             <PopoverTrigger asChild>
               <Button
@@ -2669,8 +2693,15 @@ export default function DashboardPage() {
               </div>
             </PopoverContent>
           </Popover>
-          </div>
         }
+      />
+
+      <ManualModal
+        key={manualModalKey}
+        open={showManual}
+        onOpenChange={setShowManual}
+        profileDepartment={profile?.department}
+        profileRole={profile?.role}
       />
 
       <div className="w-full px-8 py-6 lg:px-14 xl:px-20">
