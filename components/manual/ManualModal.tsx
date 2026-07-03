@@ -8,6 +8,7 @@ import { BookOpen } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -129,16 +130,15 @@ export const ManualModal = ({
       <DialogContent
         showCloseButton
         className="flex max-h-[85vh] max-w-[1000px] flex-col gap-4 overflow-hidden p-6 sm:max-w-[1000px]"
-        aria-labelledby="manual-dialog-title"
       >
         <DialogHeader className="shrink-0 space-y-1 text-left">
-          <DialogTitle
-            id="manual-dialog-title"
-            className="flex items-center gap-2 text-xl font-bold text-[#971B2F]"
-          >
+          <DialogTitle className="flex items-center gap-2 text-xl font-bold text-[#971B2F]">
             <BookOpen className="h-6 w-6 shrink-0" aria-hidden />
             Purchase On 사용 가이드
           </DialogTitle>
+          <DialogDescription className="sr-only">
+            Purchase On PO 변경 요청 관리 시스템 사용 가이드입니다.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="min-h-0 flex-1 overflow-y-auto pr-1">
