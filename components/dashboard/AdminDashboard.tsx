@@ -8,6 +8,7 @@ import { ClipboardList, Clock, CheckCircle2, XCircle, RefreshCw } from 'lucide-r
 import { Button } from '@/components/ui/button';
 import { StatsCard } from '@/components/dashboard/StatsCard';
 import { DashboardCharts } from '@/components/dashboard/DashboardCharts';
+import { FrozenDateChart } from '@/components/dashboard/FrozenDateChart';
 import { RequestHistoryTable } from '@/components/request/RequestHistoryTable';
 import { useAllRequests } from '@/hooks/use-requests';
 import { applyDashboardScope } from '@/lib/dashboard-scope';
@@ -105,6 +106,8 @@ export const AdminDashboard = (_props: AdminDashboardProps) => {
           onToggleDeptCounts={() => setShowAllDeptCounts((v) => !v)}
           isAdminView
         />
+
+        <FrozenDateChart requests={filteredChartRequests} />
       </div>
 
       <RequestHistoryTable

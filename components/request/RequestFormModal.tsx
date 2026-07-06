@@ -3,7 +3,7 @@
  */
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
 import { sendUrgentRequestNotification, sendNewRequestNotification } from '@/lib/notification-utils';
@@ -35,7 +35,7 @@ import {
   DOMESTIC_BRANCH_SHIPPING_METHODS,
   OVERSEAS_CUSTOMER_SHIPPING_METHODS,
   ALL_SHIPPING_METHODS,
-  PRODUCT_CATEGORIES,
+  FORM_PRODUCT_CATEGORIES,
 } from '@/lib/request-constants';
 import type { RequestTypeCard } from '@/lib/request-constants';
 import {
@@ -46,6 +46,9 @@ import {
   validateERPCode,
   asApiError,
 } from '@/lib/request-helpers';
+import { fetchFrozenSettingByCustomer } from '@/lib/frozen-date-api';
+import { resolveFrozenStatus } from '@/lib/frozen-date';
+import type { FrozenStatus } from '@/types/frozen-date';
 import { cn } from '@/lib/utils';
 
 interface UserProfile {
@@ -80,7 +83,7 @@ interface FormState {
 const getInitialForm = (): FormState => ({
   customer: '',
   so_number: '',
-  factory_shipment_date: new Date().toISOString().split('T')[0],
+  factory_shipment_date: '',
   desired_shipment_date: '',
   priority: '보통',
   shipping_method: '',
@@ -88,6 +91,13 @@ const getInitialForm = (): FormState => ({
   request_details: '',
   items: [],
 });
+
+/** 완전한 출하일(YYYY-MM-DD) 입력 여부 */
+const isCompleteShipDate = (value: string): boolean => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00`);
+  return !Number.isNaN(parsed.getTime());
+};
 
 export const RequestFormModal = ({
   open,
@@ -104,6 +114,10 @@ export const RequestFormModal = ({
   const [soNumberError, setSONumberError] = useState('');
   const [erpCodeError, setERPCodeError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [frozenStatus, setFrozenStatus] = useState<FrozenStatus>('unset');
+  const [frozenWarningOpen, setFrozenWarningOpen] = useState(false);
+  const lastFrozenWarnedDateRef = useRef('');
+  const shipDateRef = useRef('');
 
   const categoryLabel = requestType?.label ?? '';
   const isAddType = requestType ? isAddTypeValue(requestType.value) : false;
@@ -137,6 +151,10 @@ export const RequestFormModal = ({
     setProductCategory([]);
     setSONumberError('');
     setERPCodeError('');
+    setFrozenStatus('unset');
+    setFrozenWarningOpen(false);
+    lastFrozenWarnedDateRef.current = '';
+    shipDateRef.current = '';
   }, []);
 
   useEffect(() => {
@@ -148,6 +166,57 @@ export const RequestFormModal = ({
       setForm((prev) => ({ ...prev, customer: availableCustomers[0] }));
     }
   }, [open, availableCustomers, resetForm]);
+
+  useEffect(() => {
+    const shipDate = form.factory_shipment_date;
+
+    if (!open || !form.customer || !requestType || !profile.department || !isCompleteShipDate(shipDate)) {
+      setFrozenStatus('unset');
+      setFrozenWarningOpen(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const checkFrozen = async () => {
+      const setting = await fetchFrozenSettingByCustomer(form.customer);
+      if (cancelled || shipDateRef.current !== shipDate) return;
+
+      const status = resolveFrozenStatus({
+        setting,
+        requesterDepartment: profile.department,
+        requestTypeValue: requestType.value,
+        shipDate,
+        requestDate: new Date().toISOString().split('T')[0],
+      });
+
+      if (cancelled || shipDateRef.current !== shipDate) return;
+
+      setFrozenStatus(status);
+
+      if (status === 'after' && lastFrozenWarnedDateRef.current !== shipDate) {
+        lastFrozenWarnedDateRef.current = shipDate;
+        setFrozenWarningOpen(true);
+      }
+    };
+
+    void checkFrozen();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, form.customer, form.factory_shipment_date, requestType, profile.department]);
+
+  const handleFactoryShipmentDateChange = (value: string) => {
+    shipDateRef.current = value;
+
+    if (!value) {
+      lastFrozenWarnedDateRef.current = '';
+      setFrozenStatus('unset');
+      setFrozenWarningOpen(false);
+    }
+
+    setForm((prev) => ({ ...prev, factory_shipment_date: value }));
+  };
 
   const handleSONumberChange = (value: string) => {
     setForm((prev) => ({ ...prev, so_number: value }));
@@ -235,6 +304,10 @@ export const RequestFormModal = ({
       toast.error('고객은 필수 항목입니다.');
       return;
     }
+    if (!form.factory_shipment_date) {
+      toast.error('현재 출하일을 입력해주세요.');
+      return;
+    }
     if (isSoRequired && !form.so_number) {
       toast.error('SO번호는 필수 항목입니다.');
       return;
@@ -273,22 +346,32 @@ export const RequestFormModal = ({
       const supabase = createClient();
       const firstItem = form.items[0] ?? null;
       const dbRequestType = isAddType ? 'new' : 'existing';
+      const requestDate = new Date().toISOString().split('T')[0];
+      const frozenSetting = await fetchFrozenSettingByCustomer(form.customer);
+      const frozen_status = resolveFrozenStatus({
+        setting: frozenSetting,
+        requesterDepartment: profile.department,
+        requestTypeValue: requestType.value,
+        shipDate: form.factory_shipment_date,
+        requestDate,
+      });
 
       const requestData: Record<string, unknown> = {
         customer: form.customer,
         requesting_dept: profile.department,
         requester_id: userId,
         requester_name: profile.full_name,
-        request_date: new Date().toISOString().split('T')[0],
+        request_date: requestDate,
         category_of_request: categoryLabel,
         priority: form.priority,
         reason_for_request: form.reason_for_request,
         request_details: form.request_details,
         status: 'pending',
         completed: false,
+        frozen_status,
         request_type: dbRequestType,
         so_number: isAddType ? form.so_number || null : form.so_number,
-        factory_shipment_date: form.factory_shipment_date || new Date().toISOString().split('T')[0],
+        factory_shipment_date: form.factory_shipment_date,
         erp_code: firstItem?.erp_code || '',
         item_name: firstItem?.item_name || '',
         quantity: firstItem?.quantity ?? 0,
@@ -354,6 +437,7 @@ export const RequestFormModal = ({
   if (!requestType) return null;
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
         <DialogHeader>
@@ -369,7 +453,14 @@ export const RequestFormModal = ({
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>고객 <span className="text-red-500">*</span></Label>
-              <Select value={form.customer} onValueChange={(v) => setForm((p) => ({ ...p, customer: v }))}>
+              <Select
+                value={form.customer}
+                onValueChange={(v) => {
+                  lastFrozenWarnedDateRef.current = '';
+                  setFrozenWarningOpen(false);
+                  setForm((p) => ({ ...p, customer: v }));
+                }}
+              >
                 <SelectTrigger><SelectValue placeholder="고객을 선택하세요" /></SelectTrigger>
                 <SelectContent>
                   {availableCustomers.map((c) => (
@@ -392,12 +483,18 @@ export const RequestFormModal = ({
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>현재 출하일</Label>
+              <Label>현재 출하일 <span className="text-red-500">*</span></Label>
               <Input
                 type="date"
                 value={form.factory_shipment_date}
-                onChange={(e) => setForm((p) => ({ ...p, factory_shipment_date: e.target.value }))}
+                onChange={(e) => handleFactoryShipmentDateChange(e.target.value)}
               />
+              {isCompleteShipDate(form.factory_shipment_date) && frozenStatus === 'before' && (
+                <span className="text-xs text-gray-500">프로즌 이전</span>
+              )}
+              {isCompleteShipDate(form.factory_shipment_date) && frozenStatus === 'unset' && (
+                <span className="text-xs text-gray-400">프로즌 기준 미설정</span>
+              )}
             </div>
             <div className="space-y-2">
               <Label>희망 출하일</Label>
@@ -456,7 +553,7 @@ export const RequestFormModal = ({
                     <Package className="h-4 w-4 text-[#971B2F]" />
                   </div>
                   <div className="grid grid-cols-3 gap-3">
-                    {PRODUCT_CATEGORIES.map((cat) => {
+                    {FORM_PRODUCT_CATEGORIES.map((cat) => {
                       const checked = productCategory.includes(cat.value);
                       return (
                         <div
@@ -583,5 +680,35 @@ export const RequestFormModal = ({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <Dialog
+      open={frozenWarningOpen}
+      onOpenChange={(next) => {
+        if (next) setFrozenWarningOpen(true);
+      }}
+    >
+      <DialogContent
+        className="z-[60] max-w-md"
+        showCloseButton={false}
+        onPointerDownOutside={(e) => e.preventDefault()}
+        onEscapeKeyDown={(e) => e.preventDefault()}
+      >
+        <DialogHeader>
+          <DialogTitle className="text-[#971B2F]">프로즌 이후</DialogTitle>
+          <DialogDescription className="text-base text-[#101820]" role="alert">
+            프로즌 이후 - 프로즌된 발주 건이라 변경이 불가합니다. 그럼에도 변경 요청을 하시겠습니까?
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button
+            className="bg-[#971B2F] hover:bg-[#7A1626]"
+            onClick={() => setFrozenWarningOpen(false)}
+          >
+            확인
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 };

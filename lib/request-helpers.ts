@@ -82,18 +82,10 @@ export const isItemAdditionCategory = (category: string | null | undefined): boo
   category === '자재 추가';
 
 /**
- * 품목 구분 선택이 필요한 요청 구분인지 확인
+ * 품목 구분 선택이 필요한 요청 구분인지 확인 (제품/상품 추가·삭제만)
  */
 export const needsProductCategory = (categoryOfRequest: string): boolean =>
-  [
-    '수량 삭제',
-    '품목 추가',
-    '제품 추가',
-    '제품/상품 추가',
-    '자재 추가',
-    '제품/상품 삭제',
-    '자재 삭제',
-  ].includes(categoryOfRequest);
+  categoryOfRequest === '제품/상품 추가' || categoryOfRequest === '제품/상품 삭제';
 
 /**
  * 품목 목록 입력 영역 표시 여부
@@ -302,6 +294,7 @@ export const transformRequestData = (data: Record<string, unknown>[]): PORequest
     reviewed_at: (item.reviewed_at as string) || undefined,
     status: item.status as PORequest['status'],
     completed: item.completed as boolean,
+    frozen_status: (item.frozen_status as PORequest['frozen_status']) || 'unset',
     created_at: item.created_at as string,
     updated_at: item.updated_at as string,
     deleted_at: (item.deleted_at as string) || undefined,

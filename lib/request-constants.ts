@@ -51,6 +51,11 @@ export const PRODUCT_CATEGORIES = [
   { value: 'ALL', label: 'ALL', color: 'bg-orange-100 text-orange-800' },
 ] as const;
 
+/** 요청 작성 폼 품목 구분 (Spare parts 제외) */
+export const FORM_PRODUCT_CATEGORIES = PRODUCT_CATEGORIES.filter(
+  (c) => c.value !== 'Spare parts'
+);
+
 export interface RequestTypeCard {
   value: string;
   label: string;

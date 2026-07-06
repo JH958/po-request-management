@@ -12,6 +12,7 @@ import { Sidebar } from '@/components/common/Sidebar';
 import { ManualModal } from '@/components/manual/ManualModal';
 import { shouldShowManual } from '@/lib/manualUtils';
 import { EXTERNAL_LINKS } from '@/lib/request-constants';
+import { canAccessAdminSettings } from '@/lib/dashboard-scope';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
@@ -29,6 +30,7 @@ import {
 import { ProductCategoryBadges } from '@/components/common/ProductCategoryBadges';
 import { Bell, CheckCircle2, XCircle, Database, Globe } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { RequestConfigProvider } from '@/context/RequestConfigContext';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -91,6 +93,7 @@ export const AppShell = ({ children }: AppShellProps) => {
   }
 
   return (
+    <RequestConfigProvider>
     <div className="flex min-h-screen flex-col bg-[#F8F9FA]">
       <Header
         userName={profile?.full_name || user.email?.split('@')[0] || '사용자'}
@@ -218,7 +221,12 @@ export const AppShell = ({ children }: AppShellProps) => {
       />
 
       <div className="flex flex-1 overflow-hidden">
-        <Sidebar onOpenManual={openManual} />
+        <Sidebar
+          onOpenManual={openManual}
+          showAdminSettings={
+            profile ? canAccessAdminSettings(profile.department, profile.role) : false
+          }
+        />
         <main className="flex-1 overflow-y-auto px-6 py-6 lg:px-10 xl:px-14">
           {children}
         </main>
@@ -256,5 +264,6 @@ export const AppShell = ({ children }: AppShellProps) => {
         </DialogContent>
       </Dialog>
     </div>
+    </RequestConfigProvider>
   );
 };

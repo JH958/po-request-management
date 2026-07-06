@@ -21,6 +21,12 @@ export const getDashboardScope = (department: string, role: string): DashboardSc
 export const isAdminDashboard = (scope: DashboardScope): boolean => scope.scope === 'all';
 
 /**
+ * 관리자 설정 메뉴 접근 권한 여부
+ */
+export const canAccessAdminSettings = (department: string, role: string): boolean =>
+  role === 'admin' || Boolean(department?.includes('영업관리'));
+
+/**
  * 대시보드 범위에 맞게 요청 목록 필터링
  */
 export const applyDashboardScope = (requests: PORequest[], scope: DashboardScope): PORequest[] => {

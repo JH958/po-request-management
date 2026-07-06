@@ -7,6 +7,7 @@ import { useMemo, useState } from 'react';
 import { ClipboardList, Clock, CheckCircle2, XCircle } from 'lucide-react';
 import { StatsCard } from '@/components/dashboard/StatsCard';
 import { DashboardCharts } from '@/components/dashboard/DashboardCharts';
+import { FrozenDateChart } from '@/components/dashboard/FrozenDateChart';
 import { useAllRequests } from '@/hooks/use-requests';
 import { applyDashboardScope } from '@/lib/dashboard-scope';
 import {
@@ -96,6 +97,8 @@ export const UserDashboard = ({ department }: UserDashboardProps) => {
         filteredCount={filteredChartRequests.length}
         isAdminView={false}
       />
+
+      <FrozenDateChart requests={filteredChartRequests} />
     </div>
   );
 };

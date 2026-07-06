@@ -37,8 +37,9 @@ import {
   isItemAdditionCategory,
   needsProductCategory,
 } from '@/lib/request-helpers';
-import { ALL_CATEGORY_FILTER_OPTIONS } from '@/lib/request-constants';
+import { useRequestConfig } from '@/context/RequestConfigContext';
 import { ProductCategoryBadges } from '@/components/common/ProductCategoryBadges';
+import { FrozenStatusBadge } from '@/components/request/FrozenStatusBadge';
 import { cn } from '@/lib/utils';
 
 interface RequestHistoryTableProps {
@@ -54,6 +55,7 @@ export const RequestHistoryTable = ({
   showExcelExport = false,
   title = '요청 접수 내역',
 }: RequestHistoryTableProps) => {
+  const { categoryFilterOptions } = useRequestConfig();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterCategory, setFilterCategory] = useState('all');
@@ -164,6 +166,7 @@ export const RequestHistoryTable = ({
         수량: r.quantity || 0,
         요청사유: r.reason_for_request || '',
         '검토 상세': r.review_details || '-',
+        '프로즌 여부': r.frozen_status === 'before' ? '프로즌 이전' : r.frozen_status === 'after' ? '프로즌 이후' : '미설정',
         상태: getStatusLabel(r.status),
       }));
       const worksheet = XLSX.utils.json_to_sheet(exportData);
@@ -225,7 +228,7 @@ export const RequestHistoryTable = ({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">전체 구분</SelectItem>
-              {ALL_CATEGORY_FILTER_OPTIONS.map((cat) => (
+              {categoryFilterOptions.map((cat) => (
                 <SelectItem key={cat} value={cat}>
                   {cat}
                 </SelectItem>
@@ -316,7 +319,7 @@ export const RequestHistoryTable = ({
               <Table className="min-w-[1700px]">
                 <TableHeader className="sticky top-0 z-20 bg-white shadow-sm">
                   <TableRow>
-                    {['요청일', 'SO 번호', '고객', '요청부서', '요청자', '출하일', '요청구분', '품목구분', '품목코드', '품목명', '수량', '확정 수량', '요청사유', '검토 상세', '상태'].map(
+                    {['요청일', 'SO 번호', '고객', '요청부서', '요청자', '출하일', '요청구분', '품목구분', '품목코드', '품목명', '수량', '확정 수량', '요청사유', '검토 상세', '프로즌 여부', '상태'].map(
                       (h) => (
                         <TableHead key={h} className="sticky top-0 z-20 bg-white">
                           {h}
@@ -328,7 +331,7 @@ export const RequestHistoryTable = ({
                 <TableBody>
                   {filteredRequests.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={15} className="py-8 text-center text-[#67767F]">
+                      <TableCell colSpan={16} className="py-8 text-center text-[#67767F]">
                         요청 데이터가 없습니다.
                       </TableCell>
                     </TableRow>
@@ -370,6 +373,9 @@ export const RequestHistoryTable = ({
                         <TableCell>{r.reason_for_request}</TableCell>
                         <TableCell className="max-w-xs truncate" title={r.review_details || '-'}>
                           {r.review_details || '-'}
+                        </TableCell>
+                        <TableCell>
+                          <FrozenStatusBadge status={r.frozen_status} />
                         </TableCell>
                         <TableCell>
                           <Badge

@@ -3,7 +3,7 @@
  */
 'use client';
 
-import { REQUEST_REASONS } from '@/lib/request-constants';
+import { useRequestConfig } from '@/context/RequestConfigContext';
 import {
   Select,
   SelectContent,
@@ -24,6 +24,8 @@ interface RequestReasonSelectProps {
 }
 
 export const RequestReasonSelect = ({ value, onChange }: RequestReasonSelectProps) => {
+  const { requestReasons } = useRequestConfig();
+
   return (
     <TooltipProvider>
       <Select value={value} onValueChange={onChange}>
@@ -31,7 +33,7 @@ export const RequestReasonSelect = ({ value, onChange }: RequestReasonSelectProp
           <SelectValue placeholder="요청사유를 선택하세요" />
         </SelectTrigger>
         <SelectContent>
-          {REQUEST_REASONS.map((reason) => (
+          {requestReasons.map((reason) => (
             <Tooltip key={reason.value}>
               <TooltipTrigger asChild>
                 <SelectItem value={reason.value}>{reason.label}</SelectItem>

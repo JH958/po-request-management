@@ -3,7 +3,7 @@
  */
 'use client';
 
-import { REQUEST_TYPES } from '@/lib/request-constants';
+import { useRequestConfig } from '@/context/RequestConfigContext';
 import type { RequestTypeCard } from '@/lib/request-constants';
 import {
   Tooltip,
@@ -54,10 +54,12 @@ const getCardVariant = (value: string): CardVariant => {
 };
 
 export const RequestTypeGrid = ({ onSelect }: RequestTypeGridProps) => {
+  const { requestTypes } = useRequestConfig();
+
   return (
     <TooltipProvider>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {REQUEST_TYPES.map((type) => {
+        {requestTypes.map((type) => {
           const style = VARIANT_STYLES[getCardVariant(type.value)];
 
           return (

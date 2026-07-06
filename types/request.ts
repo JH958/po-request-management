@@ -57,6 +57,7 @@ export interface PORequest {
   reviewed_at?: string;
   status: RequestStatus;
   completed: boolean;
+  frozen_status?: 'before' | 'after' | 'unset';
   created_at: string;
   updated_at: string;
   deleted_at?: string;

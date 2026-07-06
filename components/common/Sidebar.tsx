@@ -13,15 +13,17 @@ import {
   BookOpen,
   ChevronLeft,
   ChevronRight,
+  Settings,
 } from 'lucide-react';
 
 const SIDEBAR_STORAGE_KEY = 'purchaseOnSidebarCollapsed';
 
 interface SidebarProps {
   onOpenManual: () => void;
+  showAdminSettings?: boolean;
 }
 
-export const Sidebar = ({ onOpenManual }: SidebarProps) => {
+export const Sidebar = ({ onOpenManual, showAdminSettings = false }: SidebarProps) => {
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === 'undefined') return false;
     try {
@@ -47,6 +49,9 @@ export const Sidebar = ({ onOpenManual }: SidebarProps) => {
     { href: '/', label: 'PO 현황', icon: LayoutDashboard },
     { href: '/request', label: '요청접수', icon: FileEdit },
     { href: '/review', label: '검토대기', icon: CheckSquare },
+    ...(showAdminSettings
+      ? [{ href: '/admin-settings', label: '관리자 설정', icon: Settings }]
+      : []),
   ];
 
   return (
