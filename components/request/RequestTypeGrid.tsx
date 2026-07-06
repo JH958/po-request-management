@@ -19,6 +19,19 @@ interface RequestTypeGridProps {
 
 type CardVariant = 'quantity' | 'change' | 'other';
 
+/** 요청구분 value → Product Tour data-tour 속성 매핑 */
+const REQUEST_TYPE_TOUR_MAP: Record<string, string> = {
+  product_add: 'request-card-product-add',
+  material_add: 'request-card-material-add',
+  product_delete: 'request-card-product-delete',
+  material_delete: 'request-card-material-delete',
+  code_change: 'request-card-code-change',
+  schedule_change: 'request-card-schedule-change',
+  shipping_change: 'request-card-shipping-change',
+  split_merge: 'request-card-split-merge',
+  etc: 'request-card-etc',
+};
+
 /** 추가·삭제 / 변경 / 기타·배송 계열별 통일 스타일 */
 const VARIANT_STYLES: Record<CardVariant, { base: string; hover: string }> = {
   /** 제품·자재 추가/삭제 (4개) — 브랜드 레드 계열 */
@@ -61,6 +74,7 @@ export const RequestTypeGrid = ({ onSelect }: RequestTypeGridProps) => {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {requestTypes.map((type) => {
           const style = VARIANT_STYLES[getCardVariant(type.value)];
+          const tourAttr = REQUEST_TYPE_TOUR_MAP[type.value];
 
           return (
             <Tooltip key={type.value}>
@@ -69,6 +83,7 @@ export const RequestTypeGrid = ({ onSelect }: RequestTypeGridProps) => {
                   type="button"
                   onClick={() => onSelect(type)}
                   aria-label={`${type.label} 요청 작성`}
+                  data-tour={tourAttr}
                   className={cn(
                     'rounded-lg border-2 p-6 text-center text-base font-semibold leading-snug transition-all duration-200',
                     style.base,

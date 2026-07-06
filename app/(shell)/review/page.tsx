@@ -62,6 +62,7 @@ export default function ReviewPage() {
           requests={requests}
           loading={historyLoading}
           title="전체 검토 이력"
+          tourPrefix="review"
         />
       </section>
 

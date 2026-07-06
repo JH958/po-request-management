@@ -99,7 +99,7 @@ export const DashboardCharts = ({
                 </div>
               </div>
             )}
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2" data-tour="po-status-period-filter">
               <Label className="text-sm font-semibold text-[#67767F]">기간</Label>
               <div className="flex flex-wrap gap-1">
                 {(['all', 'daily', 'weekly', 'monthly'] as const).map((f) => (
@@ -123,7 +123,7 @@ export const DashboardCharts = ({
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* 승인/반려 비율 */}
-        <div>
+        <div data-tour="po-status-approval-chart">
           <h3 className="mb-3 text-lg font-semibold text-[#101820]">승인/반려 비율</h3>
           <div className="rounded-lg border bg-white p-6">
             <ResponsiveContainer width="100%" height={350}>
@@ -203,7 +203,7 @@ export const DashboardCharts = ({
         </div>
 
         {/* 요청 건수 분석 (관리자) 또는 월별 추이 (일반) */}
-        <div>
+        <div data-tour="po-status-monthly-trend-chart">
           <h3 className="mb-3 text-lg font-semibold text-[#101820]">
             {isAdminView ? '요청 건수' : '월별 추이'}
           </h3>
@@ -249,7 +249,7 @@ export const DashboardCharts = ({
         </div>
 
         {/* 요청 구분별 */}
-        <div>
+        <div data-tour="po-status-request-type-chart">
           <h3 className="mb-3 text-lg font-semibold text-[#101820]">요청 구분별 분석</h3>
           <div className="rounded-lg border bg-white p-6">
             <ResponsiveContainer width="100%" height={300}>
@@ -276,7 +276,7 @@ export const DashboardCharts = ({
         </div>
 
         {/* 요청 사유별 또는 품목구분별 추이 */}
-        <div>
+        <div data-tour="po-status-item-category-trend-chart">
           <h3 className="mb-3 text-lg font-semibold text-[#101820]">
             {isAdminView ? '요청 사유별 분석' : '품목구분별 추이'}
           </h3>

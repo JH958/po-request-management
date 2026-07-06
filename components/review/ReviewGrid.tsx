@@ -38,7 +38,7 @@ export const ReviewGrid = ({ items, loading, currentUserId, onCardClick }: Revie
 
   if (items.length === 0) {
     return (
-      <div className="rounded-lg border bg-white py-12 text-center">
+      <div className="rounded-lg border bg-white py-12 text-center" data-tour="review-grid">
         <p className="text-[#67767F]">검토 대기 중인 요청이 없습니다.</p>
       </div>
     );
@@ -46,7 +46,10 @@ export const ReviewGrid = ({ items, loading, currentUserId, onCardClick }: Revie
 
   return (
     <>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div
+        className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
+        data-tour="review-grid"
+      >
         {visibleItems.map((request) => {
           const daysLeft = calculateDaysLeft(request.factory_shipment_date);
           const isOwn = currentUserId ? request.requester_id === currentUserId : false;

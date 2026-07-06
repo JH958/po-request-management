@@ -19,11 +19,11 @@ import {
 const SIDEBAR_STORAGE_KEY = 'purchaseOnSidebarCollapsed';
 
 interface SidebarProps {
-  onOpenManual: () => void;
+  onOpenTour?: () => void;
   showAdminSettings?: boolean;
 }
 
-export const Sidebar = ({ onOpenManual, showAdminSettings = false }: SidebarProps) => {
+export const Sidebar = ({ onOpenTour, showAdminSettings = false }: SidebarProps) => {
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === 'undefined') return false;
     try {
@@ -85,14 +85,16 @@ export const Sidebar = ({ onOpenManual, showAdminSettings = false }: SidebarProp
           </Link>
         ))}
 
-        <button
-          type="button"
-          onClick={onOpenManual}
-          className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
-        >
-          <BookOpen className="h-5 w-5 shrink-0" />
-          {!collapsed && <span>사용자가이드</span>}
-        </button>
+        {onOpenTour ? (
+          <button
+            type="button"
+            onClick={onOpenTour}
+            className="hidden items-center gap-3 rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 md:flex"
+          >
+            <BookOpen className="h-5 w-5 shrink-0" />
+            {!collapsed && <span>사용자가이드</span>}
+          </button>
+        ) : null}
       </nav>
     </aside>
   );

@@ -25,15 +25,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Package } from 'lucide-react';
-import type { PORequest, FeasibilityStatus, RequestStatus } from '@/types/request';
+import type { PORequest } from '@/types/request';
 import {
   isItemAdditionCategory,
   needsProductCategory,
@@ -64,9 +57,6 @@ export const ReviewFormModal = ({
   isAdmin,
   onSuccess,
 }: ReviewFormModalProps) => {
-  const [editingFeasibility, setEditingFeasibility] = useState<FeasibilityStatus | null>(null);
-  const [editingReviewDetails, setEditingReviewDetails] = useState('');
-  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [approveDialogOpen, setApproveDialogOpen] = useState(false);
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [reviewDetails, setReviewDetails] = useState('');
@@ -77,53 +67,10 @@ export const ReviewFormModal = ({
 
   useEffect(() => {
     if (request && open) {
-      setEditingFeasibility(request.feasibility || null);
-      setEditingReviewDetails(request.review_details || '');
       setConfirmedQuantity(request.confirmed_quantity ?? null);
       setReviewDetails('');
     }
   }, [request, open]);
-
-  const handleFeasibilityChange = async () => {
-    if (!request || !canReview) return;
-    if (!editingReviewDetails.trim()) {
-      toast.error('검토상세 내용을 입력해주세요.');
-      return;
-    }
-    if (!editingFeasibility) {
-      toast.error('가능여부를 선택해주세요.');
-      return;
-    }
-
-    try {
-      const supabase = createClient();
-      let newStatus: RequestStatus = 'pending';
-      if (editingFeasibility === 'approved') newStatus = 'approved';
-      else if (editingFeasibility === 'rejected') newStatus = 'rejected';
-
-      const { error } = await supabase
-        .from('requests')
-        .update({
-          feasibility: editingFeasibility,
-          status: newStatus,
-          review_details: editingReviewDetails,
-          reviewer_id: userId,
-          reviewer_name: profile.full_name,
-          reviewing_dept: profile.department,
-          reviewed_at: new Date().toISOString(),
-        })
-        .eq('id', request.id);
-
-      if (error) throw error;
-      toast.success('가능여부가 변경되었습니다.');
-      setConfirmDialogOpen(false);
-      onOpenChange(false);
-      onSuccess();
-    } catch (error) {
-      console.error('가능여부 변경 오류:', error);
-      toast.error('가능여부 변경 중 오류가 발생했습니다.');
-    }
-  };
 
   const handleConfirmApprove = async () => {
     if (!request || !canReview) return;
@@ -238,40 +185,6 @@ export const ReviewFormModal = ({
                 <p className="text-[#67767F]">요청상세</p>
                 <p className="whitespace-pre-wrap">{request.request_details || '-'}</p>
               </div>
-              {canReview && (
-                <>
-                  <div>
-                    <Label className="mb-2 block">가능여부</Label>
-                    <Select
-                      value={
-                        editingFeasibility === 'approved' ? '가능' :
-                        editingFeasibility === 'rejected' ? '불가능' :
-                        editingFeasibility === 'pending' ? '보류' : ''
-                      }
-                      onValueChange={(v) =>
-                        setEditingFeasibility(
-                          v === '가능' ? 'approved' : v === '불가능' ? 'rejected' : 'pending'
-                        )
-                      }
-                    >
-                      <SelectTrigger><SelectValue placeholder="선택" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="가능">가능</SelectItem>
-                        <SelectItem value="불가능">불가능</SelectItem>
-                        <SelectItem value="보류">보류</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="col-span-2">
-                    <Label className="mb-2 block">검토상세 *</Label>
-                    <Textarea
-                      value={editingReviewDetails}
-                      onChange={(e) => setEditingReviewDetails(e.target.value)}
-                      className="min-h-[100px]"
-                    />
-                  </div>
-                </>
-              )}
             </div>
           </div>
           <AlertDialogFooter className="flex-wrap gap-2">
@@ -286,27 +199,9 @@ export const ReviewFormModal = ({
                 <Button variant="destructive" onClick={() => { setReviewDetails(''); setRejectDialogOpen(true); }}>
                   반려
                 </Button>
-                <Button
-                  className="bg-[#971B2F] hover:bg-[#7A1626]"
-                  onClick={() => setConfirmDialogOpen(true)}
-                  disabled={!editingFeasibility || !editingReviewDetails.trim()}
-                >
-                  가능여부 확정
-                </Button>
               </>
             )}
             <AlertDialogCancel>닫기</AlertDialogCancel>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog open={confirmDialogOpen} onOpenChange={setConfirmDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader><AlertDialogTitle>가능여부 변경 확인</AlertDialogTitle></AlertDialogHeader>
-          <p className="text-sm text-[#67767F]">입력한 검토 내용으로 가능여부를 변경하시겠습니까?</p>
-          <AlertDialogFooter>
-            <AlertDialogCancel>취소</AlertDialogCancel>
-            <Button className="bg-[#971B2F]" onClick={() => void handleFeasibilityChange()}>확인</Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

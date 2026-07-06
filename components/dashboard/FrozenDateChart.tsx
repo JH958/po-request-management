@@ -45,7 +45,7 @@ export const FrozenDateChart = ({ requests }: FrozenDateChartProps) => {
   }
 
   return (
-    <div className="rounded-lg border bg-white p-6">
+    <div className="rounded-lg border bg-white p-6" data-tour="po-status-frozen-chart">
       <h3 className="mb-3 text-lg font-semibold text-[#101820]">프로즌 여부 분석</h3>
       <ResponsiveContainer width="100%" height={320}>
         <PieChart>

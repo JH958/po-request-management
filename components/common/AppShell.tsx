@@ -3,16 +3,16 @@
  */
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { useNotifications } from '@/hooks/use-notifications';
 import { Header } from '@/components/common/Header';
 import { Sidebar } from '@/components/common/Sidebar';
-import { ManualModal } from '@/components/manual/ManualModal';
-import { shouldShowManual } from '@/lib/manualUtils';
+import { TourLauncher } from '@/components/tour/TourLauncher';
+import { TourHost } from '@/components/tour/TourHost';
 import { EXTERNAL_LINKS } from '@/lib/request-constants';
-import { canAccessAdminSettings } from '@/lib/dashboard-scope';
+import { canAccessAdminSettings, getDashboardScope } from '@/lib/dashboard-scope';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
@@ -39,8 +39,13 @@ interface AppShellProps {
 export const AppShell = ({ children }: AppShellProps) => {
   const router = useRouter();
   const { user, profile, loading: authLoading } = useAuth();
-  const [showManual, setShowManual] = useState(false);
-  const [manualModalKey, setManualModalKey] = useState(0);
+  const [tourLauncherOpen, setTourLauncherOpen] = useState(false);
+  const [tourAfterComplete, setTourAfterComplete] = useState(false);
+
+  const showProductTour = useMemo(() => {
+    if (!profile) return false;
+    return getDashboardScope(profile.department, profile.role).scope === 'own';
+  }, [profile]);
 
   const {
     notifications,
@@ -61,25 +66,19 @@ export const AppShell = ({ children }: AppShellProps) => {
     }
   }, [user, authLoading, router]);
 
-  useEffect(() => {
-    if (authLoading || !user) return;
-    const timer = setTimeout(() => {
-      if (shouldShowManual()) {
-        setManualModalKey((k) => k + 1);
-        setShowManual(true);
-      }
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, [authLoading, user]);
-
   const handleExternalLink = (url: string) => {
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
-  const openManual = () => {
-    setManualModalKey((k) => k + 1);
-    setShowManual(true);
+  const openTourLauncher = () => {
+    setTourAfterComplete(false);
+    setTourLauncherOpen(true);
   };
+
+  const handleTourComplete = useCallback(() => {
+    setTourAfterComplete(true);
+    setTourLauncherOpen(true);
+  }, []);
 
   if (authLoading || !user) {
     return (
@@ -98,7 +97,7 @@ export const AppShell = ({ children }: AppShellProps) => {
       <Header
         userName={profile?.full_name || user.email?.split('@')[0] || '사용자'}
         userEmail={user.email || undefined}
-        onOpenManual={openManual}
+        onOpenTour={showProductTour ? openTourLauncher : undefined}
         toolbarStart={
           <>
             <Tooltip>
@@ -222,7 +221,7 @@ export const AppShell = ({ children }: AppShellProps) => {
 
       <div className="flex flex-1 overflow-hidden">
         <Sidebar
-          onOpenManual={openManual}
+          onOpenTour={showProductTour ? openTourLauncher : undefined}
           showAdminSettings={
             profile ? canAccessAdminSettings(profile.department, profile.role) : false
           }
@@ -232,13 +231,16 @@ export const AppShell = ({ children }: AppShellProps) => {
         </main>
       </div>
 
-      <ManualModal
-        key={manualModalKey}
-        open={showManual}
-        onOpenChange={setShowManual}
-        profileDepartment={profile?.department}
-        profileRole={profile?.role}
-      />
+      {showProductTour && (
+        <>
+          <TourLauncher
+            open={tourLauncherOpen}
+            onOpenChange={setTourLauncherOpen}
+            afterTour={tourAfterComplete}
+          />
+          <TourHost onTourComplete={handleTourComplete} />
+        </>
+      )}
 
       <Dialog open={showNotificationDetail} onOpenChange={setShowNotificationDetail}>
         <DialogContent className="max-w-lg">

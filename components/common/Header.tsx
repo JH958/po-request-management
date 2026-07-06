@@ -28,8 +28,8 @@ interface HeaderProps {
   userEmail?: string;
   /** D365·GM 등 매뉴얼 왼쪽에 올 도구 영역 */
   toolbarStart?: ReactNode;
-  /** true일 때 D365/GM과 알림 사이에 매뉴얼 버튼 표시 */
-  onOpenManual?: () => void;
+  /** true일 때 D365/GM과 알림 사이에 사용자가이드 버튼 표시 (PC 전용) */
+  onOpenTour?: () => void;
   /** 알림 등 매뉴얼 오른쪽 도구 영역 */
   toolbarEnd?: ReactNode;
 }
@@ -38,7 +38,7 @@ export const Header = ({
   userName,
   userEmail,
   toolbarStart,
-  onOpenManual,
+  onOpenTour,
   toolbarEnd,
 }: HeaderProps) => {
   const router = useRouter();
@@ -86,23 +86,23 @@ export const Header = ({
           <TooltipProvider delayDuration={0}>
             <div className="flex items-center gap-1">
               {toolbarStart}
-              {onOpenManual ? (
+              {onOpenTour ? (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
                       type="button"
                       variant="ghost"
-                      className="flex h-9 items-center gap-2 rounded-md px-2 py-2 hover:bg-gray-100 lg:px-3"
-                      onClick={onOpenManual}
-                      aria-label="Purchase On 사용 가이드 열기"
+                      className="hidden h-9 items-center gap-2 rounded-md px-2 py-2 hover:bg-gray-100 md:flex lg:px-3"
+                      onClick={onOpenTour}
+                      aria-label="Purchase On 사용자 가이드 열기"
                     >
                       <BookOpen className="h-5 w-5 shrink-0 text-[#101820]" strokeWidth={2} />
                       <span className="hidden text-sm font-medium text-[#101820] lg:inline">
-                        매뉴얼
+                        사용자가이드
                       </span>
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>매뉴얼</TooltipContent>
+                  <TooltipContent>사용자가이드</TooltipContent>
                 </Tooltip>
               ) : null}
             </div>

@@ -70,20 +70,22 @@ export const UserDashboard = ({ department }: UserDashboardProps) => {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold text-[#101820]">
-          PO 현황 <ClipboardList className="ml-1 inline-block size-7 text-[#971B2F]" />
-        </h1>
-        <p className="mt-1 text-[#67767F]">
-          {department} 소속 요청 현황을 확인합니다.
-        </p>
-      </div>
+      <div data-tour="po-status-header">
+        <div>
+          <h1 className="text-3xl font-bold text-[#101820]">
+            PO 현황 <ClipboardList className="ml-1 inline-block size-7 text-[#971B2F]" />
+          </h1>
+          <p className="mt-1 text-[#67767F]">
+            {department} 소속 요청 현황을 확인합니다.
+          </p>
+        </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <StatsCard title="전체 요청" value={stats.total} subtitle="소속 건수" icon={<ClipboardList className="h-8 w-8 text-[#971B2F]" />} themeColor="#A2B2C8" />
-        <StatsCard title="검토 대기" value={stats.pending} subtitle="대기 중" icon={<Clock className="h-8 w-8 text-[#67767F]" />} themeColor="#67767F" />
-        <StatsCard title="승인" value={stats.approved} subtitle="승인 완료" icon={<CheckCircle2 className="h-8 w-8 text-[#A2B2C8]" />} themeColor="#A2B2C8" />
-        <StatsCard title="반려" value={stats.rejected} subtitle="반려 처리" icon={<XCircle className="h-8 w-8 text-[#971B2F]" />} themeColor="#971B2F" />
+        <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <StatsCard title="전체 요청" value={stats.total} subtitle="소속 건수" icon={<ClipboardList className="h-8 w-8 text-[#971B2F]" />} themeColor="#A2B2C8" />
+          <StatsCard title="검토 대기" value={stats.pending} subtitle="대기 중" icon={<Clock className="h-8 w-8 text-[#67767F]" />} themeColor="#67767F" />
+          <StatsCard title="승인" value={stats.approved} subtitle="승인 완료" icon={<CheckCircle2 className="h-8 w-8 text-[#A2B2C8]" />} themeColor="#A2B2C8" />
+          <StatsCard title="반려" value={stats.rejected} subtitle="반려 처리" icon={<XCircle className="h-8 w-8 text-[#971B2F]" />} themeColor="#971B2F" />
+        </div>
       </div>
 
       <DashboardCharts

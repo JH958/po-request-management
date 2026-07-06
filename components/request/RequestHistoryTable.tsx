@@ -47,6 +47,8 @@ interface RequestHistoryTableProps {
   loading?: boolean;
   showExcelExport?: boolean;
   title?: string;
+  /** Product Tour data-tour 접두사 (request | review) */
+  tourPrefix?: 'request' | 'review';
 }
 
 export const RequestHistoryTable = ({
@@ -54,6 +56,7 @@ export const RequestHistoryTable = ({
   loading = false,
   showExcelExport = false,
   title = '요청 접수 내역',
+  tourPrefix,
 }: RequestHistoryTableProps) => {
   const { categoryFilterOptions } = useRequestConfig();
   const [searchTerm, setSearchTerm] = useState('');
@@ -201,7 +204,7 @@ export const RequestHistoryTable = ({
       </CardHeader>
       <CardContent>
         <div className="mb-4 flex flex-col gap-3 md:flex-row">
-          <div className="relative flex-1">
+          <div className="relative flex-1" data-tour={tourPrefix ? `${tourPrefix}-history-search` : undefined}>
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#67767F]" />
             <Input
               placeholder="SO 번호, 고객명, 품목명으로 검색..."
@@ -211,6 +214,10 @@ export const RequestHistoryTable = ({
               aria-label="요청 검색"
             />
           </div>
+          <div
+            className="flex flex-col gap-3 md:flex-row md:flex-wrap"
+            data-tour={tourPrefix ? `${tourPrefix}-history-filters` : undefined}
+          >
           <Select value={filterStatus} onValueChange={setFilterStatus}>
             <SelectTrigger className="w-full md:w-[140px]">
               <SelectValue placeholder="상태" />
@@ -287,6 +294,8 @@ export const RequestHistoryTable = ({
               </div>
             </PopoverContent>
           </Popover>
+          </div>
+          <div data-tour={tourPrefix ? `${tourPrefix}-history-sort` : undefined}>
           <Select value={sortOrder} onValueChange={setSortOrder}>
             <SelectTrigger className="w-full md:w-[170px]">
               <SelectValue placeholder="정렬" />
@@ -301,6 +310,7 @@ export const RequestHistoryTable = ({
               <SelectItem value="oldest">등록 오래된순</SelectItem>
             </SelectContent>
           </Select>
+          </div>
         </div>
 
         {loading ? (
@@ -317,7 +327,10 @@ export const RequestHistoryTable = ({
               onScroll={handleTableScroll}
             >
               <Table className="min-w-[1700px]">
-                <TableHeader className="sticky top-0 z-20 bg-white shadow-sm">
+                <TableHeader
+                  className="sticky top-0 z-20 bg-white shadow-sm"
+                  data-tour={tourPrefix ? `${tourPrefix}-history-table-header` : undefined}
+                >
                   <TableRow>
                     {['요청일', 'SO 번호', '고객', '요청부서', '요청자', '출하일', '요청구분', '품목구분', '품목코드', '품목명', '수량', '확정 수량', '요청사유', '검토 상세', '프로즌 여부', '상태'].map(
                       (h) => (

@@ -44,7 +44,7 @@ export default function RequestPage() {
       </section>
 
       <section>
-        <RequestHistoryTable requests={requests} loading={loading} title="요청 접수 내역" />
+        <RequestHistoryTable requests={requests} loading={loading} title="요청 접수 내역" tourPrefix="request" />
       </section>
 
       <RequestFormModal
