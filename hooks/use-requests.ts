@@ -8,14 +8,15 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
 import { asApiError, transformRequestData } from '@/lib/request-helpers';
+import { applyRequestListFilter } from '@/lib/request-access-scope';
+import type { RequestListFilterMode } from '@/lib/request-access-scope';
 import type { PORequest, DashboardStats } from '@/types/request';
 
 interface UseRequestsOptions {
   userId: string | undefined;
   department: string | undefined;
-  isAdmin: boolean;
-  isRequester: boolean;
-  isReviewer: boolean;
+  /** 조회 범위: 요청접수(요청부서) / 검토이력(고객·본사) */
+  filterMode?: RequestListFilterMode;
   enabled?: boolean;
 }
 
@@ -25,9 +26,7 @@ interface UseRequestsOptions {
 export const useRequests = ({
   userId,
   department,
-  isAdmin,
-  isRequester,
-  isReviewer,
+  filterMode = 'request-intake',
   enabled = true,
 }: UseRequestsOptions) => {
   const router = useRouter();
@@ -43,14 +42,7 @@ export const useRequests = ({
       const supabase = createClient();
 
       let query = supabase.from('requests').select('*').is('deleted_at', null);
-
-      const canViewAll =
-        isAdmin || department === '영업관리팀' || department === '제조관리팀';
-
-      if (!canViewAll && (isRequester || isReviewer) && department) {
-        query = query.eq('customer', department);
-      }
-
+      query = applyRequestListFilter(query, department, filterMode);
       query = query.order('created_at', { ascending: false });
 
       const { data, error } = await query;
@@ -81,7 +73,7 @@ export const useRequests = ({
     } finally {
       setLoading(false);
     }
-  }, [userId, department, isAdmin, isRequester, isReviewer, enabled, router]);
+  }, [userId, department, filterMode, enabled, router]);
 
   useEffect(() => {
     void fetchRequests();
@@ -132,12 +124,10 @@ export const useAllRequests = (enabled = true) => {
 export const usePendingRequests = ({
   userId,
   department,
-  isAdmin,
   enabled = true,
 }: {
   userId: string | undefined;
   department: string | undefined;
-  isAdmin: boolean;
   enabled?: boolean;
 }) => {
   const [pendingRequests, setPendingRequests] = useState<PORequest[]>([]);
@@ -154,10 +144,7 @@ export const usePendingRequests = ({
         .eq('status', 'pending')
         .is('deleted_at', null);
 
-      const allAccess = isAdmin || department === '영업관리팀' || department === '제조관리팀';
-      if (department && !allAccess) {
-        query = query.eq('customer', department);
-      }
+      query = applyRequestListFilter(query, department, 'review-history');
 
       const { data, error } = await query.order('factory_shipment_date', { ascending: true });
       if (error) throw error;
@@ -167,7 +154,7 @@ export const usePendingRequests = ({
     } finally {
       setLoading(false);
     }
-  }, [userId, department, isAdmin, enabled]);
+  }, [userId, department, enabled]);
 
   useEffect(() => {
     void fetchPending();

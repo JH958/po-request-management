@@ -12,13 +12,11 @@ import { RequestHistoryTable } from '@/components/request/RequestHistoryTable';
 import type { RequestTypeCard } from '@/lib/request-constants';
 
 export default function RequestPage() {
-  const { user, profile, isAdmin, isRequester, isReviewer } = useAuth();
+  const { user, profile, isAdmin } = useAuth();
   const { requests, loading, fetchRequests } = useRequests({
     userId: user?.id,
     department: profile?.department,
-    isAdmin,
-    isRequester,
-    isReviewer,
+    filterMode: 'request-intake',
   });
 
   const [selectedType, setSelectedType] = useState<RequestTypeCard | null>(null);

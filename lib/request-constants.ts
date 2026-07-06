@@ -93,17 +93,8 @@ export const REQUEST_REASONS: ReasonOption[] = [
   { value: '기타', label: '기타', description: '전쟁, 창고코드 미지정, 인증 이슈 등' },
 ];
 
-/** 요청구분 필터용 (신규 + 기존 레거시 값) */
-export const ALL_CATEGORY_FILTER_OPTIONS = [
-  ...REQUEST_TYPES.map((t) => t.label),
-  '품목 추가',
-  '제품 추가',
-  '수량 삭제',
-  '품목코드 변경',
-  '출하일정 변경',
-  '운송방법 변경',
-  '기타',
-] as const;
+/** 요청구분 필터 드롭다운용 (신규 요청구분 9개) */
+export const ALL_CATEGORY_FILTER_OPTIONS = REQUEST_TYPES.map((t) => t.label);
 
 export const EXTERNAL_LINKS = {
   D365: 'https://inbody.operations.dynamics.com/?cmp=IHQ&mi=DefaultDashboard',

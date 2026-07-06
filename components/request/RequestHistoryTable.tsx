@@ -74,11 +74,6 @@ export const RequestHistoryTable = ({
     [requests]
   );
 
-  const categoryOptions = useMemo(() => {
-    const fromData = Array.from(new Set(requests.map((r) => r.category_of_request).filter(Boolean)));
-    return Array.from(new Set([...ALL_CATEGORY_FILTER_OPTIONS, ...fromData]));
-  }, [requests]);
-
   const filteredRequests = useMemo(() => {
     let result = [...requests];
     const term = searchTerm.trim().toLowerCase();
@@ -230,7 +225,7 @@ export const RequestHistoryTable = ({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">전체 구분</SelectItem>
-              {categoryOptions.map((cat) => (
+              {ALL_CATEGORY_FILTER_OPTIONS.map((cat) => (
                 <SelectItem key={cat} value={cat}>
                   {cat}
                 </SelectItem>

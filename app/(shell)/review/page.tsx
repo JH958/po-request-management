@@ -12,18 +12,15 @@ import { RequestHistoryTable } from '@/components/request/RequestHistoryTable';
 import type { PORequest } from '@/types/request';
 
 export default function ReviewPage() {
-  const { user, profile, isAdmin, isRequester, isReviewer } = useAuth();
+  const { user, profile, isAdmin, isReviewer } = useAuth();
   const { requests, loading: historyLoading, fetchRequests } = useRequests({
     userId: user?.id,
     department: profile?.department,
-    isAdmin,
-    isRequester,
-    isReviewer,
+    filterMode: 'review-history',
   });
   const { pendingRequests, loading: pendingLoading, fetchPending } = usePendingRequests({
     userId: user?.id,
     department: profile?.department,
-    isAdmin,
   });
 
   const [selectedRequest, setSelectedRequest] = useState<PORequest | null>(null);
