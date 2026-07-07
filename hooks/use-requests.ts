@@ -15,6 +15,7 @@ import type { PORequest, DashboardStats } from '@/types/request';
 interface UseRequestsOptions {
   userId: string | undefined;
   department: string | undefined;
+  role?: string;
   /** 조회 범위: 요청접수(요청부서) / 검토이력(고객·본사) */
   filterMode?: RequestListFilterMode;
   enabled?: boolean;
@@ -26,6 +27,7 @@ interface UseRequestsOptions {
 export const useRequests = ({
   userId,
   department,
+  role,
   filterMode = 'request-intake',
   enabled = true,
 }: UseRequestsOptions) => {
@@ -42,7 +44,7 @@ export const useRequests = ({
       const supabase = createClient();
 
       let query = supabase.from('requests').select('*').is('deleted_at', null);
-      query = applyRequestListFilter(query, department, filterMode);
+      query = applyRequestListFilter(query, department, filterMode, role);
       query = query.order('created_at', { ascending: false });
 
       const { data, error } = await query;
@@ -73,7 +75,7 @@ export const useRequests = ({
     } finally {
       setLoading(false);
     }
-  }, [userId, department, filterMode, enabled, router]);
+  }, [userId, department, role, filterMode, enabled, router]);
 
   useEffect(() => {
     void fetchRequests();
@@ -124,10 +126,12 @@ export const useAllRequests = (enabled = true) => {
 export const usePendingRequests = ({
   userId,
   department,
+  role,
   enabled = true,
 }: {
   userId: string | undefined;
   department: string | undefined;
+  role?: string;
   enabled?: boolean;
 }) => {
   const [pendingRequests, setPendingRequests] = useState<PORequest[]>([]);
@@ -144,7 +148,8 @@ export const usePendingRequests = ({
         .eq('status', 'pending')
         .is('deleted_at', null);
 
-      query = applyRequestListFilter(query, department, 'review-history');
+      query = applyRequestListFilter(query, department, 'review-history', role);
+      query = query.neq('requester_id', userId);
 
       const { data, error } = await query.order('factory_shipment_date', { ascending: true });
       if (error) throw error;
@@ -154,7 +159,7 @@ export const usePendingRequests = ({
     } finally {
       setLoading(false);
     }
-  }, [userId, department, enabled]);
+  }, [userId, department, role, enabled]);
 
   useEffect(() => {
     void fetchPending();

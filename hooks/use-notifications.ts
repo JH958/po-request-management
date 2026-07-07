@@ -14,7 +14,7 @@ export interface NotificationItem {
   id: string;
   user_id: string;
   request_id: string;
-  type: 'approved' | 'rejected';
+  type: 'approved' | 'rejected' | 'new_request';
   title: string;
   message: string | null;
   is_read: boolean;
@@ -87,6 +87,32 @@ export const useNotifications = (userId: string | undefined) => {
 
   useEffect(() => {
     if (userId) void fetchNotifications();
+  }, [userId, fetchNotifications]);
+
+  /** 신규 알림 Realtime 구독 */
+  useEffect(() => {
+    if (!userId) return;
+
+    const supabase = createClient();
+    const channel = supabase
+      .channel(`notifications-${userId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${userId}`,
+        },
+        () => {
+          void fetchNotifications();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
   }, [userId, fetchNotifications]);
 
   useEffect(() => {

@@ -9,7 +9,8 @@ export type DashboardScope = { scope: 'all' } | { scope: 'own'; department: stri
  * 계정 유형에 따른 대시보드 데이터 범위를 반환
  */
 export const getDashboardScope = (department: string, role: string): DashboardScope => {
-  if (role === 'admin' || department?.includes('영업관리')) {
+  const roles = role.split(',').map((r) => r.trim()).filter(Boolean);
+  if (roles.includes('admin') || department?.includes('영업관리')) {
     return { scope: 'all' };
   }
   return { scope: 'own', department };
@@ -23,8 +24,10 @@ export const isAdminDashboard = (scope: DashboardScope): boolean => scope.scope 
 /**
  * 관리자 설정 메뉴 접근 권한 여부
  */
-export const canAccessAdminSettings = (department: string, role: string): boolean =>
-  role === 'admin' || Boolean(department?.includes('영업관리'));
+export const canAccessAdminSettings = (department: string, role: string): boolean => {
+  const roles = role.split(',').map((r) => r.trim()).filter(Boolean);
+  return roles.includes('admin') || Boolean(department?.includes('영업관리'));
+};
 
 /**
  * 대시보드 범위에 맞게 요청 목록 필터링

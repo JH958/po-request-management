@@ -1,6 +1,7 @@
 /**
  * 요청접수·검토대기 페이지 테이블 조회 범위 유틸리티
  */
+import { canAccessAdminSettings } from '@/lib/dashboard-scope';
 
 /** 본사 부서 여부 (~팀으로 끝남) */
 export const isHeadquartersDepartment = (department: string | undefined): boolean =>
@@ -22,18 +23,24 @@ type ScopedQuery = {
  * Supabase requests 쿼리에 페이지별 조회 범위 필터 적용
  *
  * 검토 이력(review-history):
+ * - 관리자(영업관리팀 등): 필터 없음 — 본사·고객처 요청 전체
  * - 고객처: customer = 본인 소속, requesting_dept는 본사 부서(~팀)
  * - 본사 부서: customer 전체, requesting_dept는 본인 부서 제외한 다른 본사 부서(~팀)
  */
 export const applyRequestListFilter = <T extends ScopedQuery>(
   query: T,
   department: string | undefined,
-  mode: RequestListFilterMode
+  mode: RequestListFilterMode,
+  role?: string
 ): T => {
   if (!department) return query;
 
   if (mode === 'request-intake') {
     return query.eq('requesting_dept', department) as T;
+  }
+
+  if (canAccessAdminSettings(department, role ?? '')) {
+    return query;
   }
 
   if (isCustomerAccount(department)) {

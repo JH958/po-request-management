@@ -176,11 +176,17 @@ export const AppShell = ({ children }: AppShellProps) => {
                         <div
                           className={cn(
                             'mt-1 flex h-8 w-8 items-center justify-center rounded-full',
-                            notification.type === 'approved' ? 'bg-green-100' : 'bg-red-100'
+                            notification.type === 'approved'
+                              ? 'bg-green-100'
+                              : notification.type === 'new_request'
+                                ? 'bg-blue-100'
+                                : 'bg-red-100'
                           )}
                         >
                           {notification.type === 'approved' ? (
                             <CheckCircle2 className="h-4 w-4 text-green-600" />
+                          ) : notification.type === 'new_request' ? (
+                            <Bell className="h-4 w-4 text-blue-600" />
                           ) : (
                             <XCircle className="h-4 w-4 text-red-600" />
                           )}

@@ -16,11 +16,13 @@ export default function ReviewPage() {
   const { requests, loading: historyLoading, fetchRequests } = useRequests({
     userId: user?.id,
     department: profile?.department,
+    role: profile?.role,
     filterMode: 'review-history',
   });
   const { pendingRequests, loading: pendingLoading, fetchPending } = usePendingRequests({
     userId: user?.id,
     department: profile?.department,
+    role: profile?.role,
   });
 
   const [selectedRequest, setSelectedRequest] = useState<PORequest | null>(null);
@@ -51,7 +53,6 @@ export default function ReviewPage() {
         <ReviewGrid
           items={pendingRequests}
           loading={pendingLoading}
-          currentUserId={user.id}
           onCardClick={handleCardClick}
         />
       </section>
