@@ -14,6 +14,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Settings,
+  Upload,
 } from 'lucide-react';
 
 const SIDEBAR_STORAGE_KEY = 'purchaseOnSidebarCollapsed';
@@ -50,7 +51,10 @@ export const Sidebar = ({ onOpenTour, showAdminSettings = false }: SidebarProps)
     { href: '/request', label: '요청접수', icon: FileEdit },
     { href: '/review', label: '검토대기', icon: CheckSquare },
     ...(showAdminSettings
-      ? [{ href: '/admin-settings', label: '관리자 설정', icon: Settings }]
+      ? [
+          { href: '/po-upload', label: '데이터 업로드', icon: Upload },
+          { href: '/admin-settings', label: '관리자 설정', icon: Settings },
+        ]
       : []),
   ];
 
