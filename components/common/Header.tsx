@@ -78,7 +78,7 @@ export const Header = ({
       <div className="flex h-16 w-full items-center justify-between px-8 lg:px-14 xl:px-20">
         <div className="flex items-center gap-2">
           <h1 className="text-2xl font-bold text-[#971B2F]">
-            Purchase On - PO 변경 요청 관리 시스템
+            PO Tracker - PO 변경 추적 관리 시스템
           </h1>
         </div>
 
@@ -94,7 +94,7 @@ export const Header = ({
                       variant="ghost"
                       className="hidden h-9 items-center gap-2 rounded-md px-2 py-2 hover:bg-gray-100 md:flex lg:px-3"
                       onClick={onOpenTour}
-                      aria-label="Purchase On 사용자 가이드 열기"
+                      aria-label="PO Tracker 사용자 가이드 열기"
                     >
                       <BookOpen className="h-5 w-5 shrink-0 text-[#101820]" strokeWidth={2} />
                       <span className="hidden text-sm font-medium text-[#101820] lg:inline">

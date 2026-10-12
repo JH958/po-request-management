@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "PO 변경 요청 관리",
-  description: "PO 변경 요청 접수 및 관리 웹 서비스",
+  title: "PO Tracker",
+  description: "PO 접수부터 출하까지 변경 이력을 추적하는 웹 서비스",
 };
 
 export default function RootLayout({
