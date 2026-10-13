@@ -5,6 +5,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { translateNow as tn } from '@/lib/i18n';
 import { fetchAllFrozenSettings, upsertFrozenSetting, type FrozenSettingUpsertInput } from '@/lib/frozen-date-api';
 import { getReadableErrorMessage } from '@/lib/request-helpers';
 import type { FrozenDateSetting } from '@/types/frozen-date';
@@ -22,7 +23,7 @@ export const useFrozenDateSettings = (enabled = true) => {
       setSettings(data);
     } catch (error) {
       console.error('프로즌 설정 목록 조회 실패:', getReadableErrorMessage(error), error);
-      toast.error(getReadableErrorMessage(error) || '프로즌 설정을 불러오지 못했습니다.');
+      toast.error(getReadableErrorMessage(error) || tn('프로즌 설정을 불러오지 못했습니다.', 'Could not load frozen date settings.'));
       setSettings([]);
     } finally {
       setLoading(false);
@@ -43,11 +44,11 @@ export const useFrozenDateSettings = (enabled = true) => {
           }
           return [...prev, saved].sort((a, b) => a.customer_name.localeCompare(b.customer_name, 'ko'));
         });
-        toast.success('프로즌 설정이 저장되었습니다.');
+        toast.success(tn('프로즌 설정이 저장되었습니다.', 'Frozen date settings saved.'));
         return saved;
       } catch (error) {
         console.error('프로즌 설정 저장 실패:', error);
-        toast.error(`저장 실패: ${getReadableErrorMessage(error)}`);
+        toast.error(`${tn('저장 실패', 'Save failed')}: ${getReadableErrorMessage(error)}`);
         throw error;
       } finally {
         setSaving(false);

@@ -50,6 +50,7 @@ import { fetchFrozenSettingByCustomer } from '@/lib/frozen-date-api';
 import { resolveFrozenStatus } from '@/lib/frozen-date';
 import type { FrozenStatus } from '@/types/frozen-date';
 import { cn } from '@/lib/utils';
+import { useLanguage } from '@/context/LanguageContext';
 
 interface UserProfile {
   id: string;
@@ -108,6 +109,7 @@ export const RequestFormModal = ({
   isAdmin,
   onSuccess,
 }: RequestFormModalProps) => {
+  const { t } = useLanguage();
   const [form, setForm] = useState<FormState>(getInitialForm);
   const [currentItem, setCurrentItem] = useState({ erp_code: '', item_name: '', quantity: 0 });
   const [productCategory, setProductCategory] = useState<string[]>([]);
@@ -221,7 +223,12 @@ export const RequestFormModal = ({
   const handleSONumberChange = (value: string) => {
     setForm((prev) => ({ ...prev, so_number: value }));
     if (isSoRequired && value && !validateSONumber(value)) {
-      setSONumberError('SO 번호를 다시 확인해주세요. (형식: SO + 9자리 숫자, 예: SO123456789)');
+      setSONumberError(
+        t(
+          'SO 번호를 다시 확인해주세요. (형식: SO + 9자리 숫자, 예: SO123456789)',
+          'Check the SO number. (Format: SO + 9 digits, e.g. SO123456789)'
+        )
+      );
     } else {
       setSONumberError('');
     }
@@ -230,7 +237,7 @@ export const RequestFormModal = ({
   const handleERPCodeChange = (value: string) => {
     setCurrentItem((prev) => ({ ...prev, erp_code: value }));
     if (value && !validateERPCode(value)) {
-      setERPCodeError('ERP 코드를 다시 확인해주세요. (9자리 영문+숫자)');
+      setERPCodeError(t('ERP 코드를 다시 확인해주세요. (9자리 영문+숫자)', 'Check the ERP code. (9 letters/digits)'));
     } else {
       setERPCodeError('');
     }
@@ -238,11 +245,11 @@ export const RequestFormModal = ({
 
   const handleAddItem = () => {
     if (currentItem.erp_code && !validateERPCode(currentItem.erp_code)) {
-      toast.error('ERP 코드를 다시 확인해주세요. (9자리 영문+숫자)');
+      toast.error(t('ERP 코드를 다시 확인해주세요. (9자리 영문+숫자)', 'Check the ERP code. (9 letters/digits)'));
       return;
     }
     if (!currentItem.erp_code || !currentItem.item_name) {
-      toast.error('품목코드와 품목명을 입력해주세요.');
+      toast.error(t('품목코드와 품목명을 입력해주세요.', 'Enter the item code and item name.'));
       return;
     }
     setForm((prev) => ({ ...prev, items: [...prev.items, { ...currentItem }] }));
@@ -281,17 +288,17 @@ export const RequestFormModal = ({
           }
           if (items.length > 0) {
             setForm((prev) => ({ ...prev, items: [...prev.items, ...items] }));
-            toast.success(`${items.length}개의 품목이 추가되었습니다.`);
+            toast.success(t(`${items.length}개의 품목이 추가되었습니다.`, `${items.length} items added.`));
           } else {
-            toast.error('유효한 데이터가 없습니다.');
+            toast.error(t('유효한 데이터가 없습니다.', 'No valid rows found.'));
           }
         } catch {
-          toast.error('Excel 파일을 읽는 중 오류가 발생했습니다.');
+          toast.error(t('Excel 파일을 읽는 중 오류가 발생했습니다.', 'An error occurred while reading the Excel file.'));
         }
       };
       reader.readAsArrayBuffer(file);
     } catch {
-      toast.error('파일 업로드 중 오류가 발생했습니다.');
+      toast.error(t('파일 업로드 중 오류가 발생했습니다.', 'An error occurred while uploading the file.'));
     } finally {
       event.target.value = '';
     }
@@ -301,43 +308,43 @@ export const RequestFormModal = ({
     if (!requestType || !categoryLabel) return;
 
     if (!form.customer) {
-      toast.error('고객은 필수 항목입니다.');
+      toast.error(t('고객은 필수 항목입니다.', 'Customer is required.'));
       return;
     }
     if (!form.factory_shipment_date) {
-      toast.error('현재 출하일을 입력해주세요.');
+      toast.error(t('현재 출하일을 입력해주세요.', 'Enter the current ship date.'));
       return;
     }
     if (isSoRequired && !form.so_number) {
-      toast.error('SO번호는 필수 항목입니다.');
+      toast.error(t('SO번호는 필수 항목입니다.', 'SO number is required.'));
       return;
     }
     if (isSoRequired && form.so_number && !validateSONumber(form.so_number)) {
-      toast.error('SO 번호 형식을 확인해주세요.');
+      toast.error(t('SO 번호 형식을 확인해주세요.', 'Check the SO number format.'));
       return;
     }
     if (showItemList && erpCodeError) {
-      toast.error('ERP 코드를 확인해주세요.');
+      toast.error(t('ERP 코드를 확인해주세요.', 'Check the ERP code.'));
       return;
     }
     if (needsProductCategory(categoryLabel) && productCategory.length === 0) {
-      toast.error('품목 구분을 선택해주세요.');
+      toast.error(t('품목 구분을 선택해주세요.', 'Select a product category.'));
       return;
     }
     if (showShippingMethod && !form.shipping_method) {
-      toast.error('운송방법을 선택해주세요.');
+      toast.error(t('운송방법을 선택해주세요.', 'Select a shipping method.'));
       return;
     }
     if (!form.request_details.trim()) {
-      toast.error('요청상세는 필수 항목입니다.');
+      toast.error(t('요청상세는 필수 항목입니다.', 'Request details are required.'));
       return;
     }
     if (showItemList && form.items.length === 0) {
-      toast.error('최소 1개 이상의 품목을 추가해주세요.');
+      toast.error(t('최소 1개 이상의 품목을 추가해주세요.', 'Add at least one item.'));
       return;
     }
     if (!profile.department) {
-      toast.error('사용자 프로필의 부서 정보가 없습니다.');
+      toast.error(t('사용자 프로필의 부서 정보가 없습니다.', 'Your profile has no department.'));
       return;
     }
 
@@ -398,7 +405,7 @@ export const RequestFormModal = ({
 
       if (error) throw error;
 
-      toast.success('새 요청이 생성되었습니다.');
+      toast.success(t('새 요청이 생성되었습니다.', 'Request created.'));
       onOpenChange(false);
       resetForm();
       onSuccess();
@@ -428,7 +435,11 @@ export const RequestFormModal = ({
     } catch (error: unknown) {
       const err = asApiError(error);
       console.error('요청 생성 오류:', error);
-      toast.error(err.message ? `요청 생성 실패: ${err.message}` : '요청 생성 중 오류가 발생했습니다.');
+      toast.error(
+        err.message
+          ? `${t('요청 생성 실패', 'Failed to create request')}: ${err.message}`
+          : t('요청 생성 중 오류가 발생했습니다.', 'An error occurred while creating the request.')
+      );
     } finally {
       setSubmitting(false);
     }
@@ -441,18 +452,18 @@ export const RequestFormModal = ({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-xl font-bold text-[#101820]">
-            PO 변경 요청 - {requestType.label}
+          <DialogTitle className="text-xl font-bold text-[#172132]">
+            {t('PO 변경 요청', 'PO Change Request')} - {requestType.label}
           </DialogTitle>
           <DialogDescription className="sr-only">
-            {requestType.label} 유형의 PO 변경 요청을 작성합니다.
+            {t(`${requestType.label} 유형의 PO 변경 요청을 작성합니다.`, `Create a ${requestType.label} PO change request.`)}
           </DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-4 py-2">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>고객 <span className="text-red-500">*</span></Label>
+              <Label>{t('고객', 'Customer')} <span className="text-red-500">*</span></Label>
               <Select
                 value={form.customer}
                 onValueChange={(v) => {
@@ -461,7 +472,7 @@ export const RequestFormModal = ({
                   setForm((p) => ({ ...p, customer: v }));
                 }}
               >
-                <SelectTrigger><SelectValue placeholder="고객을 선택하세요" /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder={t('고객을 선택하세요', 'Select a customer')} /></SelectTrigger>
                 <SelectContent>
                   {availableCustomers.map((c) => (
                     <SelectItem key={c} value={c}>{c}</SelectItem>
@@ -470,11 +481,11 @@ export const RequestFormModal = ({
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>SO 번호 {isSoRequired && <span className="text-red-500">*</span>}</Label>
+              <Label>{t('SO 번호', 'SO No.')} {isSoRequired && <span className="text-red-500">*</span>}</Label>
               <Input
                 value={form.so_number}
                 onChange={(e) => handleSONumberChange(e.target.value)}
-                placeholder="예: SO123456789"
+                placeholder={t('예: SO123456789', 'e.g. SO123456789')}
                 className={cn(isSoRequired && soNumberError && 'border-red-500')}
               />
               {soNumberError && <p className="text-xs text-red-500">{soNumberError}</p>}
@@ -483,21 +494,21 @@ export const RequestFormModal = ({
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>현재 출하일 <span className="text-red-500">*</span></Label>
+              <Label>{t('현재 출하일', 'Current ship date')} <span className="text-red-500">*</span></Label>
               <Input
                 type="date"
                 value={form.factory_shipment_date}
                 onChange={(e) => handleFactoryShipmentDateChange(e.target.value)}
               />
               {isCompleteShipDate(form.factory_shipment_date) && frozenStatus === 'before' && (
-                <span className="text-xs text-gray-500">프로즌 이전</span>
+                <span className="text-xs text-gray-500">{t('프로즌 이전', 'Before frozen date')}</span>
               )}
               {isCompleteShipDate(form.factory_shipment_date) && frozenStatus === 'unset' && (
-                <span className="text-xs text-gray-400">프로즌 기준 미설정</span>
+                <span className="text-xs text-gray-400">{t('프로즌 기준 미설정', 'No frozen date rule')}</span>
               )}
             </div>
             <div className="space-y-2">
-              <Label>희망 출하일</Label>
+              <Label>{t('희망 출하일', 'Desired ship date')}</Label>
               <Input
                 type="date"
                 value={form.desired_shipment_date}
@@ -507,15 +518,15 @@ export const RequestFormModal = ({
           </div>
 
           <div className="space-y-2">
-            <Label>요청구분</Label>
+            <Label>{t('요청구분', 'Request type')}</Label>
             <div className="rounded-md bg-gray-100 px-3 py-2 text-sm font-medium">{requestType.label}</div>
           </div>
 
           {showShippingMethod && (
             <div className="space-y-2">
-              <Label>변경 운송방법 <span className="text-red-500">*</span></Label>
+              <Label>{t('변경 운송방법', 'New shipping method')} <span className="text-red-500">*</span></Label>
               <Select value={form.shipping_method} onValueChange={(v) => setForm((p) => ({ ...p, shipping_method: v }))}>
-                <SelectTrigger><SelectValue placeholder="운송방법 선택" /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder={t('운송방법 선택', 'Select shipping method')} /></SelectTrigger>
                 <SelectContent>
                   {availableShippingMethods.map((m) => (
                     <SelectItem key={m} value={m}>{m}</SelectItem>
@@ -526,12 +537,12 @@ export const RequestFormModal = ({
           )}
 
           <div className="space-y-2">
-            <Label>우선순위 <span className="text-red-500">*</span></Label>
+            <Label>{t('우선순위', 'Priority')} <span className="text-red-500">*</span></Label>
             <Select value={form.priority} onValueChange={(v) => setForm((p) => ({ ...p, priority: v as '긴급' | '보통' }))}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="긴급">긴급</SelectItem>
-                <SelectItem value="보통">보통</SelectItem>
+                <SelectItem value="긴급">{t('긴급', 'Urgent')}</SelectItem>
+                <SelectItem value="보통">{t('보통', 'Normal')}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -539,18 +550,18 @@ export const RequestFormModal = ({
           {showItemList && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <Label>품목 목록 <span className="text-red-500">*</span></Label>
+                <Label>{t('품목 목록', 'Items')} <span className="text-red-500">*</span></Label>
                 <Button type="button" variant="outline" size="sm" onClick={() => document.getElementById('excel-upload-modal')?.click()}>
-                  Excel 업로드
+                  {t('Excel 업로드', 'Upload Excel')}
                 </Button>
                 <input id="excel-upload-modal" type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={handleExcelUpload} />
               </div>
 
               {needsProductCategory(categoryLabel) && (
-                <div className="rounded-lg border-2 border-[#971B2F]/20 bg-[#971B2F]/5 p-4">
+                <div className="rounded-lg border-2 border-[#8B1538]/20 bg-[#8B1538]/5 p-4">
                   <div className="mb-2 flex items-center justify-between">
-                    <Label className="font-semibold">품목 구분 <span className="text-[#971B2F]">*</span></Label>
-                    <Package className="h-4 w-4 text-[#971B2F]" />
+                    <Label className="font-semibold">{t('품목 구분', 'Product category')} <span className="text-[#8B1538]">*</span></Label>
+                    <Package className="h-4 w-4 text-[#8B1538]" />
                   </div>
                   <div className="grid grid-cols-3 gap-3">
                     {FORM_PRODUCT_CATEGORIES.map((cat) => {
@@ -560,7 +571,7 @@ export const RequestFormModal = ({
                           key={cat.value}
                           className={cn(
                             'flex cursor-pointer items-center space-x-2 rounded-md border px-3 py-2',
-                            checked ? 'border-[#971B2F] bg-[#971B2F]/10' : 'border-gray-200 bg-white'
+                            checked ? 'border-[#8B1538] bg-[#8B1538]/10' : 'border-gray-200 bg-white'
                           )}
                           onClick={() =>
                             setProductCategory((prev) =>
@@ -570,7 +581,7 @@ export const RequestFormModal = ({
                             )
                           }
                         >
-                          <Checkbox checked={checked} className="border-[#971B2F]" />
+                          <Checkbox checked={checked} className="border-[#8B1538]" />
                           <span className="text-sm">{cat.label}</span>
                         </div>
                       );
@@ -581,16 +592,16 @@ export const RequestFormModal = ({
 
               <div className="grid grid-cols-12 items-end gap-2">
                 <div className="col-span-4 space-y-1">
-                  <Label className="text-xs">품목 코드 *</Label>
+                  <Label className="text-xs">{t('품목 코드', 'Item code')} *</Label>
                   <Input
                     value={currentItem.erp_code}
                     onChange={(e) => handleERPCodeChange(e.target.value)}
-                    placeholder="예: I9U800002"
+                    placeholder={t('예: I9U800002', 'e.g. I9U800002')}
                     className={cn('text-sm', erpCodeError && 'border-red-500')}
                   />
                 </div>
                 <div className="col-span-4 space-y-1">
-                  <Label className="text-xs">품목명</Label>
+                  <Label className="text-xs">{t('품목명', 'Item name')}</Label>
                   <Input
                     value={currentItem.item_name}
                     onChange={(e) => setCurrentItem((p) => ({ ...p, item_name: e.target.value }))}
@@ -598,7 +609,7 @@ export const RequestFormModal = ({
                   />
                 </div>
                 <div className="col-span-3 space-y-1">
-                  <Label className="text-xs">수량</Label>
+                  <Label className="text-xs">{t('수량', 'Qty')}</Label>
                   <Input
                     type="number"
                     value={currentItem.quantity}
@@ -612,7 +623,7 @@ export const RequestFormModal = ({
                   />
                 </div>
                 <div className="col-span-1">
-                  <Button type="button" size="sm" className="w-full bg-[#971B2F] hover:bg-[#7A1626]" onClick={handleAddItem}>
+                  <Button type="button" size="sm" className="w-full bg-[#8B1538] hover:bg-[#74112F]" onClick={handleAddItem}>
                     +
                   </Button>
                 </div>
@@ -622,16 +633,18 @@ export const RequestFormModal = ({
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-3 py-2 text-left">품목코드</th>
-                      <th className="px-3 py-2 text-left">품목명</th>
-                      <th className="px-3 py-2 text-right">수량</th>
-                      <th className="w-16 px-3 py-2 text-center">삭제</th>
+                      <th className="px-3 py-2 text-left">{t('품목코드', 'Item code')}</th>
+                      <th className="px-3 py-2 text-left">{t('품목명', 'Item name')}</th>
+                      <th className="px-3 py-2 text-right">{t('수량', 'Qty')}</th>
+                      <th className="w-16 px-3 py-2 text-center">{t('삭제', 'Delete')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
                     {form.items.length === 0 ? (
                       <tr>
-                        <td colSpan={4} className="px-3 py-4 text-center text-gray-500">품목을 추가해주세요.</td>
+                        <td colSpan={4} className="px-3 py-4 text-center text-gray-500">
+                          {t('품목을 추가해주세요.', 'Add items.')}
+                        </td>
                       </tr>
                     ) : (
                       form.items.map((item, i) => (
@@ -654,7 +667,7 @@ export const RequestFormModal = ({
           )}
 
           <div className="space-y-2">
-            <Label>요청사유 <span className="text-red-500">*</span></Label>
+            <Label>{t('요청사유', 'Request reason')} <span className="text-red-500">*</span></Label>
             <RequestReasonSelect
               value={form.reason_for_request}
               onChange={(v) => setForm((p) => ({ ...p, reason_for_request: v }))}
@@ -662,20 +675,22 @@ export const RequestFormModal = ({
           </div>
 
           <div className="space-y-2">
-            <Label>요청상세 <span className="text-red-500">*</span></Label>
+            <Label>{t('요청상세', 'Request details')} <span className="text-red-500">*</span></Label>
             <Textarea
               value={form.request_details}
               onChange={(e) => setForm((p) => ({ ...p, request_details: e.target.value }))}
-              placeholder="요청 상세 내용을 입력해주세요"
+              placeholder={t('요청 상세 내용을 입력해주세요', 'Describe the request in detail')}
               className="min-h-[100px]"
             />
           </div>
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>취소</Button>
-          <Button className="bg-[#971B2F] hover:bg-[#7A1626]" onClick={() => void handleSubmit()} disabled={submitting}>
-            {submitting ? '제출 중...' : '추가'}
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
+            {t('취소', 'Cancel')}
+          </Button>
+          <Button className="bg-[#8B1538] hover:bg-[#74112F]" onClick={() => void handleSubmit()} disabled={submitting}>
+            {submitting ? t('제출 중...', 'Submitting...') : t('추가', 'Submit')}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -694,17 +709,20 @@ export const RequestFormModal = ({
         onEscapeKeyDown={(e) => e.preventDefault()}
       >
         <DialogHeader>
-          <DialogTitle className="text-[#971B2F]">프로즌 이후</DialogTitle>
-          <DialogDescription className="text-base text-[#101820]" role="alert">
-            프로즌 이후 - 프로즌된 발주 건이라 변경이 불가합니다. 그럼에도 변경 요청을 하시겠습니까?
+          <DialogTitle className="text-[#8B1538]">{t('프로즌 이후', 'After frozen date')}</DialogTitle>
+          <DialogDescription className="text-base text-[#172132]" role="alert">
+            {t(
+              '프로즌 이후 - 프로즌된 발주 건이라 변경이 불가합니다. 그럼에도 변경 요청을 하시겠습니까?',
+              'After frozen date — this order is frozen and normally cannot be changed. Do you still want to submit a change request?'
+            )}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
           <Button
-            className="bg-[#971B2F] hover:bg-[#7A1626]"
+            className="bg-[#8B1538] hover:bg-[#74112F]"
             onClick={() => setFrozenWarningOpen(false)}
           >
-            확인
+            {t('확인', 'OK')}
           </Button>
         </DialogFooter>
       </DialogContent>

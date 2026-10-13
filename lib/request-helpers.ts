@@ -4,6 +4,7 @@
 import { isSameDay, isSameMonth, isSameWeek } from 'date-fns';
 import type { PORequest } from '@/types/request';
 import { ADD_TYPE_VALUES, PRODUCT_CATEGORIES, REQUEST_TYPES } from '@/lib/request-constants';
+import { koreanOnly, type Translate } from '@/lib/i18n';
 
 /**
  * 오류 객체에서 Supabase/PostgREST 에러 필드를 안전하게 추출
@@ -146,13 +147,13 @@ export const getProductCategoryColor = (category: string): string => {
 /**
  * 상태 라벨 변환
  */
-export const getStatusLabel = (status: string): string => {
+export const getStatusLabel = (status: string, t: Translate = koreanOnly): string => {
   const statusMap: Record<string, string> = {
-    pending: '검토대기',
-    in_review: '검토중',
-    approved: '승인',
-    rejected: '반려',
-    completed: '완료',
+    pending: t('검토대기', 'Pending'),
+    in_review: t('검토중', 'In review'),
+    approved: t('승인', 'Approved'),
+    rejected: t('반려', 'Rejected'),
+    completed: t('완료', 'Completed'),
   };
   return statusMap[status] || status;
 };

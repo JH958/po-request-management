@@ -36,6 +36,7 @@ import {
 } from '@/lib/request-config-api';
 import { getReadableErrorMessage } from '@/lib/request-helpers';
 import { useRequestConfig } from '@/context/RequestConfigContext';
+import { useLanguage } from '@/context/LanguageContext';
 import type { RequestReasonSetting } from '@/types/request-config';
 
 interface RequestReasonSettingsProps {
@@ -61,6 +62,7 @@ const emptyForm = (sortOrder: number): FormState => ({
 
 export const RequestReasonSettings = ({ userId }: RequestReasonSettingsProps) => {
   const { refresh: refreshGlobal } = useRequestConfig();
+  const { t } = useLanguage();
   const [items, setItems] = useState<RequestReasonSetting[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -107,13 +109,13 @@ export const RequestReasonSettings = ({ userId }: RequestReasonSettingsProps) =>
 
   const handleSave = async () => {
     if (!form.label.trim()) {
-      toast.error('요청사유를 입력해주세요.');
+      toast.error(t('요청사유를 입력해주세요.', 'Enter a request reason.'));
       return;
     }
 
     const sortOrder = parseInt(form.sort_order, 10);
     if (Number.isNaN(sortOrder) || sortOrder < 0) {
-      toast.error('순서는 0 이상의 숫자여야 합니다.');
+      toast.error(t('순서는 0 이상의 숫자여야 합니다.', 'Order must be a number of 0 or more.'));
       return;
     }
 
@@ -135,7 +137,7 @@ export const RequestReasonSettings = ({ userId }: RequestReasonSettingsProps) =>
       await loadItems();
       await refreshGlobal();
       setModalOpen(false);
-      toast.success('요청사유가 저장되었습니다.');
+      toast.success(t('요청사유가 저장되었습니다.', 'Request reason saved.'));
     } catch (error) {
       toast.error(getReadableErrorMessage(error));
     } finally {
@@ -144,12 +146,12 @@ export const RequestReasonSettings = ({ userId }: RequestReasonSettingsProps) =>
   };
 
   const handleDelete = async (item: RequestReasonSetting) => {
-    if (!window.confirm(`"${item.label}" 항목을 삭제하시겠습니까?`)) return;
+    if (!window.confirm(t(`"${item.label}" 항목을 삭제하시겠습니까?`, `Delete "${item.label}"?`))) return;
     try {
       await deleteRequestReasonSetting(item.id);
       await loadItems();
       await refreshGlobal();
-      toast.success('요청사유가 삭제되었습니다.');
+      toast.success(t('요청사유가 삭제되었습니다.', 'Request reason deleted.'));
     } catch (error) {
       toast.error(getReadableErrorMessage(error));
     }
@@ -158,12 +160,12 @@ export const RequestReasonSettings = ({ userId }: RequestReasonSettingsProps) =>
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-[#67767F]">
-          요청 작성 팝업의 요청사유 드롭다운에 반영되는 목록을 관리합니다.
+        <p className="text-sm text-[#5A6778]">
+          {t('요청 작성 팝업의 요청사유 드롭다운에 반영되는 목록을 관리합니다.', 'Manage the reasons shown in the request form dropdown.')}
         </p>
-        <Button className="bg-[#971B2F] hover:bg-[#7A1626]" onClick={openCreate}>
+        <Button className="bg-[#8B1538] hover:bg-[#74112F]" onClick={openCreate}>
           <Plus className="mr-2 h-4 w-4" />
-          항목 추가
+          {t('항목 추가', 'Add item')}
         </Button>
       </div>
 
@@ -178,7 +180,14 @@ export const RequestReasonSettings = ({ userId }: RequestReasonSettingsProps) =>
           <Table>
             <TableHeader>
               <TableRow>
-                {['순서', '요청사유', '설명', '상태', '수정', '삭제'].map((h) => (
+                {[
+                  t('순서', 'Order'),
+                  t('요청사유', 'Request reason'),
+                  t('설명', 'Description'),
+                  t('상태', 'Status'),
+                  t('수정', 'Edit'),
+                  t('삭제', 'Delete'),
+                ].map((h) => (
                   <TableHead key={h}>{h}</TableHead>
                 ))}
               </TableRow>
@@ -186,8 +195,8 @@ export const RequestReasonSettings = ({ userId }: RequestReasonSettingsProps) =>
             <TableBody>
               {items.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-8 text-center text-[#67767F]">
-                    등록된 요청사유가 없습니다.
+                  <TableCell colSpan={6} className="py-8 text-center text-[#5A6778]">
+                    {t('등록된 요청사유가 없습니다.', 'No request reasons yet.')}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -195,16 +204,16 @@ export const RequestReasonSettings = ({ userId }: RequestReasonSettingsProps) =>
                   <TableRow key={item.id} className={!item.is_active ? 'opacity-60' : undefined}>
                     <TableCell>{item.sort_order}</TableCell>
                     <TableCell className="font-medium">{item.label}</TableCell>
-                    <TableCell className="max-w-xs truncate text-[#67767F]" title={item.description ?? ''}>
+                    <TableCell className="max-w-xs truncate text-[#5A6778]" title={item.description ?? ''}>
                       {item.description ?? '-'}
                     </TableCell>
                     <TableCell>
                       <Badge variant={item.is_active ? 'default' : 'outline'}>
-                        {item.is_active ? '사용' : '비활성'}
+                        {item.is_active ? t('사용', 'Active') : t('비활성', 'Inactive')}
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <Button variant="ghost" size="sm" onClick={() => openEdit(item)} aria-label="수정">
+                      <Button variant="ghost" size="sm" onClick={() => openEdit(item)} aria-label={t('수정', 'Edit')}>
                         <Pencil className="h-4 w-4" />
                       </Button>
                     </TableCell>
@@ -214,7 +223,7 @@ export const RequestReasonSettings = ({ userId }: RequestReasonSettingsProps) =>
                         size="sm"
                         className="text-red-600"
                         onClick={() => void handleDelete(item)}
-                        aria-label="삭제"
+                        aria-label={t('삭제', 'Delete')}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -230,23 +239,23 @@ export const RequestReasonSettings = ({ userId }: RequestReasonSettingsProps) =>
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>{isNew ? '요청사유 추가' : '요청사유 수정'}</DialogTitle>
+            <DialogTitle>{isNew ? t('요청사유 추가', 'Add request reason') : t('요청사유 수정', 'Edit request reason')}</DialogTitle>
             <DialogDescription>
-              요청사유명은 DB에 저장되는 값과 동일하게 사용됩니다.
+              {t('요청사유명은 DB에 저장되는 값과 동일하게 사용됩니다.', 'The reason name is stored in the database as-is.')}
             </DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-4 py-2">
             <div className="space-y-2">
-              <Label>요청사유 <span className="text-red-500">*</span></Label>
+              <Label>{t('요청사유', 'Request reason')} <span className="text-red-500">*</span></Label>
               <Input
                 value={form.label}
                 onChange={(e) => setForm((p) => ({ ...p, label: e.target.value }))}
-                placeholder="예: 수요 예측 오류"
+                placeholder={t('예: 수요 예측 오류', 'e.g. Forecast error')}
               />
             </div>
             <div className="space-y-2">
-              <Label>설명</Label>
+              <Label>{t('설명', 'Description')}</Label>
               <Textarea
                 value={form.description}
                 onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
@@ -254,7 +263,7 @@ export const RequestReasonSettings = ({ userId }: RequestReasonSettingsProps) =>
               />
             </div>
             <div className="space-y-2">
-              <Label>순서</Label>
+              <Label>{t('순서', 'Order')}</Label>
               <Input
                 type="number"
                 min={0}
@@ -268,20 +277,20 @@ export const RequestReasonSettings = ({ userId }: RequestReasonSettingsProps) =>
                 checked={form.is_active}
                 onCheckedChange={(v) => setForm((p) => ({ ...p, is_active: v === true }))}
               />
-              <Label htmlFor="reason-active">사용 중</Label>
+              <Label htmlFor="reason-active">{t('사용 중', 'Active')}</Label>
             </div>
           </div>
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setModalOpen(false)} disabled={saving}>
-              취소
+              {t('취소', 'Cancel')}
             </Button>
             <Button
-              className="bg-[#971B2F] hover:bg-[#7A1626]"
+              className="bg-[#8B1538] hover:bg-[#74112F]"
               onClick={() => void handleSave()}
               disabled={saving}
             >
-              {saving ? '저장 중...' : '저장'}
+              {saving ? t('저장 중...', 'Saving...') : t('저장', 'Save')}
             </Button>
           </DialogFooter>
         </DialogContent>

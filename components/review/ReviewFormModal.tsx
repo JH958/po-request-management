@@ -35,6 +35,7 @@ import {
   getReadableErrorMessage,
 } from '@/lib/request-helpers';
 import { ProductCategoryBadges } from '@/components/common/ProductCategoryBadges';
+import { useLanguage } from '@/context/LanguageContext';
 
 interface ReviewFormModalProps {
   request: PORequest | null;
@@ -57,6 +58,7 @@ export const ReviewFormModal = ({
   isAdmin,
   onSuccess,
 }: ReviewFormModalProps) => {
+  const { t } = useLanguage();
   const [approveDialogOpen, setApproveDialogOpen] = useState(false);
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [reviewDetails, setReviewDetails] = useState('');
@@ -75,11 +77,11 @@ export const ReviewFormModal = ({
   const handleConfirmApprove = async () => {
     if (!request || !canReview) return;
     if (!reviewDetails.trim()) {
-      toast.error('검토 상세 내용을 입력해주세요.');
+      toast.error(t('검토 상세 내용을 입력해주세요.', 'Enter the review details.'));
       return;
     }
     if (isItemAddition && !validateApproveConfirmedQuantity(confirmedQuantity, request.quantity ?? 0)) {
-      toast.error('승인 시 확정 수량은 1개 이상이어야 합니다.');
+      toast.error(t('승인 시 확정 수량은 1개 이상이어야 합니다.', 'Confirmed quantity must be at least 1 to approve.'));
       return;
     }
 
@@ -100,7 +102,7 @@ export const ReviewFormModal = ({
         .eq('id', request.id);
 
       if (error) throw error;
-      toast.success('요청이 승인되었습니다.');
+      toast.success(t('요청이 승인되었습니다.', 'Request approved.'));
       setApproveDialogOpen(false);
       onOpenChange(false);
       onSuccess();
@@ -112,11 +114,11 @@ export const ReviewFormModal = ({
   const handleConfirmReject = async () => {
     if (!request || !canReview) return;
     if (!reviewDetails.trim()) {
-      toast.error('검토 상세 내용을 입력해주세요.');
+      toast.error(t('검토 상세 내용을 입력해주세요.', 'Enter the review details.'));
       return;
     }
     if (isItemAddition && !validateRejectConfirmedQuantity(confirmedQuantity, request.quantity ?? 0)) {
-      toast.error('확정 수량을 확인해주세요.');
+      toast.error(t('확정 수량을 확인해주세요.', 'Check the confirmed quantity.'));
       return;
     }
 
@@ -137,7 +139,7 @@ export const ReviewFormModal = ({
         .eq('id', request.id);
 
       if (error) throw error;
-      toast.success('요청이 반려되었습니다.');
+      toast.success(t('요청이 반려되었습니다.', 'Request rejected.'));
       setRejectDialogOpen(false);
       onOpenChange(false);
       onSuccess();
@@ -153,36 +155,36 @@ export const ReviewFormModal = ({
       <AlertDialog open={open} onOpenChange={onOpenChange}>
         <AlertDialogContent className="max-w-3xl">
           <AlertDialogHeader>
-            <AlertDialogTitle>요청 상세 정보</AlertDialogTitle>
+            <AlertDialogTitle>{t('요청 상세 정보', 'Request details')}</AlertDialogTitle>
           </AlertDialogHeader>
           <div className="max-h-[60vh] space-y-4 overflow-y-auto">
             {canReview && request.product_category && (
-              <div className="rounded-lg border-2 border-[#971B2F]/30 bg-gradient-to-r from-[#971B2F]/5 to-[#971B2F]/10 p-4">
+              <div className="rounded-lg border-2 border-[#8B1538]/30 bg-gradient-to-r from-[#8B1538]/5 to-[#8B1538]/10 p-4">
                 <div className="flex items-center gap-3">
-                  <Package className="h-5 w-5 text-[#971B2F]" />
+                  <Package className="h-5 w-5 text-[#8B1538]" />
                   <ProductCategoryBadges category={request.product_category} size="md" />
                 </div>
               </div>
             )}
             <div className="grid grid-cols-2 gap-4 text-sm">
-              <div><p className="text-[#67767F]">고객</p><p>{request.customer}</p></div>
-              <div><p className="text-[#67767F]">SO번호</p><p>{request.so_number || '-'}</p></div>
-              <div><p className="text-[#67767F]">요청부서</p><p>{request.requesting_dept}</p></div>
-              <div><p className="text-[#67767F]">요청자</p><p>{request.requester_name}</p></div>
-              <div><p className="text-[#67767F]">출하일</p><p>{request.factory_shipment_date}</p></div>
-              <div><p className="text-[#67767F]">요청구분</p><p>{request.category_of_request}</p></div>
+              <div><p className="text-[#5A6778]">{t('고객', 'Customer')}</p><p>{request.customer}</p></div>
+              <div><p className="text-[#5A6778]">{t('SO번호', 'SO No.')}</p><p>{request.so_number || '-'}</p></div>
+              <div><p className="text-[#5A6778]">{t('요청부서', 'Requesting dept')}</p><p>{request.requesting_dept}</p></div>
+              <div><p className="text-[#5A6778]">{t('요청자', 'Requester')}</p><p>{request.requester_name}</p></div>
+              <div><p className="text-[#5A6778]">{t('출하일', 'Ship date')}</p><p>{request.factory_shipment_date}</p></div>
+              <div><p className="text-[#5A6778]">{t('요청구분', 'Request type')}</p><p>{request.category_of_request}</p></div>
               {needsProductCategory(request.category_of_request) && (
                 <div>
-                  <p className="text-[#67767F]">품목구분</p>
+                  <p className="text-[#5A6778]">{t('품목구분', 'Product category')}</p>
                   <ProductCategoryBadges category={request.product_category} size="md" />
                 </div>
               )}
-              <div><p className="text-[#67767F]">품목코드</p><p>{request.erp_code}</p></div>
-              <div><p className="text-[#67767F]">품목명</p><p>{request.item_name}</p></div>
-              <div><p className="text-[#67767F]">수량</p><p>{request.quantity}</p></div>
-              <div><p className="text-[#67767F]">요청사유</p><p>{request.reason_for_request}</p></div>
+              <div><p className="text-[#5A6778]">{t('품목코드', 'Item code')}</p><p>{request.erp_code}</p></div>
+              <div><p className="text-[#5A6778]">{t('품목명', 'Item name')}</p><p>{request.item_name}</p></div>
+              <div><p className="text-[#5A6778]">{t('수량', 'Qty')}</p><p>{request.quantity}</p></div>
+              <div><p className="text-[#5A6778]">{t('요청사유', 'Request reason')}</p><p>{request.reason_for_request}</p></div>
               <div className="col-span-2">
-                <p className="text-[#67767F]">요청상세</p>
+                <p className="text-[#5A6778]">{t('요청상세', 'Request details')}</p>
                 <p className="whitespace-pre-wrap">{request.request_details || '-'}</p>
               </div>
             </div>
@@ -194,29 +196,29 @@ export const ReviewFormModal = ({
                   className="bg-green-600 hover:bg-green-700"
                   onClick={() => { setReviewDetails(''); setApproveDialogOpen(true); }}
                 >
-                  승인
+                  {t('승인', 'Approve')}
                 </Button>
                 <Button variant="destructive" onClick={() => { setReviewDetails(''); setRejectDialogOpen(true); }}>
-                  반려
+                  {t('반려', 'Reject')}
                 </Button>
               </>
             )}
-            <AlertDialogCancel>닫기</AlertDialogCancel>
+            <AlertDialogCancel>{t('닫기', 'Close')}</AlertDialogCancel>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
       <Dialog open={approveDialogOpen} onOpenChange={setApproveDialogOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle>요청 승인</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t('요청 승인', 'Approve request')}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label>검토 상세 *</Label>
+              <Label>{t('검토 상세', 'Review details')} *</Label>
               <Textarea value={reviewDetails} onChange={(e) => setReviewDetails(e.target.value)} className="mt-1" />
             </div>
             {isItemAddition && (
               <div>
-                <Label>확정 수량</Label>
+                <Label>{t('확정 수량', 'Confirmed qty')}</Label>
                 <Input
                   type="number"
                   value={confirmedQuantity ?? ''}
@@ -225,28 +227,28 @@ export const ReviewFormModal = ({
                   }
                   className="mt-1"
                 />
-                <p className="mt-1 text-xs text-[#67767F]">요청 수량: {request.quantity}</p>
+                <p className="mt-1 text-xs text-[#5A6778]">{t('요청 수량', 'Requested qty')}: {request.quantity}</p>
               </div>
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setApproveDialogOpen(false)}>취소</Button>
-            <Button className="bg-green-600" onClick={() => void handleConfirmApprove()}>승인</Button>
+            <Button variant="outline" onClick={() => setApproveDialogOpen(false)}>{t('취소', 'Cancel')}</Button>
+            <Button className="bg-green-600" onClick={() => void handleConfirmApprove()}>{t('승인', 'Approve')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle>요청 반려</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t('요청 반려', 'Reject request')}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label>검토 상세 *</Label>
+              <Label>{t('검토 상세', 'Review details')} *</Label>
               <Textarea value={reviewDetails} onChange={(e) => setReviewDetails(e.target.value)} className="mt-1" />
             </div>
             {isItemAddition && (
               <div>
-                <Label>확정 수량 (0 허용)</Label>
+                <Label>{t('확정 수량 (0 허용)', 'Confirmed qty (0 allowed)')}</Label>
                 <Input
                   type="number"
                   value={confirmedQuantity ?? ''}
@@ -259,8 +261,8 @@ export const ReviewFormModal = ({
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRejectDialogOpen(false)}>취소</Button>
-            <Button variant="destructive" onClick={() => void handleConfirmReject()}>반려</Button>
+            <Button variant="outline" onClick={() => setRejectDialogOpen(false)}>{t('취소', 'Cancel')}</Button>
+            <Button variant="destructive" onClick={() => void handleConfirmReject()}>{t('반려', 'Reject')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

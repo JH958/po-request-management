@@ -50,10 +50,10 @@ export const RequestCard = ({ request, showActions = false, onApprove, onReject 
       <CardHeader>
         <div className="flex items-start justify-between">
           <div className="flex-1">
-            <CardTitle className="text-base font-semibold text-[#101820] mb-2">
+            <CardTitle className="text-base font-semibold text-[#172132] mb-2">
               <span className={urgencyConfig.color}>{urgencyConfig.icon}</span>
               <span className="ml-2">{request.so_number}</span>
-              <span className="ml-2 text-[#67767F] font-normal">- {request.customer}</span>
+              <span className="ml-2 text-[#5A6778] font-normal">- {request.customer}</span>
             </CardTitle>
             <div className="flex items-center gap-2 mt-2">
               <RequestStatusBadge status={request.status} />
@@ -65,7 +65,7 @@ export const RequestCard = ({ request, showActions = false, onApprove, onReject 
         </div>
       </CardHeader>
       <CardContent>
-        <div className="space-y-2 text-sm text-[#4B4F5A]">
+        <div className="space-y-2 text-sm text-[#253143]">
           <div>
             <span className="font-medium">요청구분:</span> {request.category_of_request}
           </div>
@@ -85,14 +85,14 @@ export const RequestCard = ({ request, showActions = false, onApprove, onReject 
               variant="outline"
               size="sm"
               onClick={handleViewDetails}
-              className="flex-1 border-[#67767F] text-[#67767F] hover:bg-[#67767F]/10"
+              className="flex-1 border-[#5A6778] text-[#5A6778] hover:bg-[#5A6778]/10"
             >
               상세보기
             </Button>
             <Button
               size="sm"
               onClick={handleApprove}
-              className="flex-1 bg-[#A2B2C8] hover:bg-[#8BA0B8] text-[#101820]"
+              className="flex-1 bg-[#A2B2C8] hover:bg-[#8BA0B8] text-[#172132]"
             >
               승인
             </Button>
@@ -100,7 +100,7 @@ export const RequestCard = ({ request, showActions = false, onApprove, onReject 
               variant="outline"
               size="sm"
               onClick={handleReject}
-              className="flex-1 border-[#971B2F] text-[#971B2F] hover:bg-[#971B2F]/10"
+              className="flex-1 border-[#8B1538] text-[#8B1538] hover:bg-[#8B1538]/10"
             >
               거절
             </Button>

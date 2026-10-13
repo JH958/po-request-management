@@ -7,6 +7,7 @@
  */
 import { createClient } from '@/lib/supabase/client';
 import { asApiError, getReadableErrorMessage } from '@/lib/request-helpers';
+import { translateNow as tn } from '@/lib/i18n';
 import type {
   DoSnapshotSummary,
   ParsedDoFile,
@@ -22,8 +23,6 @@ const UPLOAD_BUCKET = 'po-tracker-uploads';
 /** DO 행 한 번에 보내는 개수 (요청 1건 약 0.9MB) */
 const DO_CHUNK_SIZE = 3000;
 
-const MIGRATION_HINT =
-  'PO Tracker 테이블이 없습니다. Supabase에서 migrations/add_po_tracker_do_tracking.sql을 실행해주세요.';
 
 /**
  * Supabase 오류를 사용자용 한글 메시지로 변환 (DB 함수가 던진 한글 메시지는 그대로 사용)
@@ -31,10 +30,15 @@ const MIGRATION_HINT =
 const formatUploadError = (error: unknown): string => {
   const err = asApiError(error);
   if (err.code === '42P01' || err.code === 'PGRST205' || err.code === 'PGRST202') {
-    return MIGRATION_HINT;
+    return tn(
+      'PO Tracker 테이블이 없습니다. Supabase에서 migrations/add_po_tracker_do_tracking.sql을 실행해주세요.',
+      'PO Tracker tables are missing. Run migrations/add_po_tracker_do_tracking.sql in Supabase.'
+    );
   }
-  if (err.code === '42501') return '업로드 권한이 없습니다. 관리자에게 문의해주세요.';
-  return getReadableErrorMessage(error) || '업로드를 처리하지 못했습니다.';
+  if (err.code === '42501') {
+    return tn('업로드 권한이 없습니다. 관리자에게 문의해주세요.', 'You do not have permission to upload. Please contact an administrator.');
+  }
+  return getReadableErrorMessage(error) || tn('업로드를 처리하지 못했습니다.', 'The upload could not be processed.');
 };
 
 const mapUploadRow = (row: Record<string, unknown>): PoSourceUpload => ({
@@ -118,7 +122,7 @@ const startAndStoreFile = async (
 ): Promise<PoSourceUpload> => {
   const supabase = createClient();
 
-  onProgress('업로드 기록 생성 중');
+  onProgress(tn('업로드 기록 생성 중', 'Creating upload record'));
   const { data, error } = await supabase.rpc('start_po_upload', {
     p_kind: kind,
     p_snapshot_date: snapshotDate,
@@ -129,14 +133,16 @@ const startAndStoreFile = async (
   const upload = mapUploadRow(data as Record<string, unknown>);
 
   try {
-    onProgress('원본 파일 보관 중');
+    onProgress(tn('원본 파일 보관 중', 'Storing the original file'));
     const { error: storageError } = await supabase.storage
       .from(UPLOAD_BUCKET)
       .upload(upload.storage_path as string, file, {
         contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         upsert: false,
       });
-    if (storageError) throw new Error(`원본 파일을 보관하지 못했습니다: ${storageError.message}`);
+    if (storageError) {
+      throw new Error(`${tn('원본 파일을 보관하지 못했습니다', 'Could not store the original file')}: ${storageError.message}`);
+    }
   } catch (error) {
     await failUpload(upload.id, getReadableErrorMessage(error));
     throw error;
@@ -158,7 +164,7 @@ export const uploadSalesOrderFile = async (
   const upload = await startAndStoreFile('sales_order', snapshotDate, file, fileHash, onProgress);
 
   try {
-    onProgress('고객처·품목 매핑 반영 중');
+    onProgress(tn('고객처·품목 매핑 반영 중', 'Updating customer and item mappings'));
     const supabase = createClient();
     const { data, error } = await supabase.rpc('apply_so_snapshot', {
       p_upload_id: upload.id,
@@ -191,7 +197,10 @@ export const uploadDoFile = async (
   try {
     const chunkCount = Math.ceil(parsed.rows.length / DO_CHUNK_SIZE);
     for (let i = 0; i < chunkCount; i++) {
-      onProgress(`DO 행 전송 중 (${i + 1}/${chunkCount})`, Math.round(((i + 1) / chunkCount) * 100));
+      onProgress(
+        `${tn('DO 행 전송 중', 'Sending DO rows')} (${i + 1}/${chunkCount})`,
+        Math.round(((i + 1) / chunkCount) * 100)
+      );
       const { error } = await supabase.rpc('stage_po_upload_chunk', {
         p_upload_id: upload.id,
         p_chunk_no: i,
@@ -200,7 +209,7 @@ export const uploadDoFile = async (
       if (error) throw new Error(formatUploadError(error));
     }
 
-    onProgress('직전 파일과 비교 중');
+    onProgress(tn('직전 파일과 비교 중', 'Comparing with the previous file'));
     const { data, error } = await supabase.rpc('apply_do_snapshot', {
       p_upload_id: upload.id,
       p_row_count: parsed.rowCount,

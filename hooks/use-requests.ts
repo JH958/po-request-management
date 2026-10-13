@@ -7,6 +7,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
+import { translateNow as tn } from '@/lib/i18n';
 import { asApiError, transformRequestData } from '@/lib/request-helpers';
 import { applyRequestListFilter } from '@/lib/request-access-scope';
 import type { RequestListFilterMode } from '@/lib/request-access-scope';
@@ -63,12 +64,12 @@ export const useRequests = ({
       console.error('요청 목록 조회 오류:', error);
       const err = asApiError(error);
       if (err?.code === 'PGRST301' || err?.message?.includes('permission')) {
-        toast.error('요청 목록을 조회할 권한이 없습니다.');
+        toast.error(tn('요청 목록을 조회할 권한이 없습니다.', 'You do not have permission to view requests.'));
       } else if (err?.message?.includes('JWT') || err?.message?.includes('token')) {
-        toast.error('인증이 만료되었습니다. 다시 로그인해주세요.');
+        toast.error(tn('인증이 만료되었습니다. 다시 로그인해주세요.', 'Your session has expired. Please log in again.'));
         router.push('/login');
       } else {
-        toast.error('요청 목록을 불러오는 중 오류가 발생했습니다.');
+        toast.error(tn('요청 목록을 불러오는 중 오류가 발생했습니다.', 'An error occurred while loading requests.'));
       }
       setRequests([]);
       setStats({ total: 0, pending: 0, approved: 0, rejected: 0 });
@@ -106,7 +107,7 @@ export const useAllRequests = (enabled = true) => {
       setRequests(transformRequestData((data || []) as Record<string, unknown>[]));
     } catch (error) {
       console.error('전체 요청 조회 오류:', error);
-      toast.error('요청 목록을 불러오는데 실패했습니다.');
+      toast.error(tn('요청 목록을 불러오는데 실패했습니다.', 'Failed to load requests.'));
       setRequests([]);
     } finally {
       setLoading(false);

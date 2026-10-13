@@ -7,7 +7,8 @@ import { useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { tourLabelMap, tourRouteMap, type TourKey } from '@/lib/tours/tourSteps';
+import { getTourLabels, TOUR_KEYS, tourRouteMap, type TourKey } from '@/lib/tours/tourSteps';
+import { useLanguage } from '@/context/LanguageContext';
 import { setPendingTour } from '@/lib/tours/tour-pending';
 import { useProductTour } from '@/lib/tours/useProductTour';
 
@@ -23,6 +24,8 @@ export const TourLauncher = ({ open, onOpenChange, afterTour = false }: TourLaun
   const pathname = usePathname();
   const { startTour } = useProductTour();
   const [starting, setStarting] = useState(false);
+  const { t } = useLanguage();
+  const tourLabels = getTourLabels(t);
 
   const handleSelect = async (key: TourKey) => {
     if (starting) return;
@@ -49,12 +52,14 @@ export const TourLauncher = ({ open, onOpenChange, afterTour = false }: TourLaun
       <DialogContent className="max-w-sm">
         <DialogHeader>
           <DialogTitle>
-            {afterTour ? '다른 메뉴 가이드도 볼까요?' : '어떤 가이드를 보시겠어요?'}
+            {afterTour
+              ? t('다른 메뉴 가이드도 볼까요?', 'Want to see a guide for another menu?')
+              : t('어떤 가이드를 보시겠어요?', 'Which guide would you like to see?')}
           </DialogTitle>
         </DialogHeader>
 
         <div className="flex flex-col gap-2">
-          {(Object.keys(tourLabelMap) as TourKey[]).map((key) => (
+          {TOUR_KEYS.map((key) => (
             <Button
               key={key}
               variant="outline"
@@ -62,7 +67,7 @@ export const TourLauncher = ({ open, onOpenChange, afterTour = false }: TourLaun
               disabled={starting}
               onClick={() => void handleSelect(key)}
             >
-              {afterTour ? `${tourLabelMap[key]} 보기` : tourLabelMap[key]}
+              {afterTour ? t(`${tourLabels[key]} 보기`, `View ${tourLabels[key]}`) : tourLabels[key]}
             </Button>
           ))}
         </div>
@@ -72,7 +77,7 @@ export const TourLauncher = ({ open, onOpenChange, afterTour = false }: TourLaun
           className="mt-2 text-gray-500"
           onClick={() => onOpenChange(false)}
         >
-          가이드 종료
+          {t('가이드 종료', 'Close guide')}
         </Button>
       </DialogContent>
     </Dialog>

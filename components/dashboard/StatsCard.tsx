@@ -6,6 +6,7 @@
 import type { ReactNode } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import { useLanguage } from '@/context/LanguageContext';
 
 interface StatsCardProps {
   title: string;
@@ -17,6 +18,7 @@ interface StatsCardProps {
 }
 
 export const StatsCard = ({ title, value, subtitle, icon, themeColor, onClick }: StatsCardProps) => {
+  const { t } = useLanguage();
   return (
     <Card 
       className={cn(
@@ -26,12 +28,12 @@ export const StatsCard = ({ title, value, subtitle, icon, themeColor, onClick }:
       onClick={onClick}
     >
       <CardHeader>
-        <CardTitle className="text-sm font-medium text-[#67767F]">{title}</CardTitle>
+        <CardTitle className="text-sm font-medium text-[#5A6778]">{title}</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="flex items-start justify-between">
           <div className="space-y-1">
-            <div className="text-2xl font-bold text-[#101820]">{value}건</div>
+            <div className="text-2xl font-bold text-[#172132]">{t(`${value}건`, `${value}`)}</div>
             <div className="text-sm" style={{ color: themeColor }}>
               {subtitle}
             </div>

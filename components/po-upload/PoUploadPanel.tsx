@@ -12,7 +12,9 @@ import { Progress } from '@/components/ui/progress';
 import { SourceFileSlot } from '@/components/po-upload/SourceFileSlot';
 import { UploadResultSummary } from '@/components/po-upload/UploadResultSummary';
 import { uploadDoFile, uploadSalesOrderFile } from '@/lib/po-upload-api';
-import { UPLOAD_KIND_LABELS } from '@/lib/po-upload-parser';
+import { getUploadKindLabels } from '@/lib/po-tracker-labels';
+import { translateNow as tn, type Translate } from '@/lib/i18n';
+import { useLanguage } from '@/context/LanguageContext';
 import { getReadableErrorMessage } from '@/lib/request-helpers';
 import type {
   DoSnapshotSummary,
@@ -39,29 +41,34 @@ interface StepState {
 /** 처리 순서: 판매주문조회 먼저 (DO 비교 시 재등록 대기·신규 라인 판정에 사용) */
 const KINDS: PoUploadKind[] = ['sales_order', 'do'];
 
+/** message가 비어 있으면 상태별 기본 문구(대기·완료)를 화면에서 표시 */
 const IDLE_STEPS: Record<PoUploadKind, StepState> = {
-  sales_order: { status: 'waiting', message: '대기' },
-  do: { status: 'waiting', message: '대기' },
+  sales_order: { status: 'waiting', message: '' },
+  do: { status: 'waiting', message: '' },
 };
 
 /**
  * 기준일 검사 — 비어 있거나 마지막 처리일 이전이면 오류 문구
  */
-const validateDate = (date: string, latest: string | null): string | null => {
-  if (!date) return '기준일을 입력해주세요.';
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return '날짜 형식이 올바르지 않습니다.';
-  if (latest && date <= latest) return `마지막 처리 기준일(${latest}) 이후 날짜여야 합니다.`;
+const validateDate = (date: string, latest: string | null, t: Translate): string | null => {
+  if (!date) return t('기준일을 입력해주세요.', 'Enter the snapshot date.');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return t('날짜 형식이 올바르지 않습니다.', 'The date format is invalid.');
+  if (latest && date <= latest) {
+    return t(`마지막 처리 기준일(${latest}) 이후 날짜여야 합니다.`, `The date must be after the last processed date (${latest}).`);
+  }
   return null;
 };
 
 const StepIcon = ({ status }: { status: StepStatus }) => {
-  if (status === 'running') return <Loader2 className="h-4 w-4 animate-spin text-[#971B2F]" />;
+  if (status === 'running') return <Loader2 className="h-4 w-4 animate-spin text-[#8B1538]" />;
   if (status === 'done') return <CheckCircle2 className="h-4 w-4 text-green-600" />;
   if (status === 'error') return <XCircle className="h-4 w-4 text-red-600" />;
   return <Circle className="h-4 w-4 text-gray-300" />;
 };
 
 export const PoUploadPanel = ({ latestDates, onProcessed }: PoUploadPanelProps) => {
+  const { t } = useLanguage();
+  const kindLabels = getUploadKindLabels(t);
   const [files, setFiles] = useState<Record<PoUploadKind, PreparedSourceFile | null>>({
     sales_order: null,
     do: null,
@@ -84,26 +91,32 @@ export const PoUploadPanel = ({ latestDates, onProcessed }: PoUploadPanelProps) 
 
   const dateErrors = useMemo(
     () => ({
-      sales_order: files.sales_order ? validateDate(dates.sales_order, latestDates.sales_order) : null,
-      do: files.do ? validateDate(dates.do, latestDates.do) : null,
+      sales_order: files.sales_order ? validateDate(dates.sales_order, latestDates.sales_order, t) : null,
+      do: files.do ? validateDate(dates.do, latestDates.do, t) : null,
     }),
-    [files, dates, latestDates]
+    [files, dates, latestDates, t]
   );
 
   const warnings = useMemo(() => {
     const list: string[] = [];
     if (files.do && !files.sales_order) {
       list.push(
-        '판매주문조회 없이 DO만 올리면 마지막으로 반영한 판매주문조회 기준으로 DO 재등록 대기·삭제를 판정합니다.'
+        t(
+          '판매주문조회 없이 DO만 올리면 마지막으로 반영한 판매주문조회 기준으로 DO 재등록 대기·삭제를 판정합니다.',
+          'Uploading only the DO file uses the last processed sales order list to decide pending re-registration and removals.'
+        )
       );
     }
     if (files.do && files.sales_order && dates.do && dates.sales_order && dates.do !== dates.sales_order) {
       list.push(
-        `두 파일의 기준일이 다릅니다 (판매주문조회 ${dates.sales_order}, DO ${dates.do}). 같은 날 받은 파일인지 확인해주세요.`
+        t(
+          `두 파일의 기준일이 다릅니다 (판매주문조회 ${dates.sales_order}, DO ${dates.do}). 같은 날 받은 파일인지 확인해주세요.`,
+          `The two files have different dates (sales orders ${dates.sales_order}, DO ${dates.do}). Check that they were exported on the same day.`
+        )
       );
     }
     return list;
-  }, [files, dates]);
+  }, [files, dates, t]);
 
   const selectedKinds = KINDS.filter((kind) => files[kind]);
   const canStart =
@@ -146,25 +159,32 @@ export const PoUploadPanel = ({ latestDates, onProcessed }: PoUploadPanelProps) 
             const summary = await uploadDoFile(prepared.file, prepared.fileHash, dates.do, prepared.parsed, onProgress);
             setDoSummary(summary);
           }
-          updateStep(kind, { status: 'done', message: '완료' });
+          updateStep(kind, { status: 'done', message: '' });
           processed.push(kind);
         } catch (error) {
           if (process.env.NODE_ENV === 'development') {
-            console.error(`${UPLOAD_KIND_LABELS[kind]} 처리 실패:`, error);
+            console.error(`${kind} 처리 실패:`, error);
           }
           const message = getReadableErrorMessage(error);
           updateStep(kind, { status: 'error', message });
           // 판매주문조회가 실패하면 DO는 진행하지 않음 (판정 기준이 어긋나므로)
           if (kind === 'sales_order' && files.do) {
-            updateStep('do', { status: 'skipped', message: '판매주문조회 실패로 진행하지 않음' });
+            updateStep('do', {
+              status: 'skipped',
+              message: tn('판매주문조회 실패로 진행하지 않음', 'Skipped because the sales order upload failed'),
+            });
           }
-          toast.error(`${UPLOAD_KIND_LABELS[kind]} 처리에 실패했습니다.`, { description: message });
+          toast.error(
+            tn(`${getUploadKindLabels(tn)[kind]} 처리에 실패했습니다.`, `${getUploadKindLabels(tn)[kind]} upload failed.`),
+            { description: message }
+          );
           break;
         }
       }
 
       if (processed.length > 0) {
-        toast.success(`${processed.map((k) => UPLOAD_KIND_LABELS[k]).join(', ')} 처리를 완료했습니다.`);
+        const names = processed.map((k) => getUploadKindLabels(tn)[k]).join(', ');
+        toast.success(tn(`${names} 처리를 완료했습니다.`, `${names} processed.`));
         setFiles((prev) => {
           const next = { ...prev };
           processed.forEach((k) => {
@@ -214,16 +234,19 @@ export const PoUploadPanel = ({ latestDates, onProcessed }: PoUploadPanelProps) 
       ))}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-[#67767F]">
-          판매주문조회 → DO등록현황조회 순서로 처리합니다. 처리 중에는 페이지를 닫지 마세요.
+        <p className="text-sm text-[#5A6778]">
+          {t(
+            '판매주문조회 → DO등록현황조회 순서로 처리합니다. 처리 중에는 페이지를 닫지 마세요.',
+            'Files are processed in order: sales orders, then DO. Keep this page open while processing.'
+          )}
         </p>
         <Button
           onClick={() => void handleStart()}
           disabled={!canStart}
-          className="bg-[#971B2F] hover:bg-[#7A1626]"
+          className="bg-[#8B1538] hover:bg-[#74112F]"
         >
           {running ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
-          {running ? '처리 중…' : '업로드 시작'}
+          {running ? t('처리 중…', 'Processing…') : t('업로드 시작', 'Start upload')}
         </Button>
       </div>
 
@@ -235,9 +258,10 @@ export const PoUploadPanel = ({ latestDates, onProcessed }: PoUploadPanelProps) 
               <div key={kind} className="space-y-1.5">
                 <div className="flex items-center gap-2 text-sm">
                   <StepIcon status={step.status} />
-                  <span className="font-medium text-[#101820]">{UPLOAD_KIND_LABELS[kind]}</span>
-                  <span className={step.status === 'error' ? 'text-red-600' : 'text-[#67767F]'}>
-                    {step.message}
+                  <span className="font-medium text-[#172132]">{kindLabels[kind]}</span>
+                  <span className={step.status === 'error' ? 'text-red-600' : 'text-[#5A6778]'}>
+                    {step.message ||
+                      (step.status === 'done' ? t('완료', 'Done') : t('대기', 'Waiting'))}
                   </span>
                 </div>
                 {step.status === 'running' && step.percent !== undefined ? (

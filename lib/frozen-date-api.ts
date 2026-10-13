@@ -3,18 +3,19 @@
  */
 import { createClient } from '@/lib/supabase/client';
 import { asApiError } from '@/lib/request-helpers';
+import { translateNow as tn } from '@/lib/i18n';
 import type { FrozenDateSetting } from '@/types/frozen-date';
-
-const TABLE_MISSING_HINT =
-  'frozen_date_settings 테이블이 없습니다. Supabase에서 migrations/add_frozen_date_settings.sql을 실행해주세요.';
 
 const formatFrozenApiError = (error: unknown): string => {
   const err = asApiError(error);
   if (err.code === '42P01' || err.code === 'PGRST205' || err.message?.includes('frozen_date_settings')) {
-    return TABLE_MISSING_HINT;
+    return tn(
+      'frozen_date_settings 테이블이 없습니다. Supabase에서 migrations/add_frozen_date_settings.sql을 실행해주세요.',
+      'The frozen_date_settings table is missing. Run migrations/add_frozen_date_settings.sql in Supabase.'
+    );
   }
   if (err.message) return err.message;
-  return '프로즌 설정을 조회하지 못했습니다.';
+  return tn('프로즌 설정을 조회하지 못했습니다.', 'Could not load frozen date settings.');
 };
 
 const mapRow = (row: Record<string, unknown>): FrozenDateSetting => ({

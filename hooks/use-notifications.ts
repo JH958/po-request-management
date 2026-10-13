@@ -6,8 +6,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
-import { ko } from 'date-fns/locale';
 import { createClient } from '@/lib/supabase/client';
+import { getDateLocale, translateNow as tn, type Language } from '@/lib/i18n';
 import { asApiError, getReadableErrorMessage } from '@/lib/request-helpers';
 
 export interface NotificationItem {
@@ -38,7 +38,7 @@ export interface NotificationItem {
 /**
  * 로그인 사용자의 알림 목록을 관리하는 훅
  */
-export const useNotifications = (userId: string | undefined) => {
+export const useNotifications = (userId: string | undefined, lang: Language) => {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -133,7 +133,7 @@ export const useNotifications = (userId: string | undefined) => {
       setUnreadCount((prev) => Math.max(0, prev - 1));
     } catch (error) {
       console.error('알림 읽음 처리 실패:', error);
-      toast.error('알림 읽음 처리에 실패했습니다.');
+      toast.error(tn('알림 읽음 처리에 실패했습니다.', 'Could not mark the notification as read.'));
     }
   };
 
@@ -149,10 +149,10 @@ export const useNotifications = (userId: string | undefined) => {
       if (error) throw error;
       setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
       setUnreadCount(0);
-      toast.success('모든 알림을 읽음 처리했습니다.');
+      toast.success(tn('모든 알림을 읽음 처리했습니다.', 'All notifications marked as read.'));
     } catch (error) {
       console.error('모두 읽음 처리 실패:', error);
-      toast.error('알림 처리에 실패했습니다.');
+      toast.error(tn('알림 처리에 실패했습니다.', 'Could not update notifications.'));
     }
   };
 
@@ -174,6 +174,6 @@ export const useNotifications = (userId: string | undefined) => {
     handleMarkAllAsRead,
     handleNotificationClick,
     formatNotificationTime: (date: string) =>
-      formatDistanceToNow(new Date(date), { addSuffix: true, locale: ko }),
+      formatDistanceToNow(new Date(date), { addSuffix: true, locale: getDateLocale(lang) }),
   };
 };

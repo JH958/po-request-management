@@ -12,6 +12,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { useLanguage } from '@/context/LanguageContext';
 
 interface RequestTypeGridProps {
   onSelect: (type: RequestTypeCard) => void;
@@ -36,18 +37,18 @@ const REQUEST_TYPE_TOUR_MAP: Record<string, string> = {
 const VARIANT_STYLES: Record<CardVariant, { base: string; hover: string }> = {
   /** 제품·자재 추가/삭제 (4개) — 브랜드 레드 계열 */
   quantity: {
-    base: 'border-[#971B2F]/35 bg-[#971B2F]/10 text-[#971B2F]',
-    hover: 'hover:border-[#971B2F] hover:bg-[#971B2F] hover:text-white hover:shadow-md',
+    base: 'border-[#8B1538]/35 bg-[#8B1538]/10 text-[#8B1538]',
+    hover: 'hover:border-[#8B1538] hover:bg-[#8B1538] hover:text-white hover:shadow-md',
   },
   /** 품목코드·출하·운송 변경 (3개) — 브랜드 액센트 블루그레이 계열 */
   change: {
-    base: 'border-[#A2B2C8] bg-[#A2B2C8]/20 text-[#101820]',
+    base: 'border-[#A2B2C8] bg-[#A2B2C8]/20 text-[#172132]',
     hover: 'hover:border-[#8A9BB1] hover:bg-[#A2B2C8] hover:shadow-md',
   },
   /** 분할/합배송·기타 (2개) — 뉴트럴 그레이 계열 */
   other: {
-    base: 'border-[#B2B4B8] bg-[#F8F9FA] text-[#67767F]',
-    hover: 'hover:border-[#67767F] hover:bg-white hover:text-[#101820] hover:shadow-md',
+    base: 'border-[#8E98A8] bg-[#F1F4F8] text-[#5A6778]',
+    hover: 'hover:border-[#5A6778] hover:bg-white hover:text-[#172132] hover:shadow-md',
   },
 };
 
@@ -68,6 +69,7 @@ const getCardVariant = (value: string): CardVariant => {
 
 export const RequestTypeGrid = ({ onSelect }: RequestTypeGridProps) => {
   const { requestTypes } = useRequestConfig();
+  const { t } = useLanguage();
 
   return (
     <TooltipProvider>
@@ -82,7 +84,7 @@ export const RequestTypeGrid = ({ onSelect }: RequestTypeGridProps) => {
                 <button
                   type="button"
                   onClick={() => onSelect(type)}
-                  aria-label={`${type.label} 요청 작성`}
+                  aria-label={t(`${type.label} 요청 작성`, `Create a ${type.label} request`)}
                   data-tour={tourAttr}
                   className={cn(
                     'rounded-lg border-2 p-6 text-center text-base font-semibold leading-snug transition-all duration-200',

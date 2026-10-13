@@ -11,6 +11,8 @@ import type {
   SoLinePayload,
   SoOrderPayload,
 } from '@/types/po-upload';
+import { translateNow as tn } from '@/lib/i18n';
+import { getUploadKindLabels } from '@/lib/po-tracker-labels';
 
 type SheetRow = Record<string, unknown>;
 
@@ -55,10 +57,6 @@ export const DO_REQUIRED_COLUMNS = [
   '종료',
 ] as const;
 
-export const UPLOAD_KIND_LABELS: Record<PoUploadKind, string> = {
-  sales_order: '판매주문조회',
-  do: 'DO등록현황조회',
-};
 
 /**
  * 파일명 끝 6자리(YYMMDD)에서 기준일 추출
@@ -247,7 +245,7 @@ export const prepareSourceFile = async (
   expectedKind: PoUploadKind
 ): Promise<PreparedSourceFile> => {
   if (!/\.xlsx?$/i.test(file.name)) {
-    throw new Error('엑셀 파일(.xlsx)만 올릴 수 있습니다.');
+    throw new Error(tn('엑셀 파일(.xlsx)만 올릴 수 있습니다.', 'Only Excel files (.xlsx) can be uploaded.'));
   }
 
   const buffer = await file.arrayBuffer();
@@ -255,19 +253,23 @@ export const prepareSourceFile = async (
 
   const kind = detectUploadKind(headers);
   if (kind && kind !== expectedKind) {
+    const labels = getUploadKindLabels(tn);
     throw new Error(
-      `${UPLOAD_KIND_LABELS[kind]} 파일입니다. ${UPLOAD_KIND_LABELS[expectedKind]} 칸에 맞는 파일을 선택해주세요.`
+      tn(
+        `${labels[kind]} 파일입니다. ${labels[expectedKind]} 칸에 맞는 파일을 선택해주세요.`,
+        `This is a ${labels[kind]} file. Please choose a ${labels[expectedKind]} file for this slot.`
+      )
     );
   }
 
   const required = expectedKind === 'do' ? DO_REQUIRED_COLUMNS : SALES_ORDER_REQUIRED_COLUMNS;
   const missing = required.filter((col) => !headers.includes(col));
   if (missing.length > 0) {
-    throw new Error(`필수 열이 없습니다: ${missing.join(', ')}`);
+    throw new Error(`${tn('필수 열이 없습니다', 'Required columns are missing')}: ${missing.join(', ')}`);
   }
 
   if (rows.length === 0) {
-    throw new Error('데이터 행이 없습니다.');
+    throw new Error(tn('데이터 행이 없습니다.', 'The file has no data rows.'));
   }
 
   const parsed = expectedKind === 'do' ? parseDoRows(rows) : parseSalesOrderRows(rows);

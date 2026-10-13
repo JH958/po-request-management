@@ -15,8 +15,9 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { countDoEvents } from '@/components/po-upload/UploadResultSummary';
-import { UPLOAD_KIND_LABELS } from '@/lib/po-upload-parser';
-import { UPLOAD_STATUS_LABELS } from '@/lib/po-tracker-labels';
+import { getUploadKindLabels, getUploadStatusLabels } from '@/lib/po-tracker-labels';
+import type { Translate } from '@/lib/i18n';
+import { useLanguage } from '@/context/LanguageContext';
 import { cn } from '@/lib/utils';
 import type { DoSnapshotSummary, PoSourceUpload, SoSnapshotSummary } from '@/types/po-upload';
 
@@ -37,21 +38,36 @@ const STATUS_CLASS: Record<PoSourceUpload['status'], string> = {
 /**
  * 이력 한 줄 결과 요약 문구
  */
-const describeResult = (upload: PoSourceUpload): string => {
-  if (upload.status === 'failed') return upload.error_message ?? '처리 실패';
+const describeResult = (upload: PoSourceUpload, t: Translate): string => {
+  if (upload.status === 'failed') return upload.error_message ?? t('처리 실패', 'Failed');
   if (upload.status === 'processing' || !upload.summary) return '-';
 
   if (upload.kind === 'sales_order') {
     const s = upload.summary as SoSnapshotSummary;
-    return `주문 ${numberFormat.format(s.orders)} · 미출고 라인 ${numberFormat.format(s.open_so_lines)} · 미분류 품목 ${numberFormat.format(s.unclassified_items)}`;
+    return t(
+      `주문 ${numberFormat.format(s.orders)} · 미출고 라인 ${numberFormat.format(s.open_so_lines)} · 미분류 품목 ${numberFormat.format(s.unclassified_items)}`,
+      `${numberFormat.format(s.orders)} orders · ${numberFormat.format(s.open_so_lines)} open SO lines · ${numberFormat.format(s.unclassified_items)} unclassified items`
+    );
   }
 
   const s = upload.summary as DoSnapshotSummary;
-  if (s.baseline) return `기준선 저장 (라인 ${numberFormat.format(s.order_lines ?? 0)})`;
-  return `변경 ${numberFormat.format(countDoEvents(s))} · 신규 주문 ${numberFormat.format(s.new_orders ?? 0)} · 재등록 대기 ${numberFormat.format(s.pending_lines ?? 0)}`;
+  if (s.baseline) {
+    return t(
+      `기준선 저장 (라인 ${numberFormat.format(s.order_lines ?? 0)})`,
+      `Baseline saved (${numberFormat.format(s.order_lines ?? 0)} lines)`
+    );
+  }
+  return t(
+    `변경 ${numberFormat.format(countDoEvents(s))} · 신규 주문 ${numberFormat.format(s.new_orders ?? 0)} · 재등록 대기 ${numberFormat.format(s.pending_lines ?? 0)}`,
+    `${numberFormat.format(countDoEvents(s))} changes · ${numberFormat.format(s.new_orders ?? 0)} new orders · ${numberFormat.format(s.pending_lines ?? 0)} pending re-registration`
+  );
 };
 
 export const UploadHistoryTable = ({ uploads, loading, error }: UploadHistoryTableProps) => {
+  const { t } = useLanguage();
+  const kindLabels = getUploadKindLabels(t);
+  const statusLabels = getUploadStatusLabels(t);
+
   if (loading && uploads.length === 0) {
     return (
       <div className="space-y-2">
@@ -67,7 +83,11 @@ export const UploadHistoryTable = ({ uploads, loading, error }: UploadHistoryTab
   }
 
   if (uploads.length === 0) {
-    return <p className="py-10 text-center text-sm text-[#67767F]">아직 업로드한 파일이 없습니다.</p>;
+    return (
+      <p className="py-10 text-center text-sm text-[#5A6778]">
+        {t('아직 업로드한 파일이 없습니다.', 'No files uploaded yet.')}
+      </p>
+    );
   }
 
   return (
@@ -75,20 +95,20 @@ export const UploadHistoryTable = ({ uploads, loading, error }: UploadHistoryTab
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className="whitespace-nowrap">기준일</TableHead>
-            <TableHead className="whitespace-nowrap">종류</TableHead>
-            <TableHead>파일명</TableHead>
-            <TableHead className="whitespace-nowrap text-right">행 수</TableHead>
-            <TableHead className="whitespace-nowrap">상태</TableHead>
-            <TableHead>결과</TableHead>
-            <TableHead className="whitespace-nowrap">업로드 시각</TableHead>
+            <TableHead className="whitespace-nowrap">{t('기준일', 'Snapshot date')}</TableHead>
+            <TableHead className="whitespace-nowrap">{t('종류', 'Type')}</TableHead>
+            <TableHead>{t('파일명', 'File name')}</TableHead>
+            <TableHead className="whitespace-nowrap text-right">{t('행 수', 'Rows')}</TableHead>
+            <TableHead className="whitespace-nowrap">{t('상태', 'Status')}</TableHead>
+            <TableHead>{t('결과', 'Result')}</TableHead>
+            <TableHead className="whitespace-nowrap">{t('업로드 시각', 'Uploaded at')}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {uploads.map((upload) => (
             <TableRow key={upload.id}>
               <TableCell className="whitespace-nowrap font-medium">{upload.snapshot_date}</TableCell>
-              <TableCell className="whitespace-nowrap">{UPLOAD_KIND_LABELS[upload.kind]}</TableCell>
+              <TableCell className="whitespace-nowrap">{kindLabels[upload.kind]}</TableCell>
               <TableCell className="max-w-56 truncate" title={upload.file_name}>
                 {upload.file_name}
               </TableCell>
@@ -97,15 +117,15 @@ export const UploadHistoryTable = ({ uploads, loading, error }: UploadHistoryTab
               </TableCell>
               <TableCell>
                 <Badge variant="outline" className={cn(STATUS_CLASS[upload.status])}>
-                  {UPLOAD_STATUS_LABELS[upload.status]}
+                  {statusLabels[upload.status]}
                 </Badge>
               </TableCell>
               <TableCell
                 className={cn('min-w-56 whitespace-normal text-sm', upload.status === 'failed' && 'text-red-600')}
               >
-                {describeResult(upload)}
+                {describeResult(upload, t)}
               </TableCell>
-              <TableCell className="whitespace-nowrap text-sm text-[#67767F]">
+              <TableCell className="whitespace-nowrap text-sm text-[#5A6778]">
                 {format(new Date(upload.uploaded_at), 'yyyy-MM-dd HH:mm')}
               </TableCell>
             </TableRow>

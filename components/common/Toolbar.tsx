@@ -114,7 +114,7 @@ export const Toolbar = ({ onSearch, onFilterChange, onSortChange }: ToolbarProps
         {/* 검색 입력창 */}
         <div className="flex-1">
           <div className="relative">
-            <SearchIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#67767F]" />
+            <SearchIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#5A6778]" />
             <Input
               type="text"
               placeholder="고객, 요청부서, 요청자, SO번호로 검색..."
@@ -129,7 +129,7 @@ export const Toolbar = ({ onSearch, onFilterChange, onSortChange }: ToolbarProps
         <div className="flex flex-wrap items-center gap-4">
           {/* 필터 그룹 */}
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-medium text-[#67767F]">필터</span>
+            <span className="text-sm font-medium text-[#5A6778]">필터</span>
             
             {/* 구분 필터 */}
             <Select value={requestTypeFilter} onValueChange={handleRequestTypeFilterChange}>
@@ -183,7 +183,7 @@ export const Toolbar = ({ onSearch, onFilterChange, onSortChange }: ToolbarProps
 
           {/* 정렬 그룹 */}
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-[#67767F]">정렬</span>
+            <span className="text-sm font-medium text-[#5A6778]">정렬</span>
             <Select
               value={`${sortBy}-${sortOrder}`}
               onValueChange={(value) => {

@@ -18,6 +18,9 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertCircle } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { useLanguage } from '@/context/LanguageContext';
+import { LanguageToggle } from '@/components/common/LanguageToggle';
+import { translateFormError } from '@/lib/auth-form-messages';
 
 /**
  * 로그인 폼 스키마
@@ -33,6 +36,7 @@ type LoginFormData = z.infer<typeof loginSchema>;
 export default function LoginPage() {
   const router = useRouter();
   const { user, loading } = useAuth();
+  const { t } = useLanguage();
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -62,10 +66,10 @@ export default function LoginPage() {
   // 로딩 중이거나 이미 로그인된 사용자는 로딩 표시 (단, 간단하게)
   if (loading || user) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#F8F9FA]">
+      <div className="min-h-screen flex items-center justify-center bg-[#F1F4F8]">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#971B2F] mx-auto"></div>
-          <p className="mt-4 text-[#67767F]">{user ? '리다이렉트 중...' : '로딩 중...'}</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#8B1538] mx-auto"></div>
+          <p className="mt-4 text-[#5A6778]">{user ? t('리다이렉트 중...', 'Redirecting...') : t('로딩 중...', 'Loading...')}</p>
         </div>
       </div>
     );
@@ -80,18 +84,18 @@ export default function LoginPage() {
       
       // Supabase 오류 메시지 매핑
       if (errorMsg.includes('Email not confirmed')) {
-        return '이메일 인증이 완료되지 않았습니다. 메일함을 확인해주세요.';
+        return t('이메일 인증이 완료되지 않았습니다. 메일함을 확인해주세요.', 'Your email is not verified yet. Please check your inbox.');
       }
       if (errorMsg.includes('Invalid login credentials')) {
-        return '이메일 또는 비밀번호가 올바르지 않습니다.';
+        return t('이메일 또는 비밀번호가 올바르지 않습니다.', 'Incorrect email or password.');
       }
       if (errorMsg.includes('User not found')) {
-        return '등록되지 않은 이메일입니다.';
+        return t('등록되지 않은 이메일입니다.', 'This email is not registered.');
       }
       
-      return errorMsg || '로그인 중 오류가 발생했습니다.';
+      return errorMsg || t('로그인 중 오류가 발생했습니다.', 'An error occurred while logging in.');
     }
-    return '로그인 중 오류가 발생했습니다. 다시 시도해주세요.';
+    return t('로그인 중 오류가 발생했습니다. 다시 시도해주세요.', 'An error occurred while logging in. Please try again.');
   };
 
   /**
@@ -140,10 +144,10 @@ export default function LoginPage() {
       
       // 네트워크 오류 처리
       if (error instanceof TypeError && (error.message === 'Failed to fetch' || error.name === 'TypeError')) {
-        const errorMsg = '네트워크 연결 오류가 발생했습니다. 다음을 확인해주세요:\n' +
-          '1. 인터넷 연결 상태\n' +
-          '2. .env.local 파일의 Supabase URL과 API 키가 올바른지\n' +
-          '3. Supabase 프로젝트가 활성화되어 있는지';
+        const errorMsg = t(
+          '네트워크 연결 오류가 발생했습니다. 다음을 확인해주세요:\n1. 인터넷 연결 상태\n2. .env.local 파일의 Supabase URL과 API 키가 올바른지\n3. Supabase 프로젝트가 활성화되어 있는지',
+          'A network error occurred. Please check:\n1. Your internet connection\n2. The Supabase URL and API key in .env.local\n3. That the Supabase project is active'
+        );
         setErrorMessage(errorMsg);
       } else {
         const errorMsg = getErrorMessage(error);
@@ -155,31 +159,33 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#F8F9FA] px-4 py-12">
+    <div className="relative min-h-screen flex items-center justify-center bg-[#F1F4F8] px-4 py-12">
+      <LanguageToggle className="absolute right-5 top-5" />
       <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
         {/* 좌측: 브랜딩 영역 */}
         <div className="hidden lg:flex flex-col justify-center space-y-6 px-8">
           <div className="space-y-4">
-            <h1 className="text-4xl font-bold text-[#101820]">
+            <h1 className="text-4xl font-bold text-brand-logo">
               PO Tracker
             </h1>
-            <p className="text-lg text-[#67767F] leading-relaxed">
-              체계적인 PO 변경 요청 관리를 통해<br />
-              유관부서 간 효율적인 협업을 지원합니다.
+            <p className="text-lg text-[#5A6778] leading-relaxed">
+              {t('체계적인 PO 변경 요청 관리를 통해', 'Structured PO change request management')}
+              <br />
+              {t('유관부서 간 효율적인 협업을 지원합니다.', 'for smooth collaboration across departments.')}
             </p>
           </div>
-          <div className="space-y-2 text-sm text-[#67767F]">
+          <div className="space-y-2 text-sm text-[#5A6778]">
             <div className="flex items-center gap-2">
-              <span className="text-[#971B2F]">✓</span>
-              <span>실시간 요청 현황 추적</span>
+              <span className="text-[#8B1538]">✓</span>
+              <span>{t('실시간 요청 현황 추적', 'Real-time request tracking')}</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-[#971B2F]">✓</span>
-              <span>원활한 승인 워크플로우</span>
+              <span className="text-[#8B1538]">✓</span>
+              <span>{t('원활한 승인 워크플로우', 'Smooth approval workflow')}</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-[#971B2F]">✓</span>
-              <span>중앙 집중식 요청 관리</span>
+              <span className="text-[#8B1538]">✓</span>
+              <span>{t('중앙 집중식 요청 관리', 'Centralized request management')}</span>
             </div>
           </div>
         </div>
@@ -188,11 +194,11 @@ export default function LoginPage() {
         <div className="w-full flex justify-center">
           <Card className="w-full max-w-md shadow-lg">
             <CardHeader className="space-y-1 text-center">
-              <CardTitle className="text-2xl font-bold text-[#101820]">
-                로그인
+              <CardTitle className="text-2xl font-bold text-[#172132]">
+                {t('로그인', 'Log in')}
               </CardTitle>
-              <CardDescription className="text-[#67767F]">
-                계정에 로그인하여 서비스를 이용하세요
+              <CardDescription className="text-[#5A6778]">
+                {t('계정에 로그인하여 서비스를 이용하세요', 'Log in to your account to continue')}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -201,57 +207,57 @@ export default function LoginPage() {
                 {errorMessage && (
                   <Alert variant="destructive">
                     <AlertCircle className="h-4 w-4" />
-                    <AlertTitle>오류</AlertTitle>
+                    <AlertTitle>{t('오류', 'Error')}</AlertTitle>
                     <AlertDescription>{errorMessage}</AlertDescription>
                   </Alert>
                 )}
 
                 {/* 이메일 입력 */}
                 <div className="space-y-2">
-                  <Label htmlFor="email" className="text-[#4B4F5A]">
-                    이메일
+                  <Label htmlFor="email" className="text-[#253143]">
+                    {t('이메일', 'Email')}
                   </Label>
                   <Input
                     id="email"
                     type="email"
                     placeholder="your.email@example.com"
                     {...register('email')}
-                    className={errors.email ? 'border-[#971B2F]' : ''}
+                    className={errors.email ? 'border-[#8B1538]' : ''}
                     disabled={isLoading}
                   />
                   {errors.email && (
-                    <p className="text-sm text-[#971B2F]">
-                      {errors.email.message}
+                    <p className="text-sm text-[#8B1538]">
+                      {translateFormError(errors.email.message, t)}
                     </p>
                   )}
                 </div>
 
                 {/* 비밀번호 입력 */}
                 <div className="space-y-2">
-                  <Label htmlFor="password" className="text-[#4B4F5A]">
-                    비밀번호
+                  <Label htmlFor="password" className="text-[#253143]">
+                    {t('비밀번호', 'Password')}
                   </Label>
                   <div className="relative">
                     <Input
                       id="password"
                       type={showPassword ? 'text' : 'password'}
-                      placeholder="비밀번호를 입력하세요"
+                      placeholder={t('비밀번호를 입력하세요', 'Enter your password')}
                       {...register('password')}
-                      className={errors.password ? 'border-[#971B2F]' : ''}
+                      className={errors.password ? 'border-[#8B1538]' : ''}
                       disabled={isLoading}
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#67767F] hover:text-[#4B4F5A] text-sm"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#5A6778] hover:text-[#253143] text-sm"
                       disabled={isLoading}
                     >
-                      {showPassword ? '숨기기' : '보기'}
+                      {showPassword ? t('숨기기', 'Hide') : t('보기', 'Show')}
                     </button>
                   </div>
                   {errors.password && (
-                    <p className="text-sm text-[#971B2F]">
-                      {errors.password.message}
+                    <p className="text-sm text-[#8B1538]">
+                      {translateFormError(errors.password.message, t)}
                     </p>
                   )}
                 </div>
@@ -272,10 +278,10 @@ export default function LoginPage() {
                           />
                           <Label
                             htmlFor="rememberMe"
-                            className="text-sm text-[#4B4F5A] cursor-pointer"
+                            className="text-sm text-[#253143] cursor-pointer"
                             onClick={() => field.onChange(!field.value)}
                           >
-                            로그인 상태 유지
+                            {t('로그인 상태 유지', 'Keep me logged in')}
                           </Label>
                         </>
                       )}
@@ -283,29 +289,29 @@ export default function LoginPage() {
                   </div>
                   <Link
                     href="/reset-password"
-                    className="text-sm text-[#971B2F] hover:underline"
+                    className="text-sm text-[#8B1538] hover:underline"
                   >
-                    비밀번호 찾기
+                    {t('비밀번호 찾기', 'Forgot password?')}
                   </Link>
                 </div>
 
                 {/* 로그인 버튼 */}
                 <Button
                   type="submit"
-                  className="w-full bg-[#971B2F] hover:bg-[#7A1626] text-white"
+                  className="w-full bg-[#8B1538] hover:bg-[#74112F] text-white"
                   disabled={isLoading}
                 >
-                  {isLoading ? '로그인 중...' : '로그인'}
+                  {isLoading ? t('로그인 중...', 'Logging in...') : t('로그인', 'Log in')}
                 </Button>
 
                 {/* 회원가입 링크 */}
                 <div className="text-center text-sm">
-                  <span className="text-[#67767F]">계정이 없으신가요? </span>
+                  <span className="text-[#5A6778]">{t('계정이 없으신가요?', "Don't have an account?")} </span>
                   <Link
                     href="/signup"
-                    className="text-[#971B2F] font-medium hover:underline"
+                    className="text-[#8B1538] font-medium hover:underline"
                   >
-                    회원가입
+                    {t('회원가입', 'Sign up')}
                   </Link>
                 </div>
               </form>
@@ -315,11 +321,14 @@ export default function LoginPage() {
 
         {/* 모바일: 브랜딩 영역 (하단에 표시) */}
         <div className="lg:hidden flex flex-col items-center space-y-4 text-center px-4">
-          <h1 className="text-2xl font-bold text-[#101820]">
+          <h1 className="text-2xl font-bold text-brand-logo">
             PO Tracker
           </h1>
-          <p className="text-sm text-[#67767F]">
-            체계적인 PO 변경 요청 관리를 통해 효율적인 협업을 지원합니다.
+          <p className="text-sm text-[#5A6778]">
+            {t(
+              '체계적인 PO 변경 요청 관리를 통해 효율적인 협업을 지원합니다.',
+              'Structured PO change request management for smooth collaboration.'
+            )}
           </p>
         </div>
       </div>

@@ -16,12 +16,15 @@ import {
   calculateMonthlyTrend,
   calculateProductCategoryTrend,
 } from '@/lib/request-helpers';
+import { PageHeader } from '@/components/common/PageHeader';
+import { useLanguage } from '@/context/LanguageContext';
 
 interface UserDashboardProps {
   department: string;
 }
 
 export const UserDashboard = ({ department }: UserDashboardProps) => {
+  const { t } = useLanguage();
   const { requests: allRequests, loading } = useAllRequests();
   const [periodFilter, setPeriodFilter] = useState<'all' | 'daily' | 'weekly' | 'monthly'>('all');
 
@@ -63,7 +66,7 @@ export const UserDashboard = ({ department }: UserDashboardProps) => {
   if (loading && scopedRequests.length === 0) {
     return (
       <div className="flex items-center justify-center py-20">
-        <div className="h-10 w-10 animate-spin rounded-full border-b-2 border-[#971B2F]" />
+        <div className="h-10 w-10 animate-spin rounded-full border-b-2 border-[#8B1538]" />
       </div>
     );
   }
@@ -71,20 +74,16 @@ export const UserDashboard = ({ department }: UserDashboardProps) => {
   return (
     <div className="space-y-8">
       <div data-tour="po-status-header">
-        <div>
-          <h1 className="text-3xl font-bold text-[#101820]">
-            PO 현황 <ClipboardList className="ml-1 inline-block size-7 text-[#971B2F]" />
-          </h1>
-          <p className="mt-1 text-[#67767F]">
-            {department} 소속 요청 현황을 확인합니다.
-          </p>
-        </div>
+        <PageHeader
+          title={t('PO 현황', 'PO Status')}
+          description={t(`${department} 소속 요청 현황을 확인합니다.`, `Requests from ${department}.`)}
+        />
 
         <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <StatsCard title="전체 요청" value={stats.total} subtitle="소속 건수" icon={<ClipboardList className="h-8 w-8 text-[#971B2F]" />} themeColor="#A2B2C8" />
-          <StatsCard title="검토 대기" value={stats.pending} subtitle="대기 중" icon={<Clock className="h-8 w-8 text-[#67767F]" />} themeColor="#67767F" />
-          <StatsCard title="승인" value={stats.approved} subtitle="승인 완료" icon={<CheckCircle2 className="h-8 w-8 text-[#A2B2C8]" />} themeColor="#A2B2C8" />
-          <StatsCard title="반려" value={stats.rejected} subtitle="반려 처리" icon={<XCircle className="h-8 w-8 text-[#971B2F]" />} themeColor="#971B2F" />
+          <StatsCard title={t('전체 요청', 'All requests')} value={stats.total} subtitle={t('소속 건수', 'My department')} icon={<ClipboardList className="h-8 w-8 text-[#8B1538]" />} themeColor="#A2B2C8" />
+          <StatsCard title={t('검토 대기', 'Pending')} value={stats.pending} subtitle={t('대기 중', 'Awaiting review')} icon={<Clock className="h-8 w-8 text-[#5A6778]" />} themeColor="#5A6778" />
+          <StatsCard title={t('승인', 'Approved')} value={stats.approved} subtitle={t('승인 완료', 'Approved')} icon={<CheckCircle2 className="h-8 w-8 text-[#A2B2C8]" />} themeColor="#A2B2C8" />
+          <StatsCard title={t('반려', 'Rejected')} value={stats.rejected} subtitle={t('반려 처리', 'Rejected')} icon={<XCircle className="h-8 w-8 text-[#8B1538]" />} themeColor="#8B1538" />
         </div>
       </div>
 

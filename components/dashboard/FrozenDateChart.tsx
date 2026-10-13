@@ -5,7 +5,8 @@
 
 import { useMemo } from 'react';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { FROZEN_STATUS_LABELS } from '@/lib/frozen-date-labels';
+import { getFrozenStatusLabels } from '@/lib/frozen-date-labels';
+import { useLanguage } from '@/context/LanguageContext';
 import type { PORequest } from '@/types/request';
 import type { FrozenStatus } from '@/types/frozen-date';
 
@@ -20,7 +21,11 @@ const CHART_COLORS: Record<FrozenStatus, string> = {
 };
 
 export const FrozenDateChart = ({ requests }: FrozenDateChartProps) => {
+  const { t } = useLanguage();
+  const countText = (n: number) => t(`${n}건`, `${n}`);
+
   const chartData = useMemo(() => {
+    const labels = getFrozenStatusLabels(t);
     const counts: Record<FrozenStatus, number> = { before: 0, after: 0, unset: 0 };
     requests.forEach((r) => {
       const status = (r.frozen_status ?? 'unset') as FrozenStatus;
@@ -29,24 +34,24 @@ export const FrozenDateChart = ({ requests }: FrozenDateChartProps) => {
 
     const total = requests.length || 1;
     return (['before', 'after', 'unset'] as const).map((key) => ({
-      name: FROZEN_STATUS_LABELS[key],
+      name: labels[key],
       key,
       value: counts[key],
       percentage: Math.round((counts[key] / total) * 100),
     }));
-  }, [requests]);
+  }, [requests, t]);
 
   if (requests.length === 0) {
     return (
-      <div className="rounded-lg border bg-gray-50 p-8 text-center text-sm text-[#67767F]">
-        프로즌 데이터가 없습니다.
+      <div className="rounded-lg border bg-gray-50 p-8 text-center text-sm text-[#5A6778]">
+        {t('프로즌 데이터가 없습니다.', 'No frozen date data.')}
       </div>
     );
   }
 
   return (
     <div className="rounded-lg border bg-white p-6" data-tour="po-status-frozen-chart">
-      <h3 className="mb-3 text-lg font-semibold text-[#101820]">프로즌 여부 분석</h3>
+      <h3 className="mb-3 text-lg font-semibold text-[#172132]">{t('프로즌 여부 분석', 'Before / After Frozen Date')}</h3>
       <ResponsiveContainer width="100%" height={320}>
         <PieChart>
           <Pie
@@ -68,8 +73,10 @@ export const FrozenDateChart = ({ requests }: FrozenDateChartProps) => {
               const data = payload[0].payload as (typeof chartData)[number];
               return (
                 <div className="rounded-lg border bg-white p-3 shadow-lg">
-                  <p className="font-semibold text-[#101820]">{data.name}</p>
-                  <p className="text-sm text-[#971B2F]">{data.value}건 ({data.percentage}%)</p>
+                  <p className="font-semibold text-[#172132]">{data.name}</p>
+                  <p className="text-sm text-[#8B1538]">
+                    {countText(data.value)} ({data.percentage}%)
+                  </p>
                 </div>
               );
             }}
@@ -77,15 +84,16 @@ export const FrozenDateChart = ({ requests }: FrozenDateChartProps) => {
           <Legend
             formatter={(value, entry) => {
               const data = (entry as { payload?: (typeof chartData)[number] }).payload;
-              return data ? `${value}: ${data.value}건` : value;
+              return data ? `${value}: ${countText(data.value)}` : value;
             }}
           />
         </PieChart>
       </ResponsiveContainer>
-      <div className="mt-2 flex flex-wrap justify-center gap-4 text-sm text-[#67767F]">
+      <div className="mt-2 flex flex-wrap justify-center gap-4 text-sm text-[#5A6778]">
         {chartData.map((d) => (
           <span key={d.key}>
-            {d.name}: <strong className="text-[#101820]">{d.value}</strong>건
+            {d.name}: <strong className="text-[#172132]">{d.value}</strong>
+            {t('건', '')}
           </span>
         ))}
       </div>

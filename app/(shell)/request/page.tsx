@@ -5,14 +5,17 @@
 
 import { useState } from 'react';
 import { useAuth } from '@/hooks/use-auth';
+import { useLanguage } from '@/context/LanguageContext';
 import { useRequests } from '@/hooks/use-requests';
 import { RequestTypeGrid } from '@/components/request/RequestTypeGrid';
 import { RequestFormModal } from '@/components/request/RequestFormModal';
 import { RequestHistoryTable } from '@/components/request/RequestHistoryTable';
 import type { RequestTypeCard } from '@/lib/request-constants';
+import { PageHeader } from '@/components/common/PageHeader';
 
 export default function RequestPage() {
   const { user, profile, isAdmin } = useAuth();
+  const { t } = useLanguage();
   const { requests, loading, fetchRequests } = useRequests({
     userId: user?.id,
     department: profile?.department,
@@ -30,21 +33,24 @@ export default function RequestPage() {
   if (!user || !profile) {
     return (
       <div className="flex items-center justify-center py-20">
-        <div className="h-10 w-10 animate-spin rounded-full border-b-2 border-[#971B2F]" />
+        <div className="h-10 w-10 animate-spin rounded-full border-b-2 border-[#8B1538]" />
       </div>
     );
   }
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-8">
+      <PageHeader
+        title={t('요청접수', 'Submit Request')}
+        description={t('요청구분을 선택하여 PO 변경 요청을 접수하세요.', 'Choose a request type to submit a PO change request.')}
+      />
+
       <section>
-        <h1 className="mb-2 text-2xl font-bold text-[#101820]">요청접수</h1>
-        <p className="mb-6 text-[#67767F]">요청구분을 선택하여 PO 변경 요청을 접수하세요.</p>
         <RequestTypeGrid onSelect={handleSelectType} />
       </section>
 
       <section>
-        <RequestHistoryTable requests={requests} loading={loading} title="요청 접수 내역" tourPrefix="request" />
+        <RequestHistoryTable requests={requests} loading={loading} title={t('요청 접수 내역', 'Submitted Requests')} tourPrefix="request" />
       </section>
 
       <RequestFormModal

@@ -55,7 +55,7 @@ export const RequestTable = ({ requests, onViewDetails }: RequestTableProps) => 
       <TableBody>
         {requests.length === 0 ? (
           <TableRow>
-            <TableCell colSpan={8} className="text-center py-8 text-[#67767F]">
+            <TableCell colSpan={8} className="text-center py-8 text-[#5A6778]">
               요청 데이터가 없습니다.
             </TableCell>
           </TableRow>
@@ -63,15 +63,15 @@ export const RequestTable = ({ requests, onViewDetails }: RequestTableProps) => 
           requests.map((request) => (
             <TableRow
               key={request.id}
-              className="cursor-pointer hover:bg-[#B2B4B8]/10"
+              className="cursor-pointer hover:bg-[#8E98A8]/10"
               onClick={() => handleRowClick(request.id)}
             >
-              <TableCell className="text-[#4B4F5A]">{formatDate(request.request_date)}</TableCell>
-              <TableCell className="font-medium text-[#101820]">{request.so_number}</TableCell>
-              <TableCell className="text-[#4B4F5A]">{request.customer}</TableCell>
-              <TableCell className="text-[#4B4F5A]">{request.category_of_request}</TableCell>
-              <TableCell className="text-[#4B4F5A]">{request.item_name}</TableCell>
-              <TableCell className="text-right text-[#4B4F5A]">
+              <TableCell className="text-[#253143]">{formatDate(request.request_date)}</TableCell>
+              <TableCell className="font-medium text-[#172132]">{request.so_number}</TableCell>
+              <TableCell className="text-[#253143]">{request.customer}</TableCell>
+              <TableCell className="text-[#253143]">{request.category_of_request}</TableCell>
+              <TableCell className="text-[#253143]">{request.item_name}</TableCell>
+              <TableCell className="text-right text-[#253143]">
                 {request.quantity.toLocaleString()}
               </TableCell>
               <TableCell>
@@ -82,7 +82,7 @@ export const RequestTable = ({ requests, onViewDetails }: RequestTableProps) => 
                   variant="ghost"
                   size="sm"
                   onClick={(e) => handleViewDetails(e, request.id)}
-                  className="text-[#971B2F] hover:bg-[#971B2F]/10"
+                  className="text-[#8B1538] hover:bg-[#8B1538]/10"
                 >
                   상세보기
                 </Button>

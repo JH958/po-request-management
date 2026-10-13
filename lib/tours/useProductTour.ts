@@ -7,6 +7,7 @@ import { useCallback } from 'react';
 import { driver } from 'driver.js';
 import 'driver.js/dist/driver.css';
 import { tourStepsMap, type TourKey } from './tourSteps';
+import { readStoredLanguage, translateNow as tn } from '@/lib/i18n';
 
 /**
  * 지정 선택자의 DOM 요소가 나타날 때까지 대기합니다.
@@ -50,16 +51,17 @@ export const useProductTour = () => {
       return;
     }
 
+    const isEnglish = readStoredLanguage() === 'en';
     const driverObj = driver({
       showProgress: true,
-      nextBtnText: '다음',
-      prevBtnText: '이전',
-      doneBtnText: '완료',
+      nextBtnText: tn('다음', 'Next'),
+      prevBtnText: tn('이전', 'Back'),
+      doneBtnText: tn('완료', 'Done'),
       steps: steps.map((step) => ({
         element: step.target,
         popover: {
-          title: step.title,
-          description: step.description,
+          title: isEnglish ? step.titleEn : step.title,
+          description: isEnglish ? step.descriptionEn : step.description,
         },
       })),
       onDestroyed: () => {

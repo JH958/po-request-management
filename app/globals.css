@@ -6,6 +6,10 @@
 @theme inline {
   /* 브랜드 컬러 */
   --color-brand-primary: var(--brand-primary);
+  --color-brand-primary-hover: var(--brand-primary-hover);
+  --color-brand-logo: var(--brand-logo);
+  --color-brand-surface: var(--brand-surface);
+  --color-brand-sidebar: var(--brand-sidebar);
   --color-brand-neutral-1: var(--brand-neutral-1);
   --color-brand-neutral-2: var(--brand-neutral-2);
   --color-brand-neutral-3: var(--brand-neutral-3);
@@ -14,7 +18,7 @@
   
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-noto-sans-kr), var(--font-geist-sans), system-ui, sans-serif;
   --font-mono: var(--font-geist-mono);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -55,13 +59,17 @@
 }
 
 :root {
-  /* 브랜드 컬러 변수 */
-  --brand-primary: #971B2F;
-  --brand-neutral-1: #B2B4B8;
-  --brand-neutral-2: #67767F;
-  --brand-neutral-3: #4B4F5A;
-  --brand-neutral-4: #101820;
-  --brand-neutral-5: #A2B2C8;
+  /* 브랜드 컬러 변수 (InBody 크림슨 + 슬레이트 계열) */
+  --brand-primary: #8B1538;
+  --brand-primary-hover: #74112F;
+  --brand-logo: #971B2F;
+  --brand-neutral-1: #D6DDE7; /* 테두리 */
+  --brand-neutral-2: #5A6778; /* 보조 텍스트 */
+  --brand-neutral-3: #253143; /* 진한 본문 */
+  --brand-neutral-4: #172132; /* 제목 */
+  --brand-neutral-5: #EEF2F6; /* 옅은 배경(hover·선택) */
+  --brand-surface: #F1F4F8; /* 본문 배경 */
+  --brand-sidebar: #F4F7FA; /* 사이드바 배경 */
 
   --radius: 0.625rem;
   --background: #ffffff;
@@ -72,26 +80,26 @@
   --popover-foreground: var(--brand-neutral-4);
   --primary: var(--brand-primary);
   --primary-foreground: #ffffff;
-  --secondary: var(--brand-neutral-1);
-  --secondary-foreground: var(--brand-neutral-4);
-  --muted: var(--brand-neutral-1);
+  --secondary: var(--brand-neutral-5);
+  --secondary-foreground: var(--brand-neutral-3);
+  --muted: var(--brand-neutral-5);
   --muted-foreground: var(--brand-neutral-2);
   --accent: var(--brand-neutral-5);
   --accent-foreground: var(--brand-neutral-4);
-  --destructive: #EF4444;
-  --border: var(--brand-neutral-1);
-  --input: var(--brand-neutral-1);
+  --destructive: #DC2626;
+  --border: #DEE4EC;
+  --input: #CBD5E1;
   --ring: var(--brand-primary);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: #ffffff;
-  --sidebar-foreground: var(--brand-neutral-4);
+  --chart-1: #8B1538;
+  --chart-2: #1E40AF;
+  --chart-3: #5A6778;
+  --chart-4: #C2410C;
+  --chart-5: #0F766E;
+  --sidebar: var(--brand-sidebar);
+  --sidebar-foreground: var(--brand-neutral-3);
   --sidebar-primary: var(--brand-primary);
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: var(--brand-neutral-1);
+  --sidebar-accent: #ffffff;
   --sidebar-accent-foreground: var(--brand-neutral-4);
   --sidebar-border: var(--brand-neutral-1);
   --sidebar-ring: var(--brand-primary);
@@ -137,5 +145,6 @@
   }
   body {
     @apply bg-background text-foreground;
+    letter-spacing: -0.01em;
   }
 }

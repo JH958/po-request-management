@@ -1,31 +1,36 @@
 /**
- * 프로즌 데이트 UI 라벨 유틸리티
+ * 프로즌 데이트 UI 라벨 유틸리티 (언어는 호출하는 쪽의 t로 결정)
  */
+import type { Translate } from '@/lib/i18n';
 import type { FrozenStatus, FrozenWeekday } from '@/types/frozen-date';
 
-export const FROZEN_WEEKDAY_OPTIONS: Array<{ value: FrozenWeekday | 'NONE'; label: string }> = [
-  { value: 'MON', label: '월요일' },
-  { value: 'FRI', label: '금요일' },
-  { value: 'NONE', label: '지정없음' },
+export const getFrozenWeekdayOptions = (
+  t: Translate
+): Array<{ value: FrozenWeekday | 'NONE'; label: string }> => [
+  { value: 'MON', label: t('월요일', 'Monday') },
+  { value: 'FRI', label: t('금요일', 'Friday') },
+  { value: 'NONE', label: t('지정없음', 'None') },
 ];
 
-export const formatFrozenWeekday = (weekday: FrozenWeekday | null | undefined): string => {
-  if (weekday === 'MON') return '월요일';
-  if (weekday === 'FRI') return '금요일';
-  return '지정없음';
+export const formatFrozenWeekday = (weekday: FrozenWeekday | null | undefined, t: Translate): string | null => {
+  if (weekday === 'MON') return t('월요일', 'Monday');
+  if (weekday === 'FRI') return t('금요일', 'Friday');
+  return null;
 };
 
 export const formatFrozenRule = (
   weeks: number | null,
-  weekday: FrozenWeekday | null | undefined
+  weekday: FrozenWeekday | null | undefined,
+  t: Translate
 ): string => {
-  if (weeks == null) return '미설정';
-  const dayLabel = formatFrozenWeekday(weekday);
-  return dayLabel === '지정없음' ? `${weeks}주전` : `${weeks}주전 ${dayLabel}`;
+  if (weeks == null) return t('미설정', 'Not set');
+  const dayLabel = formatFrozenWeekday(weekday, t);
+  const weeksText = t(`${weeks}주전`, `${weeks} wk before`);
+  return dayLabel ? `${weeksText} ${dayLabel}` : weeksText;
 };
 
-export const FROZEN_STATUS_LABELS: Record<FrozenStatus, string> = {
-  before: '프로즌 이전',
-  after: '프로즌 이후',
-  unset: '미설정',
-};
+export const getFrozenStatusLabels = (t: Translate): Record<FrozenStatus, string> => ({
+  before: t('프로즌 이전', 'Before frozen'),
+  after: t('프로즌 이후', 'After frozen'),
+  unset: t('미설정', 'Not set'),
+});

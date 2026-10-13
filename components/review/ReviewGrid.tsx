@@ -10,6 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { formatDate, calculateDaysLeft } from '@/lib/dashboard-utils';
 import type { PORequest } from '@/types/request';
 import { cn } from '@/lib/utils';
+import { useLanguage } from '@/context/LanguageContext';
 
 const PAGE_SIZE = 9;
 
@@ -21,6 +22,7 @@ interface ReviewGridProps {
 
 export const ReviewGrid = ({ items, loading, onCardClick }: ReviewGridProps) => {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const { t } = useLanguage();
 
   const visibleItems = items.slice(0, visibleCount);
   const hasMore = items.length > visibleCount;
@@ -38,7 +40,7 @@ export const ReviewGrid = ({ items, loading, onCardClick }: ReviewGridProps) => 
   if (items.length === 0) {
     return (
       <div className="rounded-lg border bg-white py-12 text-center" data-tour="review-grid">
-        <p className="text-[#67767F]">검토 대기 중인 요청이 없습니다.</p>
+        <p className="text-[#5A6778]">{t('검토 대기 중인 요청이 없습니다.', 'No requests awaiting review.')}</p>
       </div>
     );
   }
@@ -57,11 +59,11 @@ export const ReviewGrid = ({ items, loading, onCardClick }: ReviewGridProps) => 
               key={request.id}
               type="button"
               onClick={() => onCardClick(request)}
-              className="cursor-pointer rounded-lg border border-[#E5E7EB] bg-white p-4 text-left transition-shadow hover:shadow-md"
+              className="cursor-pointer rounded-lg border border-[#DEE4EC] bg-white p-4 text-left transition-shadow hover:shadow-md"
             >
               <div className="mb-1 flex items-start justify-between">
-                <span className="text-lg font-semibold text-[#101820]">
-                  {request.so_number ? `SO: ${request.so_number}` : '신규'}
+                <span className="text-lg font-semibold text-[#172132]">
+                  {request.so_number ? `SO: ${request.so_number}` : t('신규', 'New')}
                 </span>
                 <span
                   className={cn(
@@ -71,14 +73,14 @@ export const ReviewGrid = ({ items, loading, onCardClick }: ReviewGridProps) => 
                     'bg-gray-100 text-gray-700'
                   )}
                 >
-                  D-{daysLeft}일
+                  {t(`D-${daysLeft}일`, `D-${daysLeft}`)}
                 </span>
               </div>
-              <p className="mb-1 text-sm text-[#67767F]">{request.customer}</p>
+              <p className="mb-1 text-sm text-[#5A6778]">{request.customer}</p>
               <div className="flex items-center gap-2">
                 <Badge variant="secondary" className="text-xs">{request.category_of_request}</Badge>
-                <span className="text-sm text-[#67767F]">
-                  출하일: {request.factory_shipment_date ? formatDate(request.factory_shipment_date) : '-'}
+                <span className="text-sm text-[#5A6778]">
+                  {t('출하일', 'Ship date')}: {request.factory_shipment_date ? formatDate(request.factory_shipment_date) : '-'}
                 </span>
               </div>
             </button>
@@ -89,7 +91,7 @@ export const ReviewGrid = ({ items, loading, onCardClick }: ReviewGridProps) => 
       {hasMore && (
         <div className="mt-4 flex justify-center">
           <Button variant="outline" onClick={() => setVisibleCount((prev) => prev + PAGE_SIZE)}>
-            더보기 ({items.length - visibleCount}건 남음)
+            {t(`더보기 (${items.length - visibleCount}건 남음)`, `Show more (${items.length - visibleCount} left)`)}
           </Button>
         </div>
       )}

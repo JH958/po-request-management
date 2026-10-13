@@ -6,8 +6,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
+import { useLanguage } from '@/context/LanguageContext';
 import { useNotifications } from '@/hooks/use-notifications';
-import { Header } from '@/components/common/Header';
+import { Header, HEADER_ICON_BUTTON_CLASS } from '@/components/common/Header';
 import { Sidebar } from '@/components/common/Sidebar';
 import { TourLauncher } from '@/components/tour/TourLauncher';
 import { TourHost } from '@/components/tour/TourHost';
@@ -39,6 +40,7 @@ interface AppShellProps {
 export const AppShell = ({ children }: AppShellProps) => {
   const router = useRouter();
   const { user, profile, loading: authLoading } = useAuth();
+  const { t, lang } = useLanguage();
   const [tourLauncherOpen, setTourLauncherOpen] = useState(false);
   const [tourAfterComplete, setTourAfterComplete] = useState(false);
 
@@ -58,7 +60,7 @@ export const AppShell = ({ children }: AppShellProps) => {
     handleMarkAllAsRead,
     handleNotificationClick,
     formatNotificationTime,
-  } = useNotifications(user?.id);
+  } = useNotifications(user?.id, lang);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -82,10 +84,10 @@ export const AppShell = ({ children }: AppShellProps) => {
 
   if (authLoading || !user) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#F8F9FA]">
+      <div className="flex min-h-screen items-center justify-center bg-[#F1F4F8]">
         <div className="text-center">
-          <div className="mx-auto h-12 w-12 animate-spin rounded-full border-b-2 border-[#971B2F]" />
-          <p className="mt-4 text-[#67767F]">로딩 중...</p>
+          <div className="mx-auto h-12 w-12 animate-spin rounded-full border-b-2 border-[#8B1538]" />
+          <p className="mt-4 text-[#5A6778]">{t('로딩 중...', 'Loading...')}</p>
         </div>
       </div>
     );
@@ -93,22 +95,20 @@ export const AppShell = ({ children }: AppShellProps) => {
 
   return (
     <RequestConfigProvider>
-    <div className="flex min-h-screen flex-col bg-[#F8F9FA]">
+    <div className="flex h-screen flex-col bg-[#F1F4F8]">
       <Header
-        userName={profile?.full_name || user.email?.split('@')[0] || '사용자'}
-        userEmail={user.email || undefined}
         onOpenTour={showProductTour ? openTourLauncher : undefined}
         toolbarStart={
           <>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  variant="ghost"
-                  className="relative flex h-9 w-9 items-center justify-center rounded-full p-0 hover:bg-gray-100"
+                  variant="outline"
+                  className={HEADER_ICON_BUTTON_CLASS}
                   onClick={() => handleExternalLink(EXTERNAL_LINKS.D365)}
-                  aria-label="D365 ERP 시스템을 새 탭에서 열기"
+                  aria-label={t('D365 ERP 시스템을 새 탭에서 열기', 'Open D365 ERP in a new tab')}
                 >
-                  <Database className="h-6 w-6 text-[#101820]" strokeWidth={2} />
+                  <Database className="h-[18px] w-[18px]" strokeWidth={1.8} />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>D365</TooltipContent>
@@ -116,12 +116,12 @@ export const AppShell = ({ children }: AppShellProps) => {
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  variant="ghost"
-                  className="relative flex h-9 w-9 items-center justify-center rounded-full p-0 hover:bg-gray-100"
+                  variant="outline"
+                  className={HEADER_ICON_BUTTON_CLASS}
                   onClick={() => handleExternalLink(EXTERNAL_LINKS.GM)}
-                  aria-label="GM 해외 발주 사이트를 새 탭에서 열기"
+                  aria-label={t('GM 해외 발주 사이트를 새 탭에서 열기', 'Open the GM overseas ordering site in a new tab')}
                 >
-                  <Globe className="h-6 w-6 text-[#101820]" strokeWidth={2} />
+                  <Globe className="h-[18px] w-[18px]" strokeWidth={1.8} />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>GM</TooltipContent>
@@ -132,13 +132,13 @@ export const AppShell = ({ children }: AppShellProps) => {
           <Popover open={showNotifications} onOpenChange={setShowNotifications}>
             <PopoverTrigger asChild>
               <Button
-                variant="ghost"
-                className="relative flex h-9 w-9 items-center justify-center rounded-full p-0 hover:bg-gray-100"
-                aria-label="알림 열기"
+                variant="outline"
+                className={HEADER_ICON_BUTTON_CLASS}
+                aria-label={t('알림 열기', 'Open notifications')}
               >
-                <Bell className="h-6 w-6 text-[#101820]" strokeWidth={2} />
+                <Bell className="h-[18px] w-[18px]" strokeWidth={1.8} />
                 {unreadCount > 0 ? (
-                  <span className="absolute -top-0.5 -right-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[#971B2F] px-1 text-[10px] font-semibold leading-none text-white">
+                  <span className="absolute -top-1.5 -right-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[#8B1538] px-1 text-[10px] font-semibold leading-none text-white">
                     {unreadCount > 99 ? '99+' : unreadCount}
                   </span>
                 ) : null}
@@ -146,21 +146,21 @@ export const AppShell = ({ children }: AppShellProps) => {
             </PopoverTrigger>
             <PopoverContent className="w-96 p-0" align="end">
               <div className="flex items-center justify-between border-b p-4">
-                <h3 className="text-lg font-semibold text-[#101820]">알림</h3>
+                <h3 className="text-lg font-semibold text-[#172132]">{t('알림', 'Notifications')}</h3>
                 {unreadCount > 0 ? (
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => void handleMarkAllAsRead()}
-                    className="text-xs text-[#67767F] hover:text-[#101820]"
+                    className="text-xs text-[#5A6778] hover:text-[#172132]"
                   >
-                    모두 읽음
+                    {t('모두 읽음', 'Mark all as read')}
                   </Button>
                 ) : null}
               </div>
               <div className="max-h-[400px] overflow-y-auto">
                 {notifications.length === 0 ? (
-                  <div className="p-8 text-center text-sm text-[#67767F]">알림이 없습니다.</div>
+                  <div className="p-8 text-center text-sm text-[#5A6778]">{t('알림이 없습니다.', 'No notifications.')}</div>
                 ) : (
                   notifications.map((notification) => (
                     <button
@@ -196,22 +196,22 @@ export const AppShell = ({ children }: AppShellProps) => {
                             <p
                               className={cn(
                                 'text-sm font-medium',
-                                !notification.is_read ? 'text-[#101820]' : 'text-[#67767F]'
+                                !notification.is_read ? 'text-[#172132]' : 'text-[#5A6778]'
                               )}
                             >
                               {notification.title}
                             </p>
                             {!notification.is_read ? (
-                              <span className="h-2 w-2 rounded-full bg-[#971B2F]" />
+                              <span className="h-2 w-2 rounded-full bg-[#8B1538]" />
                             ) : null}
                           </div>
                           {notification.requests?.product_category && (
                             <ProductCategoryBadges category={notification.requests.product_category} />
                           )}
-                          <p className="text-xs text-[#67767F]">
-                            SO 번호: {notification.requests?.so_number || '-'}
+                          <p className="text-xs text-[#5A6778]">
+                            {t('SO 번호', 'SO No.')}: {notification.requests?.so_number || '-'}
                           </p>
-                          <p className="text-xs text-[#67767F]">
+                          <p className="text-xs text-[#5A6778]">
                             {formatNotificationTime(notification.created_at)}
                           </p>
                         </div>
@@ -227,12 +227,14 @@ export const AppShell = ({ children }: AppShellProps) => {
 
       <div className="flex flex-1 overflow-hidden">
         <Sidebar
+          userName={profile?.full_name || user.email?.split('@')[0] || t('사용자', 'User')}
+          department={profile?.department}
           onOpenTour={showProductTour ? openTourLauncher : undefined}
           showAdminSettings={
             profile ? canAccessAdminSettings(profile.department, profile.role) : false
           }
         />
-        <main className="flex-1 overflow-y-auto px-6 py-6 lg:px-10 xl:px-14">
+        <main className="flex-1 overflow-y-auto px-6 py-8 lg:px-10">
           {children}
         </main>
       </div>
@@ -251,19 +253,19 @@ export const AppShell = ({ children }: AppShellProps) => {
       <Dialog open={showNotificationDetail} onOpenChange={setShowNotificationDetail}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>{selectedNotification?.title ?? '알림 상세'}</DialogTitle>
-            <DialogDescription className="sr-only">알림 상세 내용을 확인합니다.</DialogDescription>
+            <DialogTitle>{selectedNotification?.title ?? t('알림 상세', 'Notification details')}</DialogTitle>
+            <DialogDescription className="sr-only">{t('알림 상세 내용을 확인합니다.', 'View notification details.')}</DialogDescription>
           </DialogHeader>
           {selectedNotification && (
             <div className="space-y-3 text-sm">
-              <p className="text-[#67767F]">{selectedNotification.message}</p>
+              <p className="text-[#5A6778]">{selectedNotification.message}</p>
               {selectedNotification.requests && (
                 <div className="space-y-1 rounded-lg border p-3">
                   <p>SO: {selectedNotification.requests.so_number || '-'}</p>
-                  <p>고객: {selectedNotification.requests.customer || '-'}</p>
-                  <p>상태: {selectedNotification.requests.status || '-'}</p>
+                  <p>{t('고객', 'Customer')}: {selectedNotification.requests.customer || '-'}</p>
+                  <p>{t('상태', 'Status')}: {selectedNotification.requests.status || '-'}</p>
                   {selectedNotification.requests.review_details && (
-                    <p>검토 상세: {selectedNotification.requests.review_details}</p>
+                    <p>{t('검토 상세', 'Review details')}: {selectedNotification.requests.review_details}</p>
                   )}
                 </div>
               )}

@@ -14,7 +14,7 @@ export default function HomePage() {
   if (loading || !profile) {
     return (
       <div className="flex items-center justify-center py-20">
-        <div className="h-10 w-10 animate-spin rounded-full border-b-2 border-[#971B2F]" />
+        <div className="h-10 w-10 animate-spin rounded-full border-b-2 border-[#8B1538]" />
       </div>
     );
   }

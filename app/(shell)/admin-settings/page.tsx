@@ -6,18 +6,21 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
+import { useLanguage } from '@/context/LanguageContext';
 import { canAccessAdminSettings } from '@/lib/dashboard-scope';
 import { FrozenDateSettings } from '@/components/admin/FrozenDateSettings';
 import { RequestTypeSettings } from '@/components/admin/RequestTypeSettings';
 import { RequestReasonSettings } from '@/components/admin/RequestReasonSettings';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { PageHeader } from '@/components/common/PageHeader';
 
 type AdminTab = 'frozen' | 'request-types' | 'request-reasons';
 
 export default function AdminSettingsPage() {
   const router = useRouter();
   const { user, profile, loading } = useAuth();
+  const { t } = useLanguage();
   const [tab, setTab] = useState<AdminTab>('frozen');
 
   const hasAccess =
@@ -32,7 +35,7 @@ export default function AdminSettingsPage() {
   if (loading || !user || !profile) {
     return (
       <div className="flex items-center justify-center py-20">
-        <div className="h-10 w-10 animate-spin rounded-full border-b-2 border-[#971B2F]" />
+        <div className="h-10 w-10 animate-spin rounded-full border-b-2 border-[#8B1538]" />
       </div>
     );
   }
@@ -40,24 +43,26 @@ export default function AdminSettingsPage() {
   if (!hasAccess) return null;
 
   const tabs: { id: AdminTab; label: string }[] = [
-    { id: 'frozen', label: '프로즌 데이트 관리' },
-    { id: 'request-types', label: '요청구분 리스트' },
-    { id: 'request-reasons', label: '요청사유 리스트' },
+    { id: 'frozen', label: t('프로즌 데이트 관리', 'Frozen Date') },
+    { id: 'request-types', label: t('요청구분 리스트', 'Request Types') },
+    { id: 'request-reasons', label: t('요청사유 리스트', 'Request Reasons') },
   ];
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-[#101820]">관리자 설정</h1>
-        <p className="mt-1 text-[#67767F]">시스템 운영 기준을 관리합니다.</p>
-      </div>
+      <PageHeader title={t('관리자 설정', 'Admin Settings')} description={t('시스템 운영 기준을 관리합니다.', 'Manage the rules the system runs on.')} />
 
-      <div className="flex flex-wrap gap-2 border-b pb-2">
+      <div className="flex flex-wrap gap-2" role="tablist">
         {tabs.map((t) => (
           <Button
             key={t.id}
-            variant={tab === t.id ? 'default' : 'ghost'}
-            className={cn(tab === t.id && 'bg-[#971B2F] hover:bg-[#7A1626]')}
+            role="tab"
+            aria-selected={tab === t.id}
+            variant="outline"
+            className={cn(
+              'h-10 rounded-xl border-[#D6DDE7] bg-white px-5 font-semibold text-[#5A6778] shadow-none hover:bg-[#F8FAFC] hover:text-[#253143]',
+              tab === t.id && 'border-[#8B1538] bg-[#8B1538] text-white hover:bg-[#74112F] hover:text-white'
+            )}
             onClick={() => setTab(t.id)}
           >
             {t.label}

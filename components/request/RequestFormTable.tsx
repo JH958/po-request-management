@@ -219,7 +219,7 @@ export const RequestFormTable = ({
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
-          <CardTitle className="text-xl font-semibold text-[#4B4F5A]">요청 접수</CardTitle>
+          <CardTitle className="text-xl font-semibold text-[#253143]">요청 접수</CardTitle>
           <div className="flex gap-2">
             <Button
               onClick={() => handleAdd('existing')}
@@ -231,7 +231,7 @@ export const RequestFormTable = ({
             </Button>
             <Button
               onClick={() => handleAdd('new')}
-              className="bg-[#971B2F] hover:bg-[#7A1626] text-white"
+              className="bg-[#8B1538] hover:bg-[#74112F] text-white"
               size="sm"
             >
               <Plus className="h-4 w-4 mr-2" />
@@ -295,7 +295,7 @@ export const RequestFormTable = ({
             <TableBody>
               {requests.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={(isRequester || isReviewer) && !isAdmin ? 20 : 25} className="text-center py-8 text-[#67767F]">
+                  <TableCell colSpan={(isRequester || isReviewer) && !isAdmin ? 20 : 25} className="text-center py-8 text-[#5A6778]">
                     요청 데이터가 없습니다.
                   </TableCell>
                 </TableRow>
@@ -348,7 +348,7 @@ export const RequestFormTable = ({
                             </SelectContent>
                           </Select>
                         ) : (
-                          <span className={`text-[#4B4F5A] ${request.priority === '긴급' ? 'font-bold text-red-600' : ''}`}>
+                          <span className={`text-[#253143] ${request.priority === '긴급' ? 'font-bold text-red-600' : ''}`}>
                             {request.priority || '일반'}
                           </span>
                         )}
@@ -373,7 +373,7 @@ export const RequestFormTable = ({
                               </SelectContent>
                             </Select>
                           ) : (
-                            <span className="text-[#4B4F5A]">{request.customer}</span>
+                            <span className="text-[#253143]">{request.customer}</span>
                           )}
                         </TableCell>
                       )}
@@ -396,7 +396,7 @@ export const RequestFormTable = ({
                             </SelectContent>
                           </Select>
                         ) : (
-                          <span className="text-[#4B4F5A]">{request.requesting_dept}</span>
+                          <span className="text-[#253143]">{request.requesting_dept}</span>
                         )}
                       </TableCell>
                       {/* 5. 요청자 - 모든 역할 */}
@@ -408,12 +408,12 @@ export const RequestFormTable = ({
                             className="w-full"
                           />
                         ) : (
-                          <span className="text-[#4B4F5A]">{request.requester_name}</span>
+                          <span className="text-[#253143]">{request.requester_name}</span>
                         )}
                       </TableCell>
                       {/* 6. 요청일 - 모든 역할 */}
                       <TableCell>
-                        <span className="text-[#4B4F5A]">{formatDate(request.request_date)}</span>
+                        <span className="text-[#253143]">{formatDate(request.request_date)}</span>
                       </TableCell>
                       {/* 7. SO번호 - 모든 역할 */}
                       <TableCell>
@@ -424,7 +424,7 @@ export const RequestFormTable = ({
                             className="w-full"
                           />
                         ) : (
-                          <span className="font-medium text-[#101820]">{request.so_number}</span>
+                          <span className="font-medium text-[#172132]">{request.so_number}</span>
                         )}
                       </TableCell>
                       {/* 8. 현재 출하일 - 모든 역할 */}
@@ -437,7 +437,7 @@ export const RequestFormTable = ({
                             className="w-full"
                           />
                         ) : (
-                          <span className="text-[#4B4F5A]">
+                          <span className="text-[#253143]">
                             {formatDate(request.factory_shipment_date)}
                           </span>
                         )}
@@ -461,7 +461,7 @@ export const RequestFormTable = ({
                             </SelectContent>
                           </Select>
                         ) : (
-                          <span className="text-[#4B4F5A]">{request.category_of_request}</span>
+                          <span className="text-[#253143]">{request.category_of_request}</span>
                         )}
                       </TableCell>
                       {/* 10. 품목코드 - 모든 역할 */}
@@ -473,7 +473,7 @@ export const RequestFormTable = ({
                             className="w-full"
                           />
                         ) : (
-                          <span className="text-[#4B4F5A]">{request.erp_code}</span>
+                          <span className="text-[#253143]">{request.erp_code}</span>
                         )}
                       </TableCell>
                       {/* 11. 품목명 - 모든 역할 */}
@@ -485,7 +485,7 @@ export const RequestFormTable = ({
                             className="w-full"
                           />
                         ) : (
-                          <span className="text-[#4B4F5A]">{request.item_name}</span>
+                          <span className="text-[#253143]">{request.item_name}</span>
                         )}
                       </TableCell>
                       {/* 12. 수량 - 모든 역할 */}
@@ -498,7 +498,7 @@ export const RequestFormTable = ({
                             className="w-full"
                           />
                         ) : (
-                          <span className="text-[#4B4F5A]">{request.quantity}</span>
+                          <span className="text-[#253143]">{request.quantity}</span>
                         )}
                       </TableCell>
                       {/* 13. 희망 출하일 - 모든 역할 */}
@@ -511,7 +511,7 @@ export const RequestFormTable = ({
                             className="w-full"
                           />
                         ) : (
-                          <span className="text-[#4B4F5A]">
+                          <span className="text-[#253143]">
                             {request.desired_shipment_date ? formatDate(request.desired_shipment_date) : '-'}
                           </span>
                         )}
@@ -526,14 +526,14 @@ export const RequestFormTable = ({
                             className="w-full"
                           />
                         ) : (
-                          <span className="text-[#4B4F5A]">
+                          <span className="text-[#253143]">
                             {request.confirmed_shipment_date ? formatDate(request.confirmed_shipment_date) : '-'}
                           </span>
                         )}
                       </TableCell>
                       {/* 15. 변경 운송방법 - 모든 역할 */}
                       <TableCell>
-                        <span className="text-[#4B4F5A]">
+                        <span className="text-[#253143]">
                           {request.shipping_method || '-'}
                         </span>
                       </TableCell>
@@ -556,7 +556,7 @@ export const RequestFormTable = ({
                             </SelectContent>
                           </Select>
                         ) : (
-                          <span className="text-[#4B4F5A]">{request.reason_for_request}</span>
+                          <span className="text-[#253143]">{request.reason_for_request}</span>
                         )}
                       </TableCell>
                       {/* 17. 요청상세 - 모든 역할 */}
@@ -568,20 +568,20 @@ export const RequestFormTable = ({
                             className="w-full min-h-[60px]"
                           />
                         ) : (
-                          <span className="text-[#4B4F5A] text-sm">
+                          <span className="text-[#253143] text-sm">
                             {request.request_details || '-'}
                           </span>
                         )}
                       </TableCell>
                       {/* 18. 리드타임 - 모든 역할 */}
                       <TableCell>
-                        <span className="text-[#4B4F5A]">
+                        <span className="text-[#253143]">
                           {request.leadtime ?? daysLeft}일
                         </span>
                       </TableCell>
                       {/* 19. 진행상태 - 모든 역할 */}
                       <TableCell>
-                        <span className="text-[#4B4F5A]">
+                        <span className="text-[#253143]">
                           {request.status === 'pending' ? '검토대기' :
                            request.status === 'approved' ? '승인' :
                            request.status === 'rejected' ? '반려' :
@@ -610,7 +610,7 @@ export const RequestFormTable = ({
                               </SelectContent>
                             </Select>
                           ) : (
-                            <span className="text-[#4B4F5A]">
+                            <span className="text-[#253143]">
                               {request.feasibility === 'approved'
                                 ? '가능'
                                 : request.feasibility === 'rejected'
@@ -632,7 +632,7 @@ export const RequestFormTable = ({
                               className="w-full min-h-[60px]"
                             />
                           ) : (
-                            <span className="text-[#4B4F5A] text-sm">
+                            <span className="text-[#253143] text-sm">
                               {request.review_details || '-'}
                             </span>
                           )}
@@ -658,7 +658,7 @@ export const RequestFormTable = ({
                               </SelectContent>
                             </Select>
                           ) : (
-                            <span className="text-[#4B4F5A]">{request.reviewing_dept || '-'}</span>
+                            <span className="text-[#253143]">{request.reviewing_dept || '-'}</span>
                           )}
                         </TableCell>
                       )}
@@ -672,7 +672,7 @@ export const RequestFormTable = ({
                               className="w-full"
                             />
                           ) : (
-                            <span className="text-[#4B4F5A]">{request.reviewer_name || '-'}</span>
+                            <span className="text-[#253143]">{request.reviewer_name || '-'}</span>
                           )}
                         </TableCell>
                       )}
@@ -697,7 +697,7 @@ export const RequestFormTable = ({
                               onClick={handleSaveEdit}
                               className="h-8 w-8 p-0"
                             >
-                              <Save className="h-4 w-4 text-[#971B2F]" />
+                              <Save className="h-4 w-4 text-[#8B1538]" />
                             </Button>
                             <Button
                               size="sm"
@@ -711,7 +711,7 @@ export const RequestFormTable = ({
                               }}
                               className="h-8 w-8 p-0"
                             >
-                              <X className="h-4 w-4 text-[#67767F]" />
+                              <X className="h-4 w-4 text-[#5A6778]" />
                             </Button>
                           </div>
                         ) : (
@@ -728,7 +728,7 @@ export const RequestFormTable = ({
                               className="h-8 w-8 p-0"
                               title={!canEditWithinOneDay ? '등록 후 1일이 지나 수정할 수 없습니다.' : ''}
                             >
-                              <Edit2 className={`h-4 w-4 ${!canEditWithinOneDay ? 'text-gray-400' : 'text-[#971B2F]'}`} />
+                              <Edit2 className={`h-4 w-4 ${!canEditWithinOneDay ? 'text-gray-400' : 'text-[#8B1538]'}`} />
                             </Button>
                             <Button
                               size="sm"

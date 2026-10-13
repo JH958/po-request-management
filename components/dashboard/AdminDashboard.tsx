@@ -17,6 +17,8 @@ import {
   filterRequestsByPeriod,
   calculateChartStatistics,
 } from '@/lib/request-helpers';
+import { PageHeader } from '@/components/common/PageHeader';
+import { useLanguage } from '@/context/LanguageContext';
 
 interface AdminDashboardProps {
   department?: string;
@@ -24,6 +26,7 @@ interface AdminDashboardProps {
 }
 
 export const AdminDashboard = (_props: AdminDashboardProps) => {
+  const { t } = useLanguage();
   const { requests: allRequests, loading, fetchAllRequests } = useAllRequests();
   const [locationFilter, setLocationFilter] = useState<'all' | 'customer' | 'headquarters'>('all');
   const [periodFilter, setPeriodFilter] = useState<'all' | 'daily' | 'weekly' | 'monthly'>('all');
@@ -68,26 +71,23 @@ export const AdminDashboard = (_props: AdminDashboardProps) => {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold text-[#101820]">
-          PO 현황 <ClipboardList className="ml-1 inline-block size-7 text-[#971B2F]" />
-        </h1>
-        <p className="mt-1 text-[#67767F]">전체 요청 현황을 관리합니다.</p>
-      </div>
+      <PageHeader title={t('PO 현황', 'PO Status')} description={t('전체 요청 현황을 관리합니다.', 'Track and manage all requests.')} />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <StatsCard title="전체 요청" value={stats.total} subtitle="전체 건수" icon={<ClipboardList className="h-8 w-8 text-[#971B2F]" />} themeColor="#A2B2C8" />
-        <StatsCard title="검토 대기" value={stats.pending} subtitle="대기 중" icon={<Clock className="h-8 w-8 text-[#67767F]" />} themeColor="#67767F" />
-        <StatsCard title="승인" value={stats.approved} subtitle="승인 완료" icon={<CheckCircle2 className="h-8 w-8 text-[#A2B2C8]" />} themeColor="#A2B2C8" />
-        <StatsCard title="반려" value={stats.rejected} subtitle="반려 처리" icon={<XCircle className="h-8 w-8 text-[#971B2F]" />} themeColor="#971B2F" />
+        <StatsCard title={t('전체 요청', 'All requests')} value={stats.total} subtitle={t('전체 건수', 'Total')} icon={<ClipboardList className="h-8 w-8 text-[#8B1538]" />} themeColor="#A2B2C8" />
+        <StatsCard title={t('검토 대기', 'Pending')} value={stats.pending} subtitle={t('대기 중', 'Awaiting review')} icon={<Clock className="h-8 w-8 text-[#5A6778]" />} themeColor="#5A6778" />
+        <StatsCard title={t('승인', 'Approved')} value={stats.approved} subtitle={t('승인 완료', 'Approved')} icon={<CheckCircle2 className="h-8 w-8 text-[#A2B2C8]" />} themeColor="#A2B2C8" />
+        <StatsCard title={t('반려', 'Rejected')} value={stats.rejected} subtitle={t('반려 처리', 'Rejected')} icon={<XCircle className="h-8 w-8 text-[#8B1538]" />} themeColor="#8B1538" />
       </div>
 
       <div>
         <div className="mb-4 flex items-center justify-end gap-4">
-          <p className="text-sm text-[#67767F]">전체 {scopedRequests.length}건</p>
+          <p className="text-sm text-[#5A6778]">
+            {t(`전체 ${scopedRequests.length}건`, `${scopedRequests.length} total`)}
+          </p>
           <Button variant="outline" size="sm" onClick={() => void fetchAllRequests()} disabled={loading}>
             <RefreshCw className="mr-2 h-4 w-4" />
-            새로고침
+            {t('새로고침', 'Refresh')}
           </Button>
         </div>
 
@@ -114,7 +114,7 @@ export const AdminDashboard = (_props: AdminDashboardProps) => {
         requests={scopedRequests}
         loading={loading}
         showExcelExport
-        title="요청 접수 내역"
+        title={t('요청 접수 내역', 'Submitted Requests')}
       />
     </div>
   );

@@ -1,8 +1,11 @@
 /**
  * 프로즌 여부 배지 컴포넌트
  */
+'use client';
+
 import { Badge } from '@/components/ui/badge';
-import { FROZEN_STATUS_LABELS } from '@/lib/frozen-date-labels';
+import { getFrozenStatusLabels } from '@/lib/frozen-date-labels';
+import { useLanguage } from '@/context/LanguageContext';
 import type { FrozenStatus } from '@/types/frozen-date';
 import { cn } from '@/lib/utils';
 
@@ -12,6 +15,7 @@ interface FrozenStatusBadgeProps {
 }
 
 export const FrozenStatusBadge = ({ status = 'unset', className }: FrozenStatusBadgeProps) => {
+  const { t } = useLanguage();
   const value: FrozenStatus = status ?? 'unset';
 
   return (
@@ -23,7 +27,7 @@ export const FrozenStatusBadge = ({ status = 'unset', className }: FrozenStatusB
         className
       )}
     >
-      {FROZEN_STATUS_LABELS[value]}
+      {getFrozenStatusLabels(t)[value]}
     </Badge>
   );
 };

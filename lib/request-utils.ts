@@ -3,6 +3,7 @@
  */
 
 import type { UrgencyLevel, RequestStatus } from '@/types/request';
+import { koreanOnly, type Translate } from '@/lib/i18n';
 
 /**
  * 날짜를 한국어 형식으로 포맷팅
@@ -48,13 +49,13 @@ export const getUrgencyLevel = (daysLeft: number): UrgencyLevel => {
  * @param status - 요청 상태
  * @returns 한글 라벨
  */
-export const getStatusLabel = (status: RequestStatus): string => {
+export const getStatusLabel = (status: RequestStatus, t: Translate = koreanOnly): string => {
   const statusLabels: Record<RequestStatus, string> = {
-    pending: '검토대기',
-    in_review: '검토중',
-    approved: '승인',
-    rejected: '거절',
-    completed: '완료',
+    pending: t('검토대기', 'Pending'),
+    in_review: t('검토중', 'In review'),
+    approved: t('승인', 'Approved'),
+    rejected: t('거절', 'Rejected'),
+    completed: t('완료', 'Completed'),
   };
   return statusLabels[status];
 };
@@ -67,29 +68,29 @@ export const getStatusLabel = (status: RequestStatus): string => {
 export const getStatusBadgeClasses = (status: RequestStatus): string => {
   const statusConfig: Record<RequestStatus, { bg: string; text: string; border: string }> = {
     pending: {
-      bg: 'bg-[#B2B4B8]/20',
-      text: 'text-[#67767F]',
-      border: 'border border-[#B2B4B8]',
+      bg: 'bg-[#8E98A8]/20',
+      text: 'text-[#5A6778]',
+      border: 'border border-[#8E98A8]',
     },
     in_review: {
       bg: 'bg-[#A2B2C8]/20',
-      text: 'text-[#4B4F5A]',
+      text: 'text-[#253143]',
       border: 'border border-[#A2B2C8]',
     },
     approved: {
       bg: 'bg-[#A2B2C8]/30',
-      text: 'text-[#4B4F5A]',
+      text: 'text-[#253143]',
       border: 'border border-[#A2B2C8]',
     },
     rejected: {
-      bg: 'bg-[#971B2F]/10',
-      text: 'text-[#971B2F]',
-      border: 'border border-[#971B2F]/30',
+      bg: 'bg-[#8B1538]/10',
+      text: 'text-[#8B1538]',
+      border: 'border border-[#8B1538]/30',
     },
     completed: {
-      bg: 'bg-[#B2B4B8]/10',
-      text: 'text-[#67767F]',
-      border: 'border border-[#B2B4B8]/50',
+      bg: 'bg-[#8E98A8]/10',
+      text: 'text-[#5A6778]',
+      border: 'border border-[#8E98A8]/50',
     },
   };
 
@@ -102,25 +103,25 @@ export const getStatusBadgeClasses = (status: RequestStatus): string => {
  * @param urgency - 긴급도 레벨
  * @returns 색상 및 아이콘 정보
  */
-export const getUrgencyConfig = (urgency: UrgencyLevel) => {
+export const getUrgencyConfig = (urgency: UrgencyLevel, t: Translate = koreanOnly) => {
   const configs: Record<UrgencyLevel, { color: string; bgColor: string; icon: string; label: string }> = {
     urgent: {
-      color: 'text-[#971B2F]',
-      bgColor: 'bg-[#971B2F]/10',
+      color: 'text-[#8B1538]',
+      bgColor: 'bg-[#8B1538]/10',
       icon: '🔴',
-      label: '긴급',
+      label: t('긴급', 'Urgent'),
     },
     normal: {
-      color: 'text-[#67767F]',
-      bgColor: 'bg-[#67767F]/10',
+      color: 'text-[#5A6778]',
+      bgColor: 'bg-[#5A6778]/10',
       icon: '🟡',
-      label: '일반',
+      label: t('일반', 'Normal'),
     },
     low: {
-      color: 'text-[#B2B4B8]',
-      bgColor: 'bg-[#B2B4B8]/10',
+      color: 'text-[#8E98A8]',
+      bgColor: 'bg-[#8E98A8]/10',
       icon: '⚪',
-      label: '보통',
+      label: t('보통', 'Low'),
     },
   };
   return configs[urgency];

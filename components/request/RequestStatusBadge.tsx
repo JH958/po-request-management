@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { getStatusBadgeClasses, getStatusLabel } from '@/lib/request-utils';
 import type { RequestStatus } from '@/types/request';
+import { useLanguage } from '@/context/LanguageContext';
 
 interface RequestStatusBadgeProps {
   status: RequestStatus;
@@ -14,7 +15,8 @@ interface RequestStatusBadgeProps {
 }
 
 export const RequestStatusBadge = ({ status, className }: RequestStatusBadgeProps) => {
-  const label = getStatusLabel(status);
+  const { t } = useLanguage();
+  const label = getStatusLabel(status, t);
   const badgeClasses = getStatusBadgeClasses(status);
 
   return (

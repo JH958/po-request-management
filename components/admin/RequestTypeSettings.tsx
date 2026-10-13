@@ -36,6 +36,7 @@ import {
 } from '@/lib/request-config-api';
 import { getReadableErrorMessage } from '@/lib/request-helpers';
 import { useRequestConfig } from '@/context/RequestConfigContext';
+import { useLanguage } from '@/context/LanguageContext';
 import type { RequestTypeSetting } from '@/types/request-config';
 
 interface RequestTypeSettingsProps {
@@ -61,6 +62,7 @@ const emptyForm = (sortOrder: number): FormState => ({
 
 export const RequestTypeSettings = ({ userId }: RequestTypeSettingsProps) => {
   const { refresh: refreshGlobal } = useRequestConfig();
+  const { t } = useLanguage();
   const [items, setItems] = useState<RequestTypeSetting[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -107,17 +109,17 @@ export const RequestTypeSettings = ({ userId }: RequestTypeSettingsProps) => {
 
   const handleSave = async () => {
     if (!form.label.trim()) {
-      toast.error('요청구분명을 입력해주세요.');
+      toast.error(t('요청구분명을 입력해주세요.', 'Enter a request type name.'));
       return;
     }
     if (isNew && !form.value.trim()) {
-      toast.error('코드(value)를 입력해주세요.');
+      toast.error(t('코드(value)를 입력해주세요.', 'Enter a code (value).'));
       return;
     }
 
     const sortOrder = parseInt(form.sort_order, 10);
     if (Number.isNaN(sortOrder) || sortOrder < 0) {
-      toast.error('순서는 0 이상의 숫자여야 합니다.');
+      toast.error(t('순서는 0 이상의 숫자여야 합니다.', 'Order must be a number of 0 or more.'));
       return;
     }
 
@@ -137,7 +139,7 @@ export const RequestTypeSettings = ({ userId }: RequestTypeSettingsProps) => {
       await loadItems();
       await refreshGlobal();
       setModalOpen(false);
-      toast.success('요청구분이 저장되었습니다.');
+      toast.success(t('요청구분이 저장되었습니다.', 'Request type saved.'));
     } catch (error) {
       toast.error(getReadableErrorMessage(error));
     } finally {
@@ -146,12 +148,12 @@ export const RequestTypeSettings = ({ userId }: RequestTypeSettingsProps) => {
   };
 
   const handleDelete = async (item: RequestTypeSetting) => {
-    if (!window.confirm(`"${item.label}" 항목을 삭제하시겠습니까?`)) return;
+    if (!window.confirm(t(`"${item.label}" 항목을 삭제하시겠습니까?`, `Delete "${item.label}"?`))) return;
     try {
       await deleteRequestTypeSetting(item.id);
       await loadItems();
       await refreshGlobal();
-      toast.success('요청구분이 삭제되었습니다.');
+      toast.success(t('요청구분이 삭제되었습니다.', 'Request type deleted.'));
     } catch (error) {
       toast.error(getReadableErrorMessage(error));
     }
@@ -160,12 +162,12 @@ export const RequestTypeSettings = ({ userId }: RequestTypeSettingsProps) => {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-[#67767F]">
-          요청접수 카드 및 필터에 반영되는 요청구분 목록을 관리합니다.
+        <p className="text-sm text-[#5A6778]">
+          {t('요청접수 카드 및 필터에 반영되는 요청구분 목록을 관리합니다.', 'Manage the request types shown on request cards and filters.')}
         </p>
-        <Button className="bg-[#971B2F] hover:bg-[#7A1626]" onClick={openCreate}>
+        <Button className="bg-[#8B1538] hover:bg-[#74112F]" onClick={openCreate}>
           <Plus className="mr-2 h-4 w-4" />
-          항목 추가
+          {t('항목 추가', 'Add item')}
         </Button>
       </div>
 
@@ -180,7 +182,15 @@ export const RequestTypeSettings = ({ userId }: RequestTypeSettingsProps) => {
           <Table>
             <TableHeader>
               <TableRow>
-                {['순서', '코드', '요청구분', '설명', '상태', '수정', '삭제'].map((h) => (
+                {[
+                  t('순서', 'Order'),
+                  t('코드', 'Code'),
+                  t('요청구분', 'Request type'),
+                  t('설명', 'Description'),
+                  t('상태', 'Status'),
+                  t('수정', 'Edit'),
+                  t('삭제', 'Delete'),
+                ].map((h) => (
                   <TableHead key={h}>{h}</TableHead>
                 ))}
               </TableRow>
@@ -188,26 +198,26 @@ export const RequestTypeSettings = ({ userId }: RequestTypeSettingsProps) => {
             <TableBody>
               {items.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-8 text-center text-[#67767F]">
-                    등록된 요청구분이 없습니다.
+                  <TableCell colSpan={7} className="py-8 text-center text-[#5A6778]">
+                    {t('등록된 요청구분이 없습니다.', 'No request types yet.')}
                   </TableCell>
                 </TableRow>
               ) : (
                 items.map((item) => (
                   <TableRow key={item.id} className={!item.is_active ? 'opacity-60' : undefined}>
                     <TableCell>{item.sort_order}</TableCell>
-                    <TableCell className="font-mono text-xs text-[#67767F]">{item.value}</TableCell>
+                    <TableCell className="font-mono text-xs text-[#5A6778]">{item.value}</TableCell>
                     <TableCell className="font-medium">{item.label}</TableCell>
-                    <TableCell className="max-w-xs truncate text-[#67767F]" title={item.description ?? ''}>
+                    <TableCell className="max-w-xs truncate text-[#5A6778]" title={item.description ?? ''}>
                       {item.description ?? '-'}
                     </TableCell>
                     <TableCell>
                       <Badge variant={item.is_active ? 'default' : 'outline'}>
-                        {item.is_active ? '사용' : '비활성'}
+                        {item.is_active ? t('사용', 'Active') : t('비활성', 'Inactive')}
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <Button variant="ghost" size="sm" onClick={() => openEdit(item)} aria-label="수정">
+                      <Button variant="ghost" size="sm" onClick={() => openEdit(item)} aria-label={t('수정', 'Edit')}>
                         <Pencil className="h-4 w-4" />
                       </Button>
                     </TableCell>
@@ -217,7 +227,7 @@ export const RequestTypeSettings = ({ userId }: RequestTypeSettingsProps) => {
                         size="sm"
                         className="text-red-600"
                         onClick={() => void handleDelete(item)}
-                        aria-label="삭제"
+                        aria-label={t('삭제', 'Delete')}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -233,32 +243,32 @@ export const RequestTypeSettings = ({ userId }: RequestTypeSettingsProps) => {
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>{isNew ? '요청구분 추가' : '요청구분 수정'}</DialogTitle>
+            <DialogTitle>{isNew ? t('요청구분 추가', 'Add request type') : t('요청구분 수정', 'Edit request type')}</DialogTitle>
             <DialogDescription>
-              코드(value)는 시스템 내부 식별자입니다. 수정 시에는 변경할 수 없습니다.
+              {t('코드(value)는 시스템 내부 식별자입니다. 수정 시에는 변경할 수 없습니다.', 'The code (value) is an internal identifier and cannot be changed after creation.')}
             </DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-4 py-2">
             <div className="space-y-2">
-              <Label>코드 (value) {isNew && <span className="text-red-500">*</span>}</Label>
+              <Label>{t('코드 (value)', 'Code (value)')} {isNew && <span className="text-red-500">*</span>}</Label>
               <Input
                 value={form.value}
                 onChange={(e) => setForm((p) => ({ ...p, value: e.target.value }))}
                 disabled={!isNew}
-                placeholder="예: product_add"
+                placeholder={t('예: product_add', 'e.g. product_add')}
               />
             </div>
             <div className="space-y-2">
-              <Label>요청구분 <span className="text-red-500">*</span></Label>
+              <Label>{t('요청구분', 'Request type')} <span className="text-red-500">*</span></Label>
               <Input
                 value={form.label}
                 onChange={(e) => setForm((p) => ({ ...p, label: e.target.value }))}
-                placeholder="예: 제품/상품 추가"
+                placeholder={t('예: 제품/상품 추가', 'e.g. Add product')}
               />
             </div>
             <div className="space-y-2">
-              <Label>설명</Label>
+              <Label>{t('설명', 'Description')}</Label>
               <Textarea
                 value={form.description}
                 onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
@@ -266,7 +276,7 @@ export const RequestTypeSettings = ({ userId }: RequestTypeSettingsProps) => {
               />
             </div>
             <div className="space-y-2">
-              <Label>순서</Label>
+              <Label>{t('순서', 'Order')}</Label>
               <Input
                 type="number"
                 min={0}
@@ -280,20 +290,20 @@ export const RequestTypeSettings = ({ userId }: RequestTypeSettingsProps) => {
                 checked={form.is_active}
                 onCheckedChange={(v) => setForm((p) => ({ ...p, is_active: v === true }))}
               />
-              <Label htmlFor="type-active">사용 중</Label>
+              <Label htmlFor="type-active">{t('사용 중', 'Active')}</Label>
             </div>
           </div>
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setModalOpen(false)} disabled={saving}>
-              취소
+              {t('취소', 'Cancel')}
             </Button>
             <Button
-              className="bg-[#971B2F] hover:bg-[#7A1626]"
+              className="bg-[#8B1538] hover:bg-[#74112F]"
               onClick={() => void handleSave()}
               disabled={saving}
             >
-              {saving ? '저장 중...' : '저장'}
+              {saving ? t('저장 중...', 'Saving...') : t('저장', 'Save')}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -3,15 +3,19 @@
  */
 import { createClient } from '@/lib/supabase/client';
 import { asApiError } from '@/lib/request-helpers';
+import { translateNow as tn } from '@/lib/i18n';
 import type { RequestReasonSetting, RequestTypeSetting } from '@/types/request-config';
 import type { ReasonOption, RequestTypeCard } from '@/lib/request-constants';
 
 const formatConfigError = (error: unknown, table: string): string => {
   const err = asApiError(error);
   if (isTableMissingError(error, table)) {
-    return `${table} 테이블이 없습니다. Supabase에서 migrations/add_request_config_settings.sql을 실행해주세요.`;
+    return tn(
+      `${table} 테이블이 없습니다. Supabase에서 migrations/add_request_config_settings.sql을 실행해주세요.`,
+      `The ${table} table is missing. Run migrations/add_request_config_settings.sql in Supabase.`
+    );
   }
-  return err.message || '설정을 처리하지 못했습니다.';
+  return err.message || tn('설정을 처리하지 못했습니다.', 'Could not process the settings.');
 };
 
 /** 테이블 미생성·스키마 캐시 미반영 오류 여부 */

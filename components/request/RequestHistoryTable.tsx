@@ -28,7 +28,6 @@ import { Calendar } from '@/components/ui/calendar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Search, Download, Calendar as CalendarIcon } from 'lucide-react';
 import { format as formatDateRange } from 'date-fns';
-import { ko } from 'date-fns/locale';
 import type { DateRange } from 'react-day-picker';
 import type { PORequest } from '@/types/request';
 import { formatDate } from '@/lib/dashboard-utils';
@@ -41,6 +40,8 @@ import { useRequestConfig } from '@/context/RequestConfigContext';
 import { ProductCategoryBadges } from '@/components/common/ProductCategoryBadges';
 import { FrozenStatusBadge } from '@/components/request/FrozenStatusBadge';
 import { cn } from '@/lib/utils';
+import { getDateLocale } from '@/lib/i18n';
+import { useLanguage } from '@/context/LanguageContext';
 
 interface RequestHistoryTableProps {
   requests: PORequest[];
@@ -55,10 +56,12 @@ export const RequestHistoryTable = ({
   requests,
   loading = false,
   showExcelExport = false,
-  title = '요청 접수 내역',
+  title,
   tourPrefix,
 }: RequestHistoryTableProps) => {
   const { categoryFilterOptions } = useRequestConfig();
+  const { t, lang } = useLanguage();
+  const dateLocale = getDateLocale(lang);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterCategory, setFilterCategory] = useState('all');
@@ -157,47 +160,54 @@ export const RequestHistoryTable = ({
     try {
       const XLSX = await import('xlsx');
       const exportData = filteredRequests.map((r) => ({
-        요청일: r.request_date || '',
-        'SO 번호': r.so_number || '',
-        고객: r.customer || '',
-        요청부서: r.requesting_dept || '',
-        요청자: r.requester_name || '',
-        출하일: r.factory_shipment_date || '',
-        요청구분: r.category_of_request || '',
-        품목코드: r.erp_code || '',
-        품목명: r.item_name || '',
-        수량: r.quantity || 0,
-        요청사유: r.reason_for_request || '',
-        '검토 상세': r.review_details || '-',
-        '프로즌 여부': r.frozen_status === 'before' ? '프로즌 이전' : r.frozen_status === 'after' ? '프로즌 이후' : '미설정',
-        상태: getStatusLabel(r.status),
+        [t('요청일', 'Request date')]: r.request_date || '',
+        [t('SO 번호', 'SO No.')]: r.so_number || '',
+        [t('고객', 'Customer')]: r.customer || '',
+        [t('요청부서', 'Requesting dept')]: r.requesting_dept || '',
+        [t('요청자', 'Requester')]: r.requester_name || '',
+        [t('출하일', 'Ship date')]: r.factory_shipment_date || '',
+        [t('요청구분', 'Request type')]: r.category_of_request || '',
+        [t('품목코드', 'Item code')]: r.erp_code || '',
+        [t('품목명', 'Item name')]: r.item_name || '',
+        [t('수량', 'Qty')]: r.quantity || 0,
+        [t('요청사유', 'Request reason')]: r.reason_for_request || '',
+        [t('검토 상세', 'Review details')]: r.review_details || '-',
+        [t('프로즌 여부', 'Frozen')]:
+          r.frozen_status === 'before'
+            ? t('프로즌 이전', 'Before frozen')
+            : r.frozen_status === 'after'
+              ? t('프로즌 이후', 'After frozen')
+              : t('미설정', 'Not set'),
+        [t('상태', 'Status')]: getStatusLabel(r.status, t),
       }));
       const worksheet = XLSX.utils.json_to_sheet(exportData);
       const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, '요청 내역');
+      XLSX.utils.book_append_sheet(workbook, worksheet, t('요청 내역', 'Requests'));
       const today = new Date().toISOString().split('T')[0];
-      XLSX.writeFile(workbook, `PO변경요청_내역_${today}.xlsx`);
+      XLSX.writeFile(workbook, t(`PO변경요청_내역_${today}.xlsx`, `PO_change_requests_${today}.xlsx`));
     } catch {
       /* toast는 상위에서 처리 가능 */
     }
   };
 
   return (
-    <Card className="border-[#E5E7EB]">
+    <Card className="border-[#DEE4EC]">
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle className="text-xl text-[#101820]">{title}</CardTitle>
-            <p className="mt-1 text-sm text-[#67767F]">총 {filteredRequests.length}건의 요청</p>
+            <CardTitle className="text-xl text-[#172132]">{title ?? t('요청 접수 내역', 'Submitted Requests')}</CardTitle>
+            <p className="mt-1 text-sm text-[#5A6778]">
+              {t(`총 ${filteredRequests.length}건의 요청`, `${filteredRequests.length} requests`)}
+            </p>
           </div>
           {showExcelExport && (
             <Button
               onClick={() => void handleExportExcel()}
-              className="bg-[#971B2F] text-white hover:bg-[#7A1626]"
-              aria-label="Excel 파일 다운로드"
+              className="bg-[#8B1538] text-white hover:bg-[#74112F]"
+              aria-label={t('Excel 파일 다운로드', 'Download Excel file')}
             >
               <Download className="mr-2 h-4 w-4" />
-              Excel 다운로드
+              {t('Excel 다운로드', 'Download Excel')}
             </Button>
           )}
         </div>
@@ -205,13 +215,13 @@ export const RequestHistoryTable = ({
       <CardContent>
         <div className="mb-4 flex flex-col gap-3 md:flex-row">
           <div className="relative flex-1" data-tour={tourPrefix ? `${tourPrefix}-history-search` : undefined}>
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#67767F]" />
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#5A6778]" />
             <Input
-              placeholder="SO 번호, 고객명, 품목명으로 검색..."
+              placeholder={t('SO 번호, 고객명, 품목명으로 검색...', 'Search by SO number, customer or item...')}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-10"
-              aria-label="요청 검색"
+              aria-label={t('요청 검색', 'Search requests')}
             />
           </div>
           <div
@@ -220,21 +230,21 @@ export const RequestHistoryTable = ({
           >
           <Select value={filterStatus} onValueChange={setFilterStatus}>
             <SelectTrigger className="w-full md:w-[140px]">
-              <SelectValue placeholder="상태" />
+              <SelectValue placeholder={t('상태', 'Status')} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">전체 상태</SelectItem>
-              <SelectItem value="pending">검토대기</SelectItem>
-              <SelectItem value="approved">승인</SelectItem>
-              <SelectItem value="rejected">반려</SelectItem>
+              <SelectItem value="all">{t('전체 상태', 'All statuses')}</SelectItem>
+              <SelectItem value="pending">{t('검토대기', 'Pending')}</SelectItem>
+              <SelectItem value="approved">{t('승인', 'Approved')}</SelectItem>
+              <SelectItem value="rejected">{t('반려', 'Rejected')}</SelectItem>
             </SelectContent>
           </Select>
           <Select value={filterCategory} onValueChange={setFilterCategory}>
             <SelectTrigger className="w-full md:w-[160px]">
-              <SelectValue placeholder="요청구분" />
+              <SelectValue placeholder={t('요청구분', 'Request type')} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">전체 구분</SelectItem>
+              <SelectItem value="all">{t('전체 구분', 'All types')}</SelectItem>
               {categoryFilterOptions.map((cat) => (
                 <SelectItem key={cat} value={cat}>
                   {cat}
@@ -244,10 +254,10 @@ export const RequestHistoryTable = ({
           </Select>
           <Select value={filterCustomer} onValueChange={setFilterCustomer}>
             <SelectTrigger className="w-full md:w-[180px]">
-              <SelectValue placeholder="고객" />
+              <SelectValue placeholder={t('고객', 'Customer')} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">전체 고객</SelectItem>
+              <SelectItem value="all">{t('전체 고객', 'All customers')}</SelectItem>
               {customerOptions.map((c) => (
                 <SelectItem key={c} value={c}>
                   {c}
@@ -268,14 +278,14 @@ export const RequestHistoryTable = ({
                 {dateRange?.from ? (
                   dateRange.to ? (
                     <>
-                      {formatDateRange(dateRange.from, 'yyyy-MM-dd', { locale: ko })} -{' '}
-                      {formatDateRange(dateRange.to, 'yyyy-MM-dd', { locale: ko })}
+                      {formatDateRange(dateRange.from, 'yyyy-MM-dd', { locale: dateLocale })} -{' '}
+                      {formatDateRange(dateRange.to, 'yyyy-MM-dd', { locale: dateLocale })}
                     </>
                   ) : (
-                    formatDateRange(dateRange.from, 'yyyy-MM-dd', { locale: ko })
+                    formatDateRange(dateRange.from, 'yyyy-MM-dd', { locale: dateLocale })
                   )
                 ) : (
-                  <span>날짜 범위</span>
+                  <span>{t('날짜 범위', 'Date range')}</span>
                 )}
               </Button>
             </PopoverTrigger>
@@ -285,11 +295,11 @@ export const RequestHistoryTable = ({
                 selected={dateRange}
                 onSelect={setDateRange}
                 numberOfMonths={2}
-                locale={ko}
+                locale={dateLocale}
               />
               <div className="border-t p-3">
                 <Button variant="ghost" className="w-full" onClick={() => setDateRange(undefined)}>
-                  초기화
+                  {t('초기화', 'Reset')}
                 </Button>
               </div>
             </PopoverContent>
@@ -298,16 +308,16 @@ export const RequestHistoryTable = ({
           <div data-tour={tourPrefix ? `${tourPrefix}-history-sort` : undefined}>
           <Select value={sortOrder} onValueChange={setSortOrder}>
             <SelectTrigger className="w-full md:w-[170px]">
-              <SelectValue placeholder="정렬" />
+              <SelectValue placeholder={t('정렬', 'Sort')} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="request-date-desc">요청일 최신순</SelectItem>
-              <SelectItem value="request-date-asc">요청일 오래된순</SelectItem>
-              <SelectItem value="shipment-date-asc">출하일 빠른순</SelectItem>
-              <SelectItem value="shipment-date-desc">출하일 늦은순</SelectItem>
-              <SelectItem value="priority-desc">우선순위 높은순</SelectItem>
-              <SelectItem value="newest">등록 최신순</SelectItem>
-              <SelectItem value="oldest">등록 오래된순</SelectItem>
+              <SelectItem value="request-date-desc">{t('요청일 최신순', 'Request date (newest)')}</SelectItem>
+              <SelectItem value="request-date-asc">{t('요청일 오래된순', 'Request date (oldest)')}</SelectItem>
+              <SelectItem value="shipment-date-asc">{t('출하일 빠른순', 'Ship date (earliest)')}</SelectItem>
+              <SelectItem value="shipment-date-desc">{t('출하일 늦은순', 'Ship date (latest)')}</SelectItem>
+              <SelectItem value="priority-desc">{t('우선순위 높은순', 'Priority (highest)')}</SelectItem>
+              <SelectItem value="newest">{t('등록 최신순', 'Created (newest)')}</SelectItem>
+              <SelectItem value="oldest">{t('등록 오래된순', 'Created (oldest)')}</SelectItem>
             </SelectContent>
           </Select>
           </div>
@@ -332,7 +342,24 @@ export const RequestHistoryTable = ({
                   data-tour={tourPrefix ? `${tourPrefix}-history-table-header` : undefined}
                 >
                   <TableRow>
-                    {['요청일', 'SO 번호', '고객', '요청부서', '요청자', '출하일', '요청구분', '품목구분', '품목코드', '품목명', '수량', '확정 수량', '요청사유', '검토 상세', '프로즌 여부', '상태'].map(
+                    {[
+                      t('요청일', 'Request date'),
+                      t('SO 번호', 'SO No.'),
+                      t('고객', 'Customer'),
+                      t('요청부서', 'Requesting dept'),
+                      t('요청자', 'Requester'),
+                      t('출하일', 'Ship date'),
+                      t('요청구분', 'Request type'),
+                      t('품목구분', 'Product category'),
+                      t('품목코드', 'Item code'),
+                      t('품목명', 'Item name'),
+                      t('수량', 'Qty'),
+                      t('확정 수량', 'Confirmed qty'),
+                      t('요청사유', 'Request reason'),
+                      t('검토 상세', 'Review details'),
+                      t('프로즌 여부', 'Frozen'),
+                      t('상태', 'Status'),
+                    ].map(
                       (h) => (
                         <TableHead key={h} className="sticky top-0 z-20 bg-white">
                           {h}
@@ -344,8 +371,8 @@ export const RequestHistoryTable = ({
                 <TableBody>
                   {filteredRequests.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={16} className="py-8 text-center text-[#67767F]">
-                        요청 데이터가 없습니다.
+                      <TableCell colSpan={16} className="py-8 text-center text-[#5A6778]">
+                        {t('요청 데이터가 없습니다.', 'No requests.')}
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -362,7 +389,7 @@ export const RequestHistoryTable = ({
                           {needsProductCategory(r.category_of_request) && r.product_category ? (
                             <ProductCategoryBadges category={r.product_category} />
                           ) : (
-                            <span className="text-[#B2B4B8]">-</span>
+                            <span className="text-[#8E98A8]">-</span>
                           )}
                         </TableCell>
                         <TableCell>{r.erp_code || '-'}</TableCell>
@@ -380,7 +407,7 @@ export const RequestHistoryTable = ({
                               {r.confirmed_quantity.toLocaleString()}
                             </span>
                           ) : (
-                            <span className="text-[#B2B4B8]">-</span>
+                            <span className="text-[#8E98A8]">-</span>
                           )}
                         </TableCell>
                         <TableCell>{r.reason_for_request}</TableCell>
@@ -398,7 +425,7 @@ export const RequestHistoryTable = ({
                               r.status === 'pending' && 'bg-yellow-100 text-yellow-700'
                             )}
                           >
-                            {getStatusLabel(r.status)}
+                            {getStatusLabel(r.status, t)}
                           </Badge>
                         </TableCell>
                       </TableRow>
@@ -411,7 +438,7 @@ export const RequestHistoryTable = ({
               ref={bottomScrollbarRef}
               className="mt-2 h-4 overflow-x-auto overflow-y-hidden rounded border bg-white"
               onScroll={handleBottomScroll}
-              aria-label="요청 내역 하단 가로 스크롤바"
+              aria-label={t('요청 내역 하단 가로 스크롤바', 'Horizontal scrollbar for the request list')}
             >
               <div ref={bottomScrollbarInnerRef} className="h-px" />
             </div>

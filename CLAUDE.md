@@ -43,6 +43,14 @@ npm run lint     # ESLint — 커밋 전 반드시 통과해야 함
 - 고객처·구분(제품/상품/자재/제외)·제외 여부는 이벤트에 저장하지 않고 `v_do_change_events` 뷰에서 조회 시점 설정으로 붙임.
 - 판매주문조회 라인번호는 정수로 반올림되어 나오므로 DO↔SO 연결은 주문번호+품목번호로 함.
 
+### 화면 언어 (KOR/ENG)
+- 헤더·로그인·회원가입의 `LanguageToggle`로 전환하며, 선택 언어는 localStorage `purchaseOnLanguage`에 저장(`context/LanguageContext.tsx`, `lib/i18n.ts`).
+- 화면 문구는 키 없이 **`t('한국어', 'English')`** 로 두 언어를 나란히 적는다. 컴포넌트에서는 `const { t, lang } = useLanguage()`.
+- 토스트·throw 오류처럼 렌더링 밖에서 만드는 문구는 `translateNow`(관례상 `tn`으로 import) 사용 — 데이터 조회 콜백의 의존성에 `t`를 넣지 않기 위함.
+- lib의 라벨 함수는 `t: Translate`를 인자로 받는다(예: `getStatusLabel(status, t)`, `getDoChangeTypeLabels(t)`). 넘기지 않으면 `koreanOnly`로 한국어.
+- **번역하지 않는 것**: DB에 저장되는 값(요청구분·요청사유·우선순위 '긴급/보통', 고객처, 상태 차트 키 '승인/반려/대기'), 엑셀 열 이름, 알림 메일 본문, 개발자용 console 로그.
+- 새 화면 문구를 추가할 때도 반드시 `t()`로 영어를 함께 적는다.
+
 ### 권한/조회 범위 모델 (여러 파일에 걸친 핵심 규칙)
 - `user_profiles.role`은 **콤마로 구분된 다중 역할 문자열**(예: `"reviewer,requester"`, `"admin"`). 항상 split해서 검사.
 - 부서명으로 계정 유형 판별: 부서명이 `팀`으로 끝나면 **본사 부서**, 아니면 **고객처 계정**(`lib/request-access-scope.ts`).

@@ -15,6 +15,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { RequestStatusBadge } from '@/components/request/RequestStatusBadge';
 import { formatDate } from '@/lib/dashboard-utils';
+import { useLanguage } from '@/context/LanguageContext';
 import type { PORequest } from '@/types/request';
 
 interface RecentRequestsTableProps {
@@ -23,6 +24,7 @@ interface RecentRequestsTableProps {
 }
 
 export const RecentRequestsTable = ({ requests, onViewDetails }: RecentRequestsTableProps) => {
+  const { t } = useLanguage();
   const handleRowClick = (requestId: string) => {
     onViewDetails(requestId);
   };
@@ -35,44 +37,44 @@ export const RecentRequestsTable = ({ requests, onViewDetails }: RecentRequestsT
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-xl font-semibold text-[#4B4F5A]">최근 요청</CardTitle>
+        <CardTitle className="text-xl font-semibold text-[#253143]">{t('최근 요청', 'Recent Requests')}</CardTitle>
       </CardHeader>
       <CardContent>
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[100px]">요청일</TableHead>
-              <TableHead className="w-[120px]">SO 번호</TableHead>
-              <TableHead className="w-[150px]">고객</TableHead>
-              <TableHead className="w-[120px]">요청구분</TableHead>
-              <TableHead>품목명</TableHead>
-              <TableHead className="w-[80px] text-right">수량</TableHead>
-              <TableHead className="w-[100px]">상태</TableHead>
-              <TableHead className="w-[100px]">액션</TableHead>
+              <TableHead className="w-[100px]">{t('요청일', 'Requested')}</TableHead>
+              <TableHead className="w-[120px]">{t('SO 번호', 'SO No.')}</TableHead>
+              <TableHead className="w-[150px]">{t('고객', 'Customer')}</TableHead>
+              <TableHead className="w-[120px]">{t('요청구분', 'Request type')}</TableHead>
+              <TableHead>{t('품목명', 'Item')}</TableHead>
+              <TableHead className="w-[80px] text-right">{t('수량', 'Qty')}</TableHead>
+              <TableHead className="w-[100px]">{t('상태', 'Status')}</TableHead>
+              <TableHead className="w-[100px]">{t('액션', 'Action')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {requests.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-8 text-[#67767F]">
-                  요청 데이터가 없습니다.
+                <TableCell colSpan={8} className="text-center py-8 text-[#5A6778]">
+                  {t('요청 데이터가 없습니다.', 'No requests.')}
                 </TableCell>
               </TableRow>
             ) : (
               requests.map((request) => (
                 <TableRow
                   key={request.id}
-                  className="cursor-pointer hover:bg-[#B2B4B8]/10"
+                  className="cursor-pointer hover:bg-[#8E98A8]/10"
                   onClick={() => handleRowClick(request.id)}
                 >
-                  <TableCell className="text-[#4B4F5A]">
+                  <TableCell className="text-[#253143]">
                     {formatDate(request.request_date)}
                   </TableCell>
-                  <TableCell className="font-medium text-[#101820]">{request.so_number}</TableCell>
-                  <TableCell className="text-[#4B4F5A]">{request.customer}</TableCell>
-                  <TableCell className="text-[#4B4F5A]">{request.category_of_request}</TableCell>
-                  <TableCell className="text-[#4B4F5A]">{request.item_name}</TableCell>
-                  <TableCell className="text-right text-[#4B4F5A]">
+                  <TableCell className="font-medium text-[#172132]">{request.so_number}</TableCell>
+                  <TableCell className="text-[#253143]">{request.customer}</TableCell>
+                  <TableCell className="text-[#253143]">{request.category_of_request}</TableCell>
+                  <TableCell className="text-[#253143]">{request.item_name}</TableCell>
+                  <TableCell className="text-right text-[#253143]">
                     {request.quantity.toLocaleString()}
                   </TableCell>
                   <TableCell>
@@ -83,9 +85,9 @@ export const RecentRequestsTable = ({ requests, onViewDetails }: RecentRequestsT
                       variant="ghost"
                       size="sm"
                       onClick={(e) => handleViewDetails(e, request.id)}
-                      className="text-[#971B2F] hover:bg-[#971B2F]/10"
+                      className="text-[#8B1538] hover:bg-[#8B1538]/10"
                     >
-                      상세보기
+                      {t('상세보기', 'Details')}
                     </Button>
                   </TableCell>
                 </TableRow>
@@ -97,10 +99,10 @@ export const RecentRequestsTable = ({ requests, onViewDetails }: RecentRequestsT
       <CardFooter>
         <Button
           variant="ghost"
-          className="w-full text-[#971B2F] hover:bg-[#971B2F]/10"
+          className="w-full text-[#8B1538] hover:bg-[#8B1538]/10"
           onClick={() => onViewDetails('all')}
         >
-          전체 요청 보기
+          {t('전체 요청 보기', 'View all requests')}
         </Button>
       </CardFooter>
     </Card>

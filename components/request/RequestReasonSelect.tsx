@@ -17,6 +17,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { useLanguage } from '@/context/LanguageContext';
 
 interface RequestReasonSelectProps {
   value: string;
@@ -25,12 +26,13 @@ interface RequestReasonSelectProps {
 
 export const RequestReasonSelect = ({ value, onChange }: RequestReasonSelectProps) => {
   const { requestReasons } = useRequestConfig();
+  const { t } = useLanguage();
 
   return (
     <TooltipProvider>
       <Select value={value} onValueChange={onChange}>
         <SelectTrigger>
-          <SelectValue placeholder="요청사유를 선택하세요" />
+          <SelectValue placeholder={t('요청사유를 선택하세요', 'Select a request reason')} />
         </SelectTrigger>
         <SelectContent>
           {requestReasons.map((reason) => (
