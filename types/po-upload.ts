@@ -39,6 +39,8 @@ export interface DoSnapshotSummary {
   new_orders?: number;
   pending_lines?: number;
   item_change_candidates?: number;
+  /** 분할/합배송 후보 묶음 수 (같은 날·같은 고객처·같은 품목 삭제+추가) */
+  split_candidates?: number;
   so_snapshot_stale?: boolean;
 }
 

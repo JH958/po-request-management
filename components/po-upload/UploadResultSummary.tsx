@@ -78,10 +78,11 @@ export const UploadResultSummary = ({ soSummary, doSummary }: UploadResultSummar
             </Alert>
           ) : (
             <>
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
                 <Stat label={t('변경 이벤트', 'Change events')} value={countDoEvents(doSummary)} emphasize />
                 <Stat label={t('신규 주문', 'New orders')} value={doSummary.new_orders ?? 0} />
                 <Stat label={t('DO 재등록 대기 라인', 'Lines pending DO re-registration')} value={doSummary.pending_lines ?? 0} />
+                <Stat label={t('분할/합배송 후보', 'Split shipment candidates')} value={doSummary.split_candidates ?? 0} emphasize />
                 <Stat label={t('품목코드 변경 후보', 'Item code change candidates')} value={doSummary.item_change_candidates ?? 0} />
               </div>
 

@@ -42,6 +42,8 @@ npm run lint     # ESLint — 커밋 전 반드시 통과해야 함
 - 변경 판단 단위는 판매주문 라인(주문번호+라인번호, DO 합산). `do_order_lines`의 확정 상태 대비 순변경만 `do_change_events`에 기록. 판정 규칙은 함수 상단 주석 참고(DO 분할은 변경 아님, 재등록 대기 5영업일 등).
 - 고객처·구분(제품/상품/자재/제외)·제외 여부는 이벤트에 저장하지 않고 `v_do_change_events` 뷰에서 조회 시점 설정으로 붙임.
 - 판매주문조회 라인번호는 정수로 반올림되어 나오므로 DO↔SO 연결은 주문번호+품목번호로 함.
+- 같은 날·같은 고객처·같은 품목의 삭제+추가는 `po_group_split_candidates`가 **분할/합배송 후보**(`do_change_groups`, group_type `split`)로 묶고 담당자가 `review_change_group`으로 승인/반려. **통계는 `v_do_change_events.stat_unit_key`로 distinct 집계**(반려되지 않은 분할 묶음 = 1건), 표시명은 `stat_label`.
+- 운영 DB 변경은 기본 파일(`add_po_tracker_do_tracking.sql`)을 고치고, 이미 실행된 DB용 후속 파일(`update_po_tracker_*.sql`)을 따로 만든다.
 
 ### 화면 언어 (KOR/ENG)
 - 헤더·로그인·회원가입의 `LanguageToggle`로 전환하며, 선택 언어는 localStorage `purchaseOnLanguage`에 저장(`context/LanguageContext.tsx`, `lib/i18n.ts`).

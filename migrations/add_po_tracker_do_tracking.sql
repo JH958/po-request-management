@@ -11,6 +11,7 @@
 --   apply_so_snapshot()      판매주문조회: 고객처·품목 카테고리 매핑, 미출고 SO 라인 갱신
 --   stage_po_upload_chunk()  DO 행을 약 3,000행씩 나눠 적재 (요청 크기 제한 대응)
 --   apply_do_snapshot()      DO등록현황조회: 적재한 행을 직전 상태와 비교해 변경 이벤트 생성
+--   review_change_group()    분할/합배송·품목코드 변경 후보 승인/반려 (담당자 확인)
 --   fail_po_upload()         처리 실패 시 업로드 기록을 실패로 표시
 --
 -- PO 변경 판단 단위는 판매주문 라인(주문번호+라인번호)이며 DO는 합산해서 본다.
@@ -295,7 +296,47 @@ CREATE INDEX IF NOT EXISTS do_change_events_group_idx ON public.do_change_events
 COMMENT ON TABLE public.do_change_events IS 'DO 비교로 감지한 PO 변경 이벤트';
 COMMENT ON COLUMN public.do_change_events.qty IS '변경 대상 수량(항상 0 이상): 추가·삭제 수량, 배송일자·운송방법이 바뀐 수량, 품목코드 변경 수량';
 COMMENT ON COLUMN public.do_change_events.direction IS 'add(추가) / delete(삭제) / date(배송일자) / mode(운송방법) / item(품목코드)';
-COMMENT ON COLUMN public.do_change_events.candidate_group_id IS '같은 날·같은 SO의 삭제+추가 동일 수량 → 품목코드 변경 후보 묶음';
+COMMENT ON COLUMN public.do_change_events.candidate_group_id IS '분할/합배송 또는 품목코드 변경 후보 묶음 (do_change_groups)';
+
+
+-- ---------------------------------------------------------------------
+-- 6-1. 변경 후보 묶음 (분할/합배송·품목코드 변경) — 담당자가 승인/반려
+--      통계: 반려되지 않은 분할/합배송 묶음은 1건으로 센다 (v_do_change_events.stat_unit_key)
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.do_change_groups (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  upload_id UUID NOT NULL REFERENCES public.po_source_uploads(id) ON DELETE CASCADE,
+  group_type TEXT NOT NULL CHECK (group_type IN ('split', 'item_change')),
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+  customer_unverified BOOLEAN NOT NULL DEFAULT FALSE,
+  review_note TEXT,
+  reviewed_by UUID REFERENCES public.user_profiles(id) ON DELETE SET NULL,
+  reviewed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS do_change_groups_upload_idx ON public.do_change_groups (upload_id);
+CREATE INDEX IF NOT EXISTS do_change_groups_pending_idx ON public.do_change_groups (status) WHERE status = 'pending';
+
+COMMENT ON TABLE public.do_change_groups IS '변경 이벤트 후보 묶음 — split(분할/합배송: 같은 날·같은 고객처·같은 품목 삭제+추가), item_change(품목코드 변경)';
+COMMENT ON COLUMN public.do_change_groups.status IS 'pending(확인 전) / approved(승인) / rejected(반려: 각 이벤트를 개별 삭제·추가로 집계)';
+COMMENT ON COLUMN public.do_change_groups.customer_unverified IS '한쪽 주문의 고객처를 판매주문조회에서 찾지 못해 품목·수량만으로 묶음';
+
+-- 기존 후보 묶음 값(있다면)을 품목코드 변경 묶음으로 옮긴 뒤 외래키 연결
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'do_change_events_candidate_group_fk') THEN
+    INSERT INTO public.do_change_groups (id, upload_id, group_type)
+    SELECT DISTINCT ON (candidate_group_id) candidate_group_id, upload_id, 'item_change'
+    FROM public.do_change_events
+    WHERE candidate_group_id IS NOT NULL
+    ON CONFLICT (id) DO NOTHING;
+
+    ALTER TABLE public.do_change_events
+      ADD CONSTRAINT do_change_events_candidate_group_fk
+      FOREIGN KEY (candidate_group_id) REFERENCES public.do_change_groups(id) ON DELETE SET NULL;
+  END IF;
+END $$;
 
 
 -- ---------------------------------------------------------------------
@@ -318,7 +359,34 @@ SELECT
     WHEN cs.product_class IN ('제품', '상품') THEN 'product'
     WHEN cs.product_class = '자재' THEN 'material'
   END AS class_group,
-  CASE e.direction
+  lbl.change_label,
+  ex.is_excluded_customer,
+  (cs.product_class = '제외') AS is_excluded_item,
+  (ex.is_excluded_customer OR COALESCE(cs.product_class = '제외', FALSE)) AS is_excluded,
+  g.group_type,
+  g.status AS group_status,
+  g.customer_unverified,
+  -- 통계용: 반려되지 않은 분할/합배송 묶음은 묶음 단위 1건, 나머지는 이벤트 1건
+  CASE WHEN g.group_type = 'split' AND g.status <> 'rejected' THEN '분할/합배송' ELSE lbl.change_label END AS stat_label,
+  CASE
+    WHEN g.group_type = 'split' AND g.status <> 'rejected' THEN 'group:' || g.id::TEXT
+    ELSE 'event:' || e.id::TEXT
+  END AS stat_unit_key
+FROM public.do_change_events e
+LEFT JOIN public.customer_so_map c ON c.order_no = e.order_no
+LEFT JOIN public.item_category_map i ON i.item_no = COALESCE(e.item_after, e.item_no)
+LEFT JOIN public.category_class_settings cs ON cs.category_model = i.category_model
+LEFT JOIN public.product_groups pg
+  ON pg.code = COALESCE(cs.group_code, NULLIF(split_part(i.category_model, '_', 1), ''))
+CROSS JOIN LATERAL (
+  SELECT EXISTS (
+    SELECT 1 FROM public.excluded_customers x
+    WHERE x.is_active
+      AND (x.customer_name = c.customer_name OR (x.account_no IS NOT NULL AND x.account_no = c.account_no))
+  ) AS is_excluded_customer
+) ex
+CROSS JOIN LATERAL (
+  SELECT CASE e.direction
     WHEN 'add' THEN CASE
       WHEN cs.product_class IN ('제품', '상품') THEN '제품/상품 추가'
       WHEN cs.product_class = '자재' THEN '자재 추가'
@@ -332,25 +400,11 @@ SELECT
     WHEN 'date' THEN '배송일자 변경'
     WHEN 'mode' THEN '운송방법 변경'
     WHEN 'item' THEN '품목코드 변경'
-  END AS change_label,
-  ex.is_excluded_customer,
-  (cs.product_class = '제외') AS is_excluded_item,
-  (ex.is_excluded_customer OR COALESCE(cs.product_class = '제외', FALSE)) AS is_excluded
-FROM public.do_change_events e
-LEFT JOIN public.customer_so_map c ON c.order_no = e.order_no
-LEFT JOIN public.item_category_map i ON i.item_no = COALESCE(e.item_after, e.item_no)
-LEFT JOIN public.category_class_settings cs ON cs.category_model = i.category_model
-LEFT JOIN public.product_groups pg
-  ON pg.code = COALESCE(cs.group_code, NULLIF(split_part(i.category_model, '_', 1), ''))
-CROSS JOIN LATERAL (
-  SELECT EXISTS (
-    SELECT 1 FROM public.excluded_customers x
-    WHERE x.is_active
-      AND (x.customer_name = c.customer_name OR (x.account_no IS NOT NULL AND x.account_no = c.account_no))
-  ) AS is_excluded_customer
-) ex;
+  END AS change_label
+) lbl
+LEFT JOIN public.do_change_groups g ON g.id = e.candidate_group_id;
 
-COMMENT ON VIEW public.v_do_change_events IS '변경 이벤트 + 고객처·품목군·구분·변경 유형 표시명·제외 여부';
+COMMENT ON VIEW public.v_do_change_events IS '변경 이벤트 + 고객처·품목군·구분·변경 유형 표시명·제외 여부·후보 묶음 — 통계는 stat_unit_key 기준으로 셀 것';
 
 
 -- ---------------------------------------------------------------------
@@ -393,6 +447,7 @@ ALTER TABLE public.so_lines ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.do_lines ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.do_order_lines ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.do_change_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.do_change_groups ENABLE ROW LEVEL SECURITY;
 -- 임시 적재 테이블은 정책 없음: 처리 함수로만 접근
 ALTER TABLE public.po_upload_chunks ENABLE ROW LEVEL SECURITY;
 
@@ -402,7 +457,8 @@ DECLARE
 BEGIN
   FOREACH t IN ARRAY ARRAY[
     'po_source_uploads', 'product_groups', 'category_class_settings', 'excluded_customers',
-    'customer_so_map', 'item_category_map', 'so_lines', 'do_lines', 'do_order_lines', 'do_change_events'
+    'customer_so_map', 'item_category_map', 'so_lines', 'do_lines', 'do_order_lines', 'do_change_events',
+    'do_change_groups'
   ] LOOP
     EXECUTE format('DROP POLICY IF EXISTS "Authenticated users can view %1$s" ON public.%1$I', t);
     EXECUTE format(
@@ -761,6 +817,246 @@ AS $$
 $$;
 
 /**
+ * 분할/합배송 후보 묶기 — 같은 업로드(같은 날)에서 같은 고객처·같은 품목의 삭제와 추가를 묶음
+ *
+ * 후보
+ *   삭제: 이번 업로드의 라인 삭제·수량 감소 이벤트(출하 부족 제외) + 이번 업로드에 재등록 대기로 들어간 라인
+ *   추가: 이번 업로드의 라인 추가·수량 증가 이벤트 + 이번 업로드에 처음 나타난 신규 주문의 라인
+ * 묶는 방법
+ *   1) 같은 고객처·같은 품목에서 삭제 합계 = 추가 합계이면 전부 한 묶음 (같은 PO 안 분할 포함)
+ *   2) 남은 것 중 같은 품목·같은 수량이고 고객처가 같거나 한쪽이 미확인이면 1:1 묶음 (미확인은 표시)
+ * 묶인 재등록 대기 라인은 대기를 풀고 삭제로 확정, 묶인 신규 주문 라인은 라인 추가 이벤트를 만든다.
+ * 이전(Transfer) 주문은 제외. 반환값: 새로 만든 묶음 수
+ */
+CREATE OR REPLACE FUNCTION public.po_group_split_candidates(p_upload_id UUID)
+RETURNS INT
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_date DATE;
+  v_groups INT := 0;
+  v_group UUID;
+  v_cur INT;
+  v_do TEXT;
+  r RECORD;
+  m RECORD;
+BEGIN
+  SELECT snapshot_date INTO v_date FROM public.po_source_uploads WHERE id = p_upload_id;
+
+  DROP TABLE IF EXISTS t_split;
+  CREATE TEMP TABLE t_split (
+    seq SERIAL PRIMARY KEY,
+    side CHAR(1) NOT NULL,
+    source TEXT NOT NULL,
+    event_id UUID,
+    order_no TEXT NOT NULL,
+    line_no NUMERIC NOT NULL,
+    item_no TEXT,
+    qty INT NOT NULL,
+    cust_key TEXT,
+    group_id UUID
+  ) ON COMMIT DROP;
+
+  -- 이번 업로드의 삭제·추가 이벤트 (아직 묶이지 않은 것)
+  INSERT INTO t_split (side, source, event_id, order_no, line_no, item_no, qty)
+  SELECT CASE WHEN e.direction = 'delete' THEN 'D' ELSE 'A' END, 'event', e.id, e.order_no, e.line_no, e.item_no, e.qty
+  FROM public.do_change_events e
+  WHERE e.upload_id = p_upload_id
+    AND e.change_type IN ('line_removed', 'qty_decreased', 'line_added', 'qty_increased')
+    AND e.candidate_group_id IS NULL
+    AND NOT e.is_transfer;
+
+  -- 이번 업로드에 재등록 대기로 들어간 라인 (DO에서 사라진 수량)
+  INSERT INTO t_split (side, source, order_no, line_no, item_no, qty)
+  SELECT 'D', 'pending', o.order_no, o.line_no, o.item_no, o.confirmed_qty - COALESCE(cur.qty, 0)
+  FROM public.do_order_lines o
+  LEFT JOIN LATERAL (
+    SELECT SUM(d.ordered_qty)::INT AS qty
+    FROM public.do_lines d
+    WHERE d.order_no = o.order_no AND d.line_no = o.line_no AND d.removed_upload_id IS NULL
+  ) cur ON TRUE
+  WHERE o.status = 'pending'
+    AND o.pending_since_upload_id = p_upload_id
+    AND NOT o.is_transfer
+    AND o.confirmed_qty - COALESCE(cur.qty, 0) > 0;
+
+  -- 이번 업로드에 처음 나타난 신규 주문의 라인
+  INSERT INTO t_split (side, source, order_no, line_no, item_no, qty)
+  SELECT 'A', 'new_order', o.order_no, o.line_no, o.item_no, o.confirmed_qty
+  FROM public.do_order_lines o
+  WHERE o.first_seen_upload_id = p_upload_id
+    AND NOT o.is_transfer
+    AND o.confirmed_qty > 0
+    AND NOT EXISTS (
+      SELECT 1 FROM public.do_order_lines p
+      WHERE p.order_no = o.order_no AND p.first_seen_date < v_date
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM public.do_change_events e
+      WHERE e.upload_id = p_upload_id AND e.order_no = o.order_no AND e.line_no = o.line_no
+    );
+
+  IF NOT EXISTS (SELECT 1 FROM t_split WHERE side = 'D') OR NOT EXISTS (SELECT 1 FROM t_split WHERE side = 'A') THEN
+    RETURN 0;
+  END IF;
+
+  UPDATE t_split t
+  SET cust_key = COALESCE(c.account_no, c.customer_name)
+  FROM public.customer_so_map c
+  WHERE c.order_no = t.order_no;
+
+  -- 1) 같은 고객처·같은 품목에서 삭제 합계 = 추가 합계 → 한 묶음
+  FOR r IN
+    SELECT cust_key, item_no
+    FROM t_split
+    WHERE cust_key IS NOT NULL AND item_no IS NOT NULL
+    GROUP BY cust_key, item_no
+    HAVING BOOL_OR(side = 'D') AND BOOL_OR(side = 'A')
+       AND SUM(qty) FILTER (WHERE side = 'D') = SUM(qty) FILTER (WHERE side = 'A')
+  LOOP
+    INSERT INTO public.do_change_groups (upload_id, group_type, customer_unverified)
+    VALUES (p_upload_id, 'split', FALSE)
+    RETURNING id INTO v_group;
+
+    UPDATE t_split SET group_id = v_group WHERE cust_key = r.cust_key AND item_no = r.item_no;
+    v_groups := v_groups + 1;
+  END LOOP;
+
+  -- 2) 남은 것: 같은 품목·같은 수량 1:1 (고객처가 같거나 한쪽이 미확인)
+  FOR r IN SELECT * FROM t_split WHERE side = 'D' AND group_id IS NULL ORDER BY order_no, line_no LOOP
+    SELECT * INTO m
+    FROM t_split a
+    WHERE a.side = 'A'
+      AND a.group_id IS NULL
+      AND a.item_no = r.item_no
+      AND a.qty = r.qty
+      AND (a.cust_key = r.cust_key OR a.cust_key IS NULL OR r.cust_key IS NULL)
+    ORDER BY (a.cust_key IS NOT DISTINCT FROM r.cust_key) DESC, a.order_no, a.line_no
+    LIMIT 1;
+
+    IF m.seq IS NOT NULL THEN
+      INSERT INTO public.do_change_groups (upload_id, group_type, customer_unverified)
+      VALUES (p_upload_id, 'split', r.cust_key IS NULL OR m.cust_key IS NULL)
+      RETURNING id INTO v_group;
+
+      UPDATE t_split SET group_id = v_group WHERE seq IN (r.seq, m.seq);
+      v_groups := v_groups + 1;
+    END IF;
+  END LOOP;
+
+  -- 묶인 재등록 대기 라인 → 대기를 풀고 삭제 확정
+  FOR r IN
+    SELECT t.*, o.confirmed_qty, o.item_name, o.is_transfer
+    FROM t_split t
+    JOIN public.do_order_lines o ON o.order_no = t.order_no AND o.line_no = t.line_no
+    WHERE t.source = 'pending' AND t.group_id IS NOT NULL
+  LOOP
+    v_cur := r.confirmed_qty - r.qty;
+    v_do := (
+      SELECT d.do_no FROM public.do_lines d
+      WHERE d.order_no = r.order_no AND d.line_no = r.line_no
+      ORDER BY d.updated_at DESC LIMIT 1
+    );
+
+    INSERT INTO public.do_change_events (
+      upload_id, detected_on, order_no, line_no, do_no, item_no, item_name, is_transfer,
+      change_type, direction, qty, qty_before, qty_after, detail, candidate_group_id
+    ) VALUES (
+      p_upload_id, v_date, r.order_no, r.line_no, v_do, r.item_no, r.item_name, r.is_transfer,
+      CASE WHEN v_cur = 0 THEN 'line_removed' ELSE 'qty_decreased' END, 'delete',
+      r.qty, r.confirmed_qty, v_cur,
+      jsonb_build_object('pending_resolved_by_split', TRUE), r.group_id
+    );
+
+    UPDATE public.do_order_lines o
+    SET
+      confirmed_qty = v_cur,
+      confirmed_date_dist = COALESCE((
+        SELECT jsonb_object_agg(k, q) FROM (
+          SELECT COALESCE(to_char(d.requested_delivery_date, 'YYYY-MM-DD'), '(없음)') AS k, SUM(d.ordered_qty) AS q
+          FROM public.do_lines d
+          WHERE d.order_no = o.order_no AND d.line_no = o.line_no AND d.removed_upload_id IS NULL
+          GROUP BY 1
+        ) x
+      ), '{}'::jsonb),
+      confirmed_mode_dist = COALESCE((
+        SELECT jsonb_object_agg(k, q) FROM (
+          SELECT COALESCE(d.delivery_mode, '(없음)') AS k, SUM(d.ordered_qty) AS q
+          FROM public.do_lines d
+          WHERE d.order_no = o.order_no AND d.line_no = o.line_no AND d.removed_upload_id IS NULL
+          GROUP BY 1
+        ) x
+      ), '{}'::jsonb),
+      status = CASE WHEN v_cur = 0 THEN 'removed' ELSE 'active' END,
+      pending_since_upload_id = NULL,
+      pending_count = 0,
+      changed_upload_id = p_upload_id,
+      updated_at = NOW()
+    WHERE o.order_no = r.order_no AND o.line_no = r.line_no;
+  END LOOP;
+
+  -- 묶인 신규 주문 라인 → 라인 추가 이벤트
+  INSERT INTO public.do_change_events (
+    upload_id, detected_on, order_no, line_no, do_no, item_no, item_name, is_transfer,
+    change_type, direction, qty, qty_before, qty_after, detail, candidate_group_id
+  )
+  SELECT
+    p_upload_id, v_date, o.order_no, o.line_no,
+    (SELECT d.do_no FROM public.do_lines d
+      WHERE d.order_no = o.order_no AND d.line_no = o.line_no
+      ORDER BY d.updated_at DESC LIMIT 1),
+    o.item_no, o.item_name, o.is_transfer,
+    'line_added', 'add', o.confirmed_qty, 0, o.confirmed_qty,
+    jsonb_build_object('date_dist', o.confirmed_date_dist, 'mode_dist', o.confirmed_mode_dist, 'new_order', TRUE),
+    t.group_id
+  FROM t_split t
+  JOIN public.do_order_lines o ON o.order_no = t.order_no AND o.line_no = t.line_no
+  WHERE t.source = 'new_order' AND t.group_id IS NOT NULL;
+
+  -- 기존 이벤트에 묶음 연결
+  UPDATE public.do_change_events e
+  SET candidate_group_id = t.group_id
+  FROM t_split t
+  WHERE t.source = 'event' AND t.event_id = e.id AND t.group_id IS NOT NULL;
+
+  RETURN v_groups;
+END;
+$$;
+
+/**
+ * 후보 묶음 승인·반려 (담당자 확인) — 반려하면 통계에서 각 이벤트를 개별 삭제·추가로 센다
+ */
+CREATE OR REPLACE FUNCTION public.review_change_group(p_group_id UUID, p_status TEXT, p_note TEXT DEFAULT NULL)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+  IF NOT public.is_po_tracker_admin() THEN
+    RAISE EXCEPTION '검토 권한이 없습니다.' USING ERRCODE = '42501';
+  END IF;
+
+  IF p_status NOT IN ('pending', 'approved', 'rejected') THEN
+    RAISE EXCEPTION '알 수 없는 상태입니다: %', p_status;
+  END IF;
+
+  UPDATE public.do_change_groups
+  SET
+    status = p_status,
+    review_note = p_note,
+    reviewed_by = CASE WHEN p_status = 'pending' THEN NULL ELSE auth.uid() END,
+    reviewed_at = CASE WHEN p_status = 'pending' THEN NULL ELSE NOW() END
+  WHERE id = p_group_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION '후보 묶음을 찾을 수 없습니다.';
+  END IF;
+END;
+$$;
+
+/**
  * DO등록현황조회 반영 — stage_po_upload_chunk()로 적재한 행을 직전 확정 상태와 비교해 변경 이벤트 생성
  *
  * 적재 행 형식: [{ord, ln, dn, tr, mode, hs, ls, wo, wi, sd, rd, qd, item, nm, q_ord, q_reg, q_shp, scf, lcf, closed}]
@@ -771,9 +1067,11 @@ $$;
  * 판정 규칙
  *   - 판매주문 라인(주문번호+라인번호) 단위로 DO를 합산해 비교 → DO 분할·재배정은 합계가 같으면 변경 아님
  *   - 처음 보는 주문번호: 신규 PO (이벤트 없음, 요약에 신규 주문 수)
- *   - 기존 주문의 새 라인: 판매주문조회에 그 주문이 DO에 처음 나타난 날 이전부터 있던 SO 라인이면 DO 늦은 등록(이벤트 없음), 아니면 라인 추가
- *   - 수량 감소·라인 사라짐: 판매주문조회에 취소되지 않은 미출고 수량이 남아 있으면 DO 재등록 대기,
- *     5회 업로드(5영업일) 안에 돌아오지 않으면 그때 변경 확정. SO에서도 줄었거나 취소됐으면 바로 확정
+ *   - 기존 주문의 새 라인: 판매주문조회와 관계없이 라인 추가 (DO 수량 변화는 그대로 변경으로 기록)
+ *   - 라인이 남아 있고 수량만 감소: 바로 삭제(수량 감소)
+ *   - 라인이 DO에서 사라짐: 판매주문조회에 취소되지 않은 미출고 수량이 남아 있으면 DO 재등록 대기,
+ *     5회 업로드(5영업일) 안에 돌아오지 않으면 그때 삭제 확정. SO에서도 취소됐으면 바로 확정
+ *   - 같은 날·같은 고객처·같은 품목의 삭제+추가는 분할/합배송 후보로 묶음 (po_group_split_candidates)
  *   - 요청받은 배송 일자·납품 모드: 값이 바뀐 수량만큼 변경 이벤트
  *   - 미종료 → 종료 전환 시 등록 수량 < 이전 수량이면 차이만큼 출하 부족(삭제)
  *   - 이미 종료된 라인이 파일에서 빠지면 조회 범위 이탈로 보고 변경 아님
@@ -1095,12 +1393,9 @@ BEGIN
       p_upload_id, v_date, p_upload_id
     );
 
-    -- 신규 주문이거나, 주문이 DO에 처음 나타나기 전부터 있던 SO 라인이면(DO 늦은 등록) 변경 아님
+    -- 신규 주문만 변경 아님. 기존 주문에 생긴 라인은 판매주문조회와 관계없이 라인 추가
+    -- (DO 수량 변화는 판매주문 수량과 비교하지 않고 그대로 변경으로 기록 — 2026-10-13 결정)
     CONTINUE WHEN NOT r.order_known;
-    CONTINUE WHEN EXISTS (
-      SELECT 1 FROM public.so_lines s
-      WHERE s.order_no = r.order_no AND s.item_no = r.item_no AND s.first_seen_date <= r.order_first_date
-    );
 
     PERFORM public.po_insert_change_event(
       p_upload_id, v_date, r.order_no, r.line_no, r.do_no, r.item_no, r.item_name, r.is_transfer,
@@ -1113,9 +1408,10 @@ BEGIN
 
   -- 9) 바뀐 기존 라인
   FOR r IN SELECT * FROM t_cmp WHERE changed ORDER BY order_no, line_no LOOP
-    -- 9-1) 수량 감소·사라짐 → 판매주문조회에 미출고 수량이 남아 있으면 DO 재등록 대기
+    -- 9-1) 라인이 DO에서 사라짐 → 판매주문조회에 미출고 수량이 남아 있으면 DO 재등록 대기
+    --      (라인이 남아 있고 수량만 줄었으면 대기 없이 바로 삭제 — 2026-10-13 결정)
     v_missing := r.conf_qty - r.cur_qty;
-    IF v_missing > 0 AND NOT r.is_transfer THEN
+    IF v_missing > 0 AND NOT r.present AND NOT r.is_transfer THEN
       SELECT COALESCE(SUM(s.remaining_qty), 0) >= v_missing AND BOOL_OR(s.line_status IS DISTINCT FROM 'CANCELED')
       INTO v_so_ok
       FROM public.so_lines s
@@ -1213,11 +1509,16 @@ BEGIN
     WHERE order_no = r.order_no AND line_no = r.line_no;
   END LOOP;
 
-  -- 10) 품목코드 변경 후보: 같은 날·같은 SO에서 삭제와 추가 수량이 같고 품목이 다른 쌍
+  -- 10) 분할/합배송 후보: 같은 날·같은 고객처·같은 품목의 삭제+추가
+  PERFORM public.po_group_split_candidates(p_upload_id);
+
+  -- 10-1) 품목코드 변경 후보: 남은 이벤트 중 같은 SO에서 삭제와 추가 수량이 같고 품목이 다른 쌍
   FOR r IN
     SELECT id, order_no, qty, item_no
     FROM public.do_change_events
-    WHERE upload_id = p_upload_id AND change_type IN ('line_removed', 'qty_decreased')
+    WHERE upload_id = p_upload_id
+      AND change_type IN ('line_removed', 'qty_decreased')
+      AND candidate_group_id IS NULL
     ORDER BY order_no, line_no
   LOOP
     SELECT e.id INTO v_match
@@ -1232,12 +1533,11 @@ BEGIN
     LIMIT 1;
 
     IF v_match IS NOT NULL THEN
-      UPDATE public.do_change_events
-      SET candidate_group_id = gen_random_uuid()
-      WHERE id = r.id
-      RETURNING candidate_group_id INTO v_group;
+      INSERT INTO public.do_change_groups (upload_id, group_type)
+      VALUES (p_upload_id, 'item_change')
+      RETURNING id INTO v_group;
 
-      UPDATE public.do_change_events SET candidate_group_id = v_group WHERE id = v_match;
+      UPDATE public.do_change_events SET candidate_group_id = v_group WHERE id IN (r.id, v_match);
     END IF;
   END LOOP;
 
@@ -1255,8 +1555,10 @@ BEGIN
     'new_orders', v_new_orders,
     'pending_lines', (SELECT COUNT(*) FROM public.do_order_lines WHERE status = 'pending'),
     'item_change_candidates', (
-      SELECT COUNT(DISTINCT candidate_group_id) FROM public.do_change_events
-      WHERE upload_id = p_upload_id AND candidate_group_id IS NOT NULL
+      SELECT COUNT(*) FROM public.do_change_groups WHERE upload_id = p_upload_id AND group_type = 'item_change'
+    ),
+    'split_candidates', (
+      SELECT COUNT(*) FROM public.do_change_groups WHERE upload_id = p_upload_id AND group_type = 'split'
     ),
     'so_snapshot_date', v_so_date,
     'so_snapshot_stale', v_so_date IS DISTINCT FROM v_date
@@ -1285,9 +1587,12 @@ REVOKE ALL ON FUNCTION public.fail_po_upload(UUID, TEXT) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.apply_so_snapshot(UUID, JSONB, JSONB, JSONB, INT) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.stage_po_upload_chunk(UUID, INT, JSONB) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.apply_do_snapshot(UUID, INT) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.po_group_split_candidates(UUID) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.review_change_group(UUID, TEXT, TEXT) FROM PUBLIC, anon;
 
 GRANT EXECUTE ON FUNCTION public.start_po_upload(TEXT, DATE, TEXT, TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.fail_po_upload(UUID, TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.apply_so_snapshot(UUID, JSONB, JSONB, JSONB, INT) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.stage_po_upload_chunk(UUID, INT, JSONB) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.apply_do_snapshot(UUID, INT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.review_change_group(UUID, TEXT, TEXT) TO authenticated;

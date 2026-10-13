@@ -58,8 +58,8 @@ const describeResult = (upload: PoSourceUpload, t: Translate): string => {
     );
   }
   return t(
-    `변경 ${numberFormat.format(countDoEvents(s))} · 신규 주문 ${numberFormat.format(s.new_orders ?? 0)} · 재등록 대기 ${numberFormat.format(s.pending_lines ?? 0)}`,
-    `${numberFormat.format(countDoEvents(s))} changes · ${numberFormat.format(s.new_orders ?? 0)} new orders · ${numberFormat.format(s.pending_lines ?? 0)} pending re-registration`
+    `변경 ${numberFormat.format(countDoEvents(s))} · 분할/합배송 후보 ${numberFormat.format(s.split_candidates ?? 0)} · 신규 주문 ${numberFormat.format(s.new_orders ?? 0)} · 재등록 대기 ${numberFormat.format(s.pending_lines ?? 0)}`,
+    `${numberFormat.format(countDoEvents(s))} changes · ${numberFormat.format(s.split_candidates ?? 0)} split candidates · ${numberFormat.format(s.new_orders ?? 0)} new orders · ${numberFormat.format(s.pending_lines ?? 0)} pending re-registration`
   );
 };
 
