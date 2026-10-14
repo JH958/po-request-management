@@ -274,3 +274,14 @@ INSERT INTO public.po_change_type_rules (rule_key, type_code) VALUES
   ('mode_change', 'mode_change'),
   ('split', 'split')
 ON CONFLICT (rule_key) DO NOTHING;
+
+-- 요청접수 카드 설명
+UPDATE public.po_change_type_settings s
+SET description = d.description
+FROM (VALUES
+  ('product_add', '긴급 발주 건 포함'),
+  ('material_add', '긴급 발주 건 포함'),
+  ('item_change', '설계변경 등으로 구>신코드 변경해야 하는 건 등'),
+  ('split', '기 발주 건 중 일부 물량 앞당겨 배송 요청, 인바디 헬스케어와의 혼적 요청 등')
+) AS d(code, description)
+WHERE s.code = d.code AND s.description IS NULL;

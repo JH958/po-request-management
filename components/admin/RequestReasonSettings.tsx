@@ -1,5 +1,5 @@
 /**
- * 요청사유 리스트 관리 (CRUD)
+ * PO 변경 사유 리스트 관리 (CRUD) — 요청 작성 팝업의 요청사유 드롭다운
  */
 'use client';
 
@@ -109,7 +109,7 @@ export const RequestReasonSettings = ({ userId }: RequestReasonSettingsProps) =>
 
   const handleSave = async () => {
     if (!form.label.trim()) {
-      toast.error(t('요청사유를 입력해주세요.', 'Enter a request reason.'));
+      toast.error(t('PO 변경 사유를 입력해주세요.', 'Enter a PO change reason.'));
       return;
     }
 
@@ -137,7 +137,7 @@ export const RequestReasonSettings = ({ userId }: RequestReasonSettingsProps) =>
       await loadItems();
       await refreshGlobal();
       setModalOpen(false);
-      toast.success(t('요청사유가 저장되었습니다.', 'Request reason saved.'));
+      toast.success(t('PO 변경 사유가 저장되었습니다.', 'PO change reason saved.'));
     } catch (error) {
       toast.error(getReadableErrorMessage(error));
     } finally {
@@ -151,7 +151,7 @@ export const RequestReasonSettings = ({ userId }: RequestReasonSettingsProps) =>
       await deleteRequestReasonSetting(item.id);
       await loadItems();
       await refreshGlobal();
-      toast.success(t('요청사유가 삭제되었습니다.', 'Request reason deleted.'));
+      toast.success(t('PO 변경 사유가 삭제되었습니다.', 'PO change reason deleted.'));
     } catch (error) {
       toast.error(getReadableErrorMessage(error));
     }
@@ -182,7 +182,7 @@ export const RequestReasonSettings = ({ userId }: RequestReasonSettingsProps) =>
               <TableRow>
                 {[
                   t('순서', 'Order'),
-                  t('요청사유', 'Request reason'),
+                  t('PO 변경 사유', 'PO change reason'),
                   t('설명', 'Description'),
                   t('상태', 'Status'),
                   t('수정', 'Edit'),
@@ -196,7 +196,7 @@ export const RequestReasonSettings = ({ userId }: RequestReasonSettingsProps) =>
               {items.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} className="py-8 text-center text-[#5A6778]">
-                    {t('등록된 요청사유가 없습니다.', 'No request reasons yet.')}
+                    {t('등록된 PO 변경 사유가 없습니다.', 'No PO change reasons yet.')}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -239,15 +239,15 @@ export const RequestReasonSettings = ({ userId }: RequestReasonSettingsProps) =>
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>{isNew ? t('요청사유 추가', 'Add request reason') : t('요청사유 수정', 'Edit request reason')}</DialogTitle>
+            <DialogTitle>{isNew ? t('PO 변경 사유 추가', 'Add PO change reason') : t('PO 변경 사유 수정', 'Edit PO change reason')}</DialogTitle>
             <DialogDescription>
-              {t('요청사유명은 DB에 저장되는 값과 동일하게 사용됩니다.', 'The reason name is stored in the database as-is.')}
+              {t('사유 이름은 요청에 그대로 저장됩니다.', 'The reason name is stored on requests as-is.')}
             </DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-4 py-2">
             <div className="space-y-2">
-              <Label>{t('요청사유', 'Request reason')} <span className="text-red-500">*</span></Label>
+              <Label>{t('PO 변경 사유', 'PO change reason')} <span className="text-red-500">*</span></Label>
               <Input
                 value={form.label}
                 onChange={(e) => setForm((p) => ({ ...p, label: e.target.value }))}

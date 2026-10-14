@@ -31,11 +31,11 @@ npm run lint     # ESLint — 커밋 전 반드시 통과해야 함
 - `app/login`, `app/signup`은 셸 밖.
 
 ### 데이터 계층 (Supabase)
-- 주요 테이블: `requests`, `user_profiles`, `notifications`, `frozen_date_settings`, `request_type_settings`, `request_reason_settings`.
+- 주요 테이블: `requests`, `user_profiles`, `notifications`, `frozen_date_settings`, `request_reason_settings`(관리자 설정 'PO 변경 사유'). 요청구분은 PO 변경 유형(`po_change_type_settings`)과 통합되어 `request_type_settings`는 더 이상 쓰지 않음.
 - 기본 스키마는 `schema.sql`, 이후 변경은 `migrations/*.sql` (수동으로 Supabase SQL Editor에서 실행하는 방식, 마이그레이션 러너 없음). 스키마 변경 시 새 migration 파일을 추가.
 - 알림(`notifications`) 생성은 앱 코드가 아니라 **DB 트리거**(`migrations/create_notifications_system.sql`, `add_new_request_notifications.sql`)가 담당. 이메일/리마인더는 `supabase/functions/`의 Edge Functions(`send-email-notification`, `scheduled-reminder`, Deno)이며 `deploy-email-functions.{sh,ps1}`로 배포.
 - DB 행 → `PORequest`(`types/request.ts`) 변환은 `lib/request-helpers.ts`의 `transformRequestData`; Supabase 오류는 `asApiError`로 정규화.
-- 설정 테이블이 없을 때(`isTableMissingError`)는 `lib/request-constants.ts`의 하드코딩 기본값(`REQUEST_TYPES`, `REQUEST_REASONS`)으로 폴백 — `context/RequestConfigContext.tsx` 참고.
+- 요청접수 카드(요청구분)는 사용 중인 PO 변경 유형(code = 카드 value, label = 요청에 저장되는 `category_of_request`, description = 툴팁). 조회 실패 시 `lib/request-constants.ts`의 기본값(`REQUEST_TYPES`, `REQUEST_REASONS`)으로 폴백 — `context/RequestConfigContext.tsx` 참고. 프로즌·추가 판정은 code(`product_add`/`material_add`/`material_delete`)로 한다.
 
 ### PO Tracker DO 변경 추적 (`migrations/add_po_tracker_do_tracking.sql`)
 - 영업일마다 판매주문조회 → DO등록현황조회 xlsx를 업로드. 브라우저가 엑셀을 파싱하고 비교·저장은 DB 함수(`start_po_upload` → `apply_so_snapshot` / `stage_po_upload_chunk` ×N → `apply_do_snapshot`)가 한 트랜잭션으로 처리. 서버 코드·service role 키 없음.

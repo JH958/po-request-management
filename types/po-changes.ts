@@ -24,6 +24,8 @@ export interface PoChangeTypeSetting {
   code: string;
   label: string;
   label_en: string | null;
+  /** 요청접수 카드 툴팁 설명 */
+  description: string | null;
   sort_order: number;
   is_active: boolean;
 }

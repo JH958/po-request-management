@@ -1,5 +1,6 @@
 /**
- * PO 변경 유형 관리 — 유형 이름·순서·사용 여부(CRUD)와 판정 기준 → 유형 연결
+ * PO 변경 유형 관리 — 유형 이름·설명·순서·사용 여부(CRUD)와 판정 기준 → 유형 연결
+ * 요청접수 화면의 요청구분 카드도 이 목록(사용 중인 유형)을 그대로 쓴다
  */
 'use client';
 
@@ -11,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Dialog,
@@ -46,6 +48,7 @@ import {
 import { CHANGE_RULE_KEYS, getChangeRuleLabels, getChangeTypeName } from '@/lib/po-tracker-labels';
 import { getReadableErrorMessage } from '@/lib/request-helpers';
 import { useLanguage } from '@/context/LanguageContext';
+import { useRequestConfig } from '@/context/RequestConfigContext';
 import type { ChangeRuleKey, PoChangeTypeRule, PoChangeTypeSetting } from '@/types/po-changes';
 
 interface PoChangeTypeSettingsProps {
@@ -56,6 +59,7 @@ interface FormState {
   code?: string;
   label: string;
   label_en: string;
+  description: string;
   sort_order: string;
   is_active: boolean;
 }
@@ -63,12 +67,14 @@ interface FormState {
 const emptyForm = (sortOrder: number): FormState => ({
   label: '',
   label_en: '',
+  description: '',
   sort_order: String(sortOrder),
   is_active: true,
 });
 
 export const PoChangeTypeSettings = ({ userId }: PoChangeTypeSettingsProps) => {
   const { t, lang } = useLanguage();
+  const { refresh: refreshRequestConfig } = useRequestConfig();
   const ruleLabels = getChangeRuleLabels(t);
   const [types, setTypes] = useState<PoChangeTypeSetting[]>([]);
   const [rules, setRules] = useState<PoChangeTypeRule[]>([]);
@@ -119,6 +125,7 @@ export const PoChangeTypeSettings = ({ userId }: PoChangeTypeSettingsProps) => {
       code: type.code,
       label: type.label,
       label_en: type.label_en ?? '',
+      description: type.description ?? '',
       sort_order: String(type.sort_order),
       is_active: type.is_active,
     });
@@ -147,6 +154,7 @@ export const PoChangeTypeSettings = ({ userId }: PoChangeTypeSettingsProps) => {
           code: form.code,
           label: form.label.trim(),
           label_en: form.label_en.trim() || null,
+          description: form.description.trim() || null,
           sort_order: sortOrder,
           // 기타는 끌 수 없음 — 연결 없는 기준이 모이는 곳
           is_active: form.code === OTHER_CHANGE_TYPE_CODE ? true : form.is_active,
@@ -154,6 +162,7 @@ export const PoChangeTypeSettings = ({ userId }: PoChangeTypeSettingsProps) => {
         userId
       );
       await load();
+      await refreshRequestConfig();
       setModalOpen(false);
       toast.success(t('변경 유형을 저장했습니다.', 'Change type saved.'));
     } catch (error) {
@@ -175,6 +184,7 @@ export const PoChangeTypeSettings = ({ userId }: PoChangeTypeSettingsProps) => {
     try {
       await deleteChangeType(type.code);
       await load();
+      await refreshRequestConfig();
       toast.success(t('변경 유형을 삭제했습니다.', 'Change type deleted.'));
     } catch (error) {
       toast.error(getReadableErrorMessage(error));
@@ -214,8 +224,8 @@ export const PoChangeTypeSettings = ({ userId }: PoChangeTypeSettingsProps) => {
             <h3 className="font-semibold text-[#172132]">{t('변경 유형', 'Change types')}</h3>
             <p className="text-sm text-[#5A6778]">
               {t(
-                'PO 변경 페이지의 변경 유형 드롭다운과 통계에 쓰이는 이름입니다. 바꾸면 지난 이벤트에도 바로 반영됩니다.',
-                'Names used in the PO Changes type filter and statistics. Changes apply to past events immediately.'
+                '요청접수 화면의 요청구분 카드, PO 변경 페이지의 변경 유형 드롭다운과 통계에 함께 쓰입니다. 바꾸면 지난 이벤트에도 바로 반영됩니다(이미 접수된 요청의 요청구분은 접수 당시 이름 유지).',
+                'Used for the request type cards, the PO Changes type filter and statistics. Changes apply to past events immediately (submitted requests keep the name they were filed with).'
               )}
             </p>
           </div>
@@ -233,6 +243,7 @@ export const PoChangeTypeSettings = ({ userId }: PoChangeTypeSettingsProps) => {
                   t('순서', 'Order'),
                   t('유형 이름', 'Type name'),
                   t('영문명', 'English name'),
+                  t('설명 (요청 카드)', 'Description (request card)'),
                   t('연결된 판정 기준', 'Linked rules'),
                   t('상태', 'Status'),
                   t('수정', 'Edit'),
@@ -245,7 +256,7 @@ export const PoChangeTypeSettings = ({ userId }: PoChangeTypeSettingsProps) => {
             <TableBody>
               {types.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-8 text-center text-[#5A6778]">
+                  <TableCell colSpan={8} className="py-8 text-center text-[#5A6778]">
                     {t('등록된 변경 유형이 없습니다.', 'No change types yet.')}
                   </TableCell>
                 </TableRow>
@@ -258,6 +269,9 @@ export const PoChangeTypeSettings = ({ userId }: PoChangeTypeSettingsProps) => {
                       <TableCell>{type.sort_order}</TableCell>
                       <TableCell className="whitespace-nowrap font-medium">{type.label}</TableCell>
                       <TableCell className="whitespace-nowrap text-[#5A6778]">{type.label_en ?? '-'}</TableCell>
+                      <TableCell className="max-w-56 truncate text-sm text-[#5A6778]" title={type.description ?? ''}>
+                        {type.description ?? '-'}
+                      </TableCell>
                       <TableCell className="text-sm text-[#5A6778]">
                         {linked.length ? linked.join(', ') : <span className="text-[#8E98A8]">{t('없음', 'None')}</span>}
                         {other ? (
@@ -367,8 +381,8 @@ export const PoChangeTypeSettings = ({ userId }: PoChangeTypeSettingsProps) => {
             <DialogTitle>{form.code ? t('변경 유형 수정', 'Edit change type') : t('변경 유형 추가', 'Add change type')}</DialogTitle>
             <DialogDescription>
               {t(
-                '새 유형은 아래 "판정 기준 연결"에서 기준을 연결해야 이벤트가 셉니다.',
-                'Link rules to a new type under "Rule links" for events to count toward it.'
+                '사용 중인 유형은 요청접수 카드로도 보입니다. 새 유형은 아래 "판정 기준 연결"에서 기준을 연결해야 DO 변경 이벤트가 셉니다.',
+                'Active types also appear as request cards. Link rules to a new type under "Rule links" for DO change events to count toward it.'
               )}
             </DialogDescription>
           </DialogHeader>
@@ -390,6 +404,16 @@ export const PoChangeTypeSettings = ({ userId }: PoChangeTypeSettingsProps) => {
                 value={form.label_en}
                 onChange={(e) => setForm((p) => ({ ...p, label_en: e.target.value }))}
                 placeholder={t('영어 화면에 표시 (비우면 한국어 이름)', 'Shown in English (Korean name if empty)')}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="change-type-description">{t('설명', 'Description')}</Label>
+              <Textarea
+                id="change-type-description"
+                value={form.description}
+                onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
+                rows={2}
+                placeholder={t('요청접수 카드에 마우스를 올리면 보이는 안내', 'Shown when hovering over the request card')}
               />
             </div>
             <div className="space-y-2">

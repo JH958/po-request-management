@@ -124,13 +124,16 @@ CREATE TABLE IF NOT EXISTS public.po_change_type_settings (
   code TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
   label TEXT NOT NULL UNIQUE,
   label_en TEXT,
+  description TEXT,
   sort_order INT NOT NULL DEFAULT 0,
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_by UUID REFERENCES public.user_profiles(id) ON DELETE SET NULL
 );
 
-COMMENT ON TABLE public.po_change_type_settings IS 'PO 변경 유형 (화면 필터·통계 표시명). code ''other''(기타)는 연결 없는 기준이 모이는 곳이라 지우지 않음';
+COMMENT ON TABLE public.po_change_type_settings IS 'PO 변경 유형 = 요청접수 요청구분 (화면 필터·통계·요청 카드). code ''other''(기타)는 연결 없는 기준이 모이는 곳이라 지우지 않음';
+ALTER TABLE public.po_change_type_settings ADD COLUMN IF NOT EXISTS description TEXT;
+COMMENT ON COLUMN public.po_change_type_settings.description IS '요청접수 카드 툴팁에 보이는 설명 (요청구분 = PO 변경 유형)';
 
 CREATE TABLE IF NOT EXISTS public.po_change_type_rules (
   rule_key TEXT PRIMARY KEY CHECK (rule_key IN (

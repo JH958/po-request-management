@@ -68,11 +68,11 @@ export const REQUEST_TYPES: RequestTypeCard[] = [
   { value: 'material_add', label: '자재 추가', description: '긴급 발주 건 포함' },
   { value: 'product_delete', label: '제품/상품 삭제' },
   { value: 'material_delete', label: '자재 삭제' },
-  { value: 'code_change', label: '품목코드 변경', description: '설계변경 등으로 구>신코드 변경해야 하는 건 등' },
+  { value: 'item_change', label: '품목코드 변경', description: '설계변경 등으로 구>신코드 변경해야 하는 건 등' },
   { value: 'schedule_change', label: '출하일정 변경' },
-  { value: 'shipping_change', label: '운송방법 변경' },
-  { value: 'split_merge', label: '분할/합배송', description: '기 발주 건 중 일부 물량 앞당겨 배송 요청, 인바디 헬스케어와의 혼적 요청 등' },
-  { value: 'etc', label: '기타' },
+  { value: 'mode_change', label: '운송방법 변경' },
+  { value: 'split', label: '분할/합배송', description: '기 발주 건 중 일부 물량 앞당겨 배송 요청, 인바디 헬스케어와의 혼적 요청 등' },
+  { value: 'other', label: '기타' },
 ];
 
 /** '추가' 계열 요청구분 value */

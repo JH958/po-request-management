@@ -20,17 +20,17 @@ interface RequestTypeGridProps {
 
 type CardVariant = 'quantity' | 'change' | 'other';
 
-/** 요청구분 value → Product Tour data-tour 속성 매핑 */
+/** 요청구분 value(PO 변경 유형 코드) → Product Tour data-tour 속성 매핑 */
 const REQUEST_TYPE_TOUR_MAP: Record<string, string> = {
   product_add: 'request-card-product-add',
   material_add: 'request-card-material-add',
   product_delete: 'request-card-product-delete',
   material_delete: 'request-card-material-delete',
-  code_change: 'request-card-code-change',
+  item_change: 'request-card-code-change',
   schedule_change: 'request-card-schedule-change',
-  shipping_change: 'request-card-shipping-change',
-  split_merge: 'request-card-split-merge',
-  etc: 'request-card-etc',
+  mode_change: 'request-card-shipping-change',
+  split: 'request-card-split-merge',
+  other: 'request-card-etc',
 };
 
 /** 추가·삭제 / 변경 / 기타·배송 계열별 통일 스타일 */
@@ -61,7 +61,7 @@ const getCardVariant = (value: string): CardVariant => {
   ) {
     return 'quantity';
   }
-  if (value === 'code_change' || value === 'schedule_change' || value === 'shipping_change') {
+  if (value === 'item_change' || value === 'schedule_change' || value === 'mode_change') {
     return 'change';
   }
   return 'other';

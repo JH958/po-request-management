@@ -103,7 +103,7 @@ export const fetchChangeTypes = async (): Promise<PoChangeTypeSetting[]> => {
   const supabase = createClient();
   const { data, error } = await supabase
     .from('po_change_type_settings')
-    .select('code, label, label_en, sort_order, is_active')
+    .select('code, label, label_en, description, sort_order, is_active')
     .order('sort_order')
     .order('label');
   if (error) throw new Error(formatPoTrackerError(error));

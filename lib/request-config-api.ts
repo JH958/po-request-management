@@ -1,11 +1,11 @@
 /**
- * 요청구분·요청사유 Supabase API
+ * PO 변경 사유(요청사유) Supabase API — 요청구분은 PO 변경 유형(po_change_type_settings)으로 통합
  */
 import { createClient } from '@/lib/supabase/client';
 import { asApiError } from '@/lib/request-helpers';
 import { translateNow as tn } from '@/lib/i18n';
-import type { RequestReasonSetting, RequestTypeSetting } from '@/types/request-config';
-import type { ReasonOption, RequestTypeCard } from '@/lib/request-constants';
+import type { RequestReasonSetting } from '@/types/request-config';
+import type { ReasonOption } from '@/lib/request-constants';
 
 const formatConfigError = (error: unknown, table: string): string => {
   const err = asApiError(error);
@@ -31,17 +31,6 @@ export const isTableMissingError = (error: unknown, table: string): boolean => {
   );
 };
 
-const mapTypeRow = (row: Record<string, unknown>): RequestTypeSetting => ({
-  id: row.id as string,
-  value: row.value as string,
-  label: row.label as string,
-  description: (row.description as string) ?? null,
-  sort_order: (row.sort_order as number) ?? 0,
-  is_active: row.is_active as boolean,
-  updated_at: row.updated_at as string,
-  updated_by: (row.updated_by as string) ?? null,
-});
-
 const mapReasonRow = (row: Record<string, unknown>): RequestReasonSetting => ({
   id: row.id as string,
   value: row.value as string,
@@ -53,44 +42,11 @@ const mapReasonRow = (row: Record<string, unknown>): RequestReasonSetting => ({
   updated_by: (row.updated_by as string) ?? null,
 });
 
-export const toRequestTypeCard = (s: RequestTypeSetting): RequestTypeCard => ({
-  value: s.value,
-  label: s.label,
-  description: s.description ?? undefined,
-});
-
 export const toReasonOption = (s: RequestReasonSetting): ReasonOption => ({
   value: s.value,
   label: s.label,
   description: s.description ?? undefined,
 });
-
-/**
- * 요청구분 목록 조회
- */
-export const fetchRequestTypeSettings = async (
-  activeOnly = false,
-  options?: { strict?: boolean }
-): Promise<RequestTypeSetting[]> => {
-  const supabase = createClient();
-  let query = supabase.from('request_type_settings').select('*').order('sort_order', { ascending: true });
-
-  if (activeOnly) {
-    query = query.eq('is_active', true);
-  }
-
-  const { data, error } = await query;
-  if (error) {
-    if (isTableMissingError(error, 'request_type_settings')) {
-      const message = formatConfigError(error, 'request_type_settings');
-      if (options?.strict) throw new Error(message);
-      console.warn(message);
-      return [];
-    }
-    throw new Error(formatConfigError(error, 'request_type_settings'));
-  }
-  return (data ?? []).map((row) => mapTypeRow(row as Record<string, unknown>));
-};
 
 /**
  * 요청사유 목록 조회
@@ -119,38 +75,10 @@ export const fetchRequestReasonSettings = async (
   return (data ?? []).map((row) => mapReasonRow(row as Record<string, unknown>));
 };
 
-export type RequestTypeUpsertInput = Omit<
-  RequestTypeSetting,
-  'id' | 'updated_at' | 'updated_by'
-> & { id?: string };
-
 export type RequestReasonUpsertInput = Omit<
   RequestReasonSetting,
   'id' | 'updated_at' | 'updated_by'
 > & { id?: string };
-
-/**
- * 요청구분 저장
- */
-export const upsertRequestTypeSetting = async (
-  input: RequestTypeUpsertInput,
-  userId: string
-): Promise<RequestTypeSetting> => {
-  const supabase = createClient();
-  const { id, ...fields } = input;
-  const payload = {
-    ...fields,
-    updated_at: new Date().toISOString(),
-    updated_by: userId,
-  };
-
-  const { data, error } = id
-    ? await supabase.from('request_type_settings').update(payload).eq('id', id).select().single()
-    : await supabase.from('request_type_settings').insert(payload).select().single();
-
-  if (error) throw new Error(formatConfigError(error, 'request_type_settings'));
-  return mapTypeRow(data as Record<string, unknown>);
-};
 
 /**
  * 요청사유 저장
@@ -174,15 +102,6 @@ export const upsertRequestReasonSetting = async (
 
   if (error) throw new Error(formatConfigError(error, 'request_reason_settings'));
   return mapReasonRow(data as Record<string, unknown>);
-};
-
-/**
- * 요청구분 삭제
- */
-export const deleteRequestTypeSetting = async (id: string): Promise<void> => {
-  const supabase = createClient();
-  const { error } = await supabase.from('request_type_settings').delete().eq('id', id);
-  if (error) throw new Error(formatConfigError(error, 'request_type_settings'));
 };
 
 /**

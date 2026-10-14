@@ -29,6 +29,7 @@ export const saveChangeType = async (
   const values = {
     label: setting.label,
     label_en: setting.label_en,
+    description: setting.description,
     sort_order: setting.sort_order,
     is_active: setting.is_active,
     updated_by: userId,

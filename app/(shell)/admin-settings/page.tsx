@@ -9,7 +9,6 @@ import { useAuth } from '@/hooks/use-auth';
 import { useLanguage } from '@/context/LanguageContext';
 import { canAccessAdminSettings } from '@/lib/dashboard-scope';
 import { FrozenDateSettings } from '@/components/admin/FrozenDateSettings';
-import { RequestTypeSettings } from '@/components/admin/RequestTypeSettings';
 import { RequestReasonSettings } from '@/components/admin/RequestReasonSettings';
 import { PoChangeTypeSettings } from '@/components/admin/PoChangeTypeSettings';
 import { ItemClassOverrideSettings } from '@/components/admin/ItemClassOverrideSettings';
@@ -17,7 +16,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { PageHeader } from '@/components/common/PageHeader';
 
-type AdminTab = 'frozen' | 'request-types' | 'request-reasons' | 'po-change-types' | 'item-class';
+type AdminTab = 'frozen' | 'po-change-types' | 'request-reasons' | 'item-class';
 
 export default function AdminSettingsPage() {
   const router = useRouter();
@@ -46,9 +45,8 @@ export default function AdminSettingsPage() {
 
   const tabs: { id: AdminTab; label: string }[] = [
     { id: 'frozen', label: t('프로즌 데이트 관리', 'Frozen Date') },
-    { id: 'request-types', label: t('요청구분 리스트', 'Request Types') },
-    { id: 'request-reasons', label: t('요청사유 리스트', 'Request Reasons') },
     { id: 'po-change-types', label: t('PO 변경 유형', 'PO Change Types') },
+    { id: 'request-reasons', label: t('PO 변경 사유', 'PO Change Reasons') },
     { id: 'item-class', label: t('품목 구분 예외', 'Item Category Exceptions') },
   ];
 
@@ -75,9 +73,8 @@ export default function AdminSettingsPage() {
       </div>
 
       {tab === 'frozen' && <FrozenDateSettings userId={user.id} />}
-      {tab === 'request-types' && <RequestTypeSettings userId={user.id} />}
-      {tab === 'request-reasons' && <RequestReasonSettings userId={user.id} />}
       {tab === 'po-change-types' && <PoChangeTypeSettings userId={user.id} />}
+      {tab === 'request-reasons' && <RequestReasonSettings userId={user.id} />}
       {tab === 'item-class' && <ItemClassOverrideSettings userId={user.id} />}
     </div>
   );
