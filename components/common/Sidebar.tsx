@@ -16,6 +16,7 @@ import {
   ChevronRight,
   Settings,
   Upload,
+  ListChecks,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useLanguage } from '@/context/LanguageContext';
@@ -101,6 +102,7 @@ export const Sidebar = ({ userName, department, onOpenTour, showAdminSettings = 
             title: t('관리', 'Admin'),
             items: [
               { href: '/po-upload', label: t('데이터 업로드', 'Data Upload'), icon: Upload },
+              { href: '/po-changes', label: t('PO 변경', 'PO Changes'), icon: ListChecks },
               { href: '/admin-settings', label: t('관리자 설정', 'Admin Settings'), icon: Settings },
             ],
           },

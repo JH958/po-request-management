@@ -71,7 +71,7 @@ COMMENT ON COLUMN public.po_source_uploads.summary IS '처리 결과 요약(유�
 
 
 -- ---------------------------------------------------------------------
--- 2. 관리자 설정: 품목군 / 세부분류 → 구분 / 추적 제외 고객처
+-- 2. 관리자 설정: 품목군 / 세부분류 → 구분 / 추적 제외 고객처 / 품목 구분 예외 / 변경 유형
 -- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.product_groups (
   code TEXT PRIMARY KEY,
@@ -108,6 +108,44 @@ CREATE TABLE IF NOT EXISTS public.excluded_customers (
 );
 
 COMMENT ON TABLE public.excluded_customers IS '변경 추적·통계에서 제외할 고객처 (이름 또는 계정 번호로 매칭)';
+
+
+CREATE TABLE IF NOT EXISTS public.item_class_overrides (
+  item_no TEXT PRIMARY KEY,
+  product_class TEXT NOT NULL CHECK (product_class IN ('제품', '상품', '자재', '제외')),
+  note TEXT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_by UUID REFERENCES public.user_profiles(id) ON DELETE SET NULL
+);
+
+COMMENT ON TABLE public.item_class_overrides IS '품목번호 → 구분 예외 지정 (카테고리 모델 구분보다 우선)';
+
+CREATE TABLE IF NOT EXISTS public.po_change_type_settings (
+  code TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
+  label TEXT NOT NULL UNIQUE,
+  label_en TEXT,
+  sort_order INT NOT NULL DEFAULT 0,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_by UUID REFERENCES public.user_profiles(id) ON DELETE SET NULL
+);
+
+COMMENT ON TABLE public.po_change_type_settings IS 'PO 변경 유형 (화면 필터·통계 표시명). code ''other''(기타)는 연결 없는 기준이 모이는 곳이라 지우지 않음';
+
+CREATE TABLE IF NOT EXISTS public.po_change_type_rules (
+  rule_key TEXT PRIMARY KEY CHECK (rule_key IN (
+    'add_product', 'add_material', 'add_other',
+    'delete_product', 'delete_material', 'delete_other',
+    'item_change', 'date_change', 'mode_change', 'split'
+  )),
+  type_code TEXT REFERENCES public.po_change_type_settings(code) ON DELETE SET NULL ON UPDATE CASCADE,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_by UUID REFERENCES public.user_profiles(id) ON DELETE SET NULL
+);
+
+COMMENT ON TABLE public.po_change_type_rules IS '시스템 판정 기준 → 변경 유형 연결 (없으면 기타)';
+COMMENT ON COLUMN public.po_change_type_rules.rule_key IS
+  'add_/delete_product(제품·상품) material(자재) other(미분류·제외), item_change(품목코드 변경 후보·품목 변경), date_change(요청 배송일), mode_change(납품 모드), split(분할/합배송 후보)';
 
 
 -- ---------------------------------------------------------------------
@@ -311,6 +349,7 @@ CREATE TABLE IF NOT EXISTS public.do_change_groups (
   customer_unverified BOOLEAN NOT NULL DEFAULT FALSE,
   review_note TEXT,
   reviewed_by UUID REFERENCES public.user_profiles(id) ON DELETE SET NULL,
+  reviewed_by_name TEXT,
   reviewed_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -321,6 +360,24 @@ CREATE INDEX IF NOT EXISTS do_change_groups_pending_idx ON public.do_change_grou
 COMMENT ON TABLE public.do_change_groups IS '변경 이벤트 후보 묶음 — split(분할/합배송: 같은 날·같은 고객처·같은 품목 삭제+추가), item_change(품목코드 변경)';
 COMMENT ON COLUMN public.do_change_groups.status IS 'pending(확인 전) / approved(승인) / rejected(반려: 각 이벤트를 개별 삭제·추가로 집계)';
 COMMENT ON COLUMN public.do_change_groups.customer_unverified IS '한쪽 주문의 고객처를 판매주문조회에서 찾지 못해 품목·수량만으로 묶음';
+
+ALTER TABLE public.do_change_groups ADD COLUMN IF NOT EXISTS reviewed_by_name TEXT;
+COMMENT ON COLUMN public.do_change_groups.reviewed_by_name IS '처리자 이름 (처리 시점 user_profiles.full_name — 다른 사용자 프로필은 RLS로 못 읽으므로 저장)';
+
+CREATE TABLE IF NOT EXISTS public.do_change_group_reviews (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  group_id UUID NOT NULL REFERENCES public.do_change_groups(id) ON DELETE CASCADE,
+  status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'rejected')),
+  note TEXT,
+  reviewer_id UUID REFERENCES public.user_profiles(id) ON DELETE SET NULL,
+  reviewer_name TEXT,
+  reviewer_department TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS do_change_group_reviews_group_idx ON public.do_change_group_reviews (group_id, created_at);
+
+COMMENT ON TABLE public.do_change_group_reviews IS '후보 묶음 처리 이력 (승인·반려·되돌리기) — review_change_group()으로만 기록';
 
 -- 기존 후보 묶음 값(있다면)을 품목코드 변경 묶음으로 옮긴 뒤 외래키 연결
 DO $$
@@ -340,7 +397,7 @@ END $$;
 
 
 -- ---------------------------------------------------------------------
--- 7. 조회용 뷰: 고객처·구분·제외 여부를 조회 시점 설정으로 붙인다
+-- 7. 조회용 뷰: 고객처·구분(품목 예외 우선)·변경 유형·제외 여부를 조회 시점 설정으로 붙인다
 --    (설정을 바꾸면 과거 이벤트에도 바로 반영)
 -- ---------------------------------------------------------------------
 CREATE OR REPLACE VIEW public.v_do_change_events
@@ -354,30 +411,52 @@ SELECT
   COALESCE(cs.group_code, NULLIF(split_part(i.category_model, '_', 1), '')) AS group_code,
   pg.display_name AS group_name,
   cs.subcategory,
-  COALESCE(cs.product_class, '미분류') AS product_class,
+  COALESCE(cls.product_class, '미분류') AS product_class,
   CASE
-    WHEN cs.product_class IN ('제품', '상품') THEN 'product'
-    WHEN cs.product_class = '자재' THEN 'material'
+    WHEN cls.product_class IN ('제품', '상품') THEN 'product'
+    WHEN cls.product_class = '자재' THEN 'material'
   END AS class_group,
-  lbl.change_label,
+  CASE e.direction
+    WHEN 'add' THEN CASE
+      WHEN cls.product_class IN ('제품', '상품') THEN '제품/상품 추가'
+      WHEN cls.product_class = '자재' THEN '자재 추가'
+      ELSE '추가(미분류)'
+    END
+    WHEN 'delete' THEN CASE
+      WHEN cls.product_class IN ('제품', '상품') THEN '제품/상품 삭제'
+      WHEN cls.product_class = '자재' THEN '자재 삭제'
+      ELSE '삭제(미분류)'
+    END
+    WHEN 'date' THEN '출하일정 변경'
+    WHEN 'mode' THEN '운송방법 변경'
+    WHEN 'item' THEN '품목코드 변경'
+  END AS change_label,
   ex.is_excluded_customer,
-  (cs.product_class = '제외') AS is_excluded_item,
-  (ex.is_excluded_customer OR COALESCE(cs.product_class = '제외', FALSE)) AS is_excluded,
+  (cls.product_class = '제외') AS is_excluded_item,
+  (ex.is_excluded_customer OR COALESCE(cls.product_class = '제외', FALSE)) AS is_excluded,
   g.group_type,
   g.status AS group_status,
   g.customer_unverified,
-  -- 통계용: 반려되지 않은 분할/합배송 묶음은 묶음 단위 1건, 나머지는 이벤트 1건
-  CASE WHEN g.group_type = 'split' AND g.status <> 'rejected' THEN '분할/합배송' ELSE lbl.change_label END AS stat_label,
+  -- 통계 표시명: 관리자 설정의 변경 유형 이름
+  COALESCE(ts.label, oth.label, '기타') AS stat_label,
+  -- 통계용: 반려되지 않은 후보 묶음(분할/합배송·품목코드 변경)은 묶음 단위 1건, 나머지는 이벤트 1건
   CASE
-    WHEN g.group_type = 'split' AND g.status <> 'rejected' THEN 'group:' || g.id::TEXT
+    WHEN g.id IS NOT NULL AND g.status <> 'rejected' THEN 'group:' || g.id::TEXT
     ELSE 'event:' || e.id::TEXT
-  END AS stat_unit_key
+  END AS stat_unit_key,
+  (ov.item_no IS NOT NULL) AS is_class_overridden,
+  rk.rule_key AS change_rule,
+  COALESCE(ts.code, 'other') AS change_type_code,
+  COALESCE(ts.label, oth.label, '기타') AS change_type_label
 FROM public.do_change_events e
 LEFT JOIN public.customer_so_map c ON c.order_no = e.order_no
 LEFT JOIN public.item_category_map i ON i.item_no = COALESCE(e.item_after, e.item_no)
 LEFT JOIN public.category_class_settings cs ON cs.category_model = i.category_model
+LEFT JOIN public.item_class_overrides ov ON ov.item_no = COALESCE(e.item_after, e.item_no)
 LEFT JOIN public.product_groups pg
   ON pg.code = COALESCE(cs.group_code, NULLIF(split_part(i.category_model, '_', 1), ''))
+LEFT JOIN public.do_change_groups g ON g.id = e.candidate_group_id
+CROSS JOIN LATERAL (SELECT COALESCE(ov.product_class, cs.product_class) AS product_class) cls
 CROSS JOIN LATERAL (
   SELECT EXISTS (
     SELECT 1 FROM public.excluded_customers x
@@ -386,25 +465,28 @@ CROSS JOIN LATERAL (
   ) AS is_excluded_customer
 ) ex
 CROSS JOIN LATERAL (
-  SELECT CASE e.direction
-    WHEN 'add' THEN CASE
-      WHEN cs.product_class IN ('제품', '상품') THEN '제품/상품 추가'
-      WHEN cs.product_class = '자재' THEN '자재 추가'
-      ELSE '추가(미분류)'
+  SELECT CASE
+    WHEN g.group_type = 'split' AND g.status <> 'rejected' THEN 'split'
+    WHEN (g.group_type = 'item_change' AND g.status <> 'rejected') OR e.direction = 'item' THEN 'item_change'
+    WHEN e.direction = 'date' THEN 'date_change'
+    WHEN e.direction = 'mode' THEN 'mode_change'
+    WHEN e.direction = 'add' THEN CASE
+      WHEN cls.product_class IN ('제품', '상품') THEN 'add_product'
+      WHEN cls.product_class = '자재' THEN 'add_material'
+      ELSE 'add_other'
     END
-    WHEN 'delete' THEN CASE
-      WHEN cs.product_class IN ('제품', '상품') THEN '제품/상품 삭제'
-      WHEN cs.product_class = '자재' THEN '자재 삭제'
-      ELSE '삭제(미분류)'
+    ELSE CASE
+      WHEN cls.product_class IN ('제품', '상품') THEN 'delete_product'
+      WHEN cls.product_class = '자재' THEN 'delete_material'
+      ELSE 'delete_other'
     END
-    WHEN 'date' THEN '배송일자 변경'
-    WHEN 'mode' THEN '운송방법 변경'
-    WHEN 'item' THEN '품목코드 변경'
-  END AS change_label
-) lbl
-LEFT JOIN public.do_change_groups g ON g.id = e.candidate_group_id;
+  END AS rule_key
+) rk
+LEFT JOIN public.po_change_type_rules r ON r.rule_key = rk.rule_key
+LEFT JOIN public.po_change_type_settings ts ON ts.code = r.type_code AND ts.is_active
+LEFT JOIN public.po_change_type_settings oth ON oth.code = 'other';
 
-COMMENT ON VIEW public.v_do_change_events IS '변경 이벤트 + 고객처·품목군·구분·변경 유형 표시명·제외 여부·후보 묶음 — 통계는 stat_unit_key 기준으로 셀 것';
+COMMENT ON VIEW public.v_do_change_events IS '변경 이벤트 + 고객처·품목군·구분(품목 예외 우선)·변경 유형(관리자 설정)·제외 여부·후보 묶음 — 통계는 stat_unit_key 기준으로 셀 것';
 
 
 -- ---------------------------------------------------------------------
@@ -431,6 +513,22 @@ CREATE TRIGGER update_item_category_map_updated_at
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 
+DROP TRIGGER IF EXISTS update_item_class_overrides_updated_at ON public.item_class_overrides;
+CREATE TRIGGER update_item_class_overrides_updated_at
+  BEFORE UPDATE ON public.item_class_overrides
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_po_change_type_settings_updated_at ON public.po_change_type_settings;
+CREATE TRIGGER update_po_change_type_settings_updated_at
+  BEFORE UPDATE ON public.po_change_type_settings
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_po_change_type_rules_updated_at ON public.po_change_type_rules;
+CREATE TRIGGER update_po_change_type_rules_updated_at
+  BEFORE UPDATE ON public.po_change_type_rules
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+
 -- ---------------------------------------------------------------------
 -- 9. RLS
 --    조회: 로그인 사용자 전체 (대시보드·통계용)
@@ -448,6 +546,10 @@ ALTER TABLE public.do_lines ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.do_order_lines ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.do_change_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.do_change_groups ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.do_change_group_reviews ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.item_class_overrides ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.po_change_type_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.po_change_type_rules ENABLE ROW LEVEL SECURITY;
 -- 임시 적재 테이블은 정책 없음: 처리 함수로만 접근
 ALTER TABLE public.po_upload_chunks ENABLE ROW LEVEL SECURITY;
 
@@ -458,7 +560,7 @@ BEGIN
   FOREACH t IN ARRAY ARRAY[
     'po_source_uploads', 'product_groups', 'category_class_settings', 'excluded_customers',
     'customer_so_map', 'item_category_map', 'so_lines', 'do_lines', 'do_order_lines', 'do_change_events',
-    'do_change_groups'
+    'do_change_groups', 'do_change_group_reviews', 'item_class_overrides', 'po_change_type_settings', 'po_change_type_rules'
   ] LOOP
     EXECUTE format('DROP POLICY IF EXISTS "Authenticated users can view %1$s" ON public.%1$I', t);
     EXECUTE format(
@@ -468,7 +570,10 @@ BEGIN
   END LOOP;
 
   -- 관리자 설정 화면에서 직접 수정하는 테이블 (품목 카테고리는 미분류 품목 수동 지정용 수정만 허용)
-  FOREACH t IN ARRAY ARRAY['product_groups', 'category_class_settings', 'excluded_customers'] LOOP
+  FOREACH t IN ARRAY ARRAY[
+    'product_groups', 'category_class_settings', 'excluded_customers',
+    'item_class_overrides', 'po_change_type_settings', 'po_change_type_rules'
+  ] LOOP
     EXECUTE format('DROP POLICY IF EXISTS "Admins can insert %1$s" ON public.%1$I', t);
     EXECUTE format('DROP POLICY IF EXISTS "Admins can update %1$s" ON public.%1$I', t);
     EXECUTE format('DROP POLICY IF EXISTS "Admins can delete %1$s" ON public.%1$I', t);
@@ -1025,7 +1130,8 @@ END;
 $$;
 
 /**
- * 후보 묶음 승인·반려 (담당자 확인) — 반려하면 통계에서 각 이벤트를 개별 삭제·추가로 센다
+ * 후보 묶음 승인·반려·되돌리기 (담당자 확인) — 반려하면 통계에서 각 이벤트를 개별 삭제·추가로 센다
+ * 승인·반려는 메모 필수. 처리자 이름은 묶음에 저장하고 모든 처리를 이력에 남긴다
  */
 CREATE OR REPLACE FUNCTION public.review_change_group(p_group_id UUID, p_status TEXT, p_note TEXT DEFAULT NULL)
 RETURNS VOID
@@ -1033,6 +1139,10 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
+DECLARE
+  v_note TEXT := NULLIF(btrim(p_note), '');
+  v_name TEXT;
+  v_department TEXT;
 BEGIN
   IF NOT public.is_po_tracker_admin() THEN
     RAISE EXCEPTION '검토 권한이 없습니다.' USING ERRCODE = '42501';
@@ -1042,17 +1152,28 @@ BEGIN
     RAISE EXCEPTION '알 수 없는 상태입니다: %', p_status;
   END IF;
 
+  IF p_status <> 'pending' AND v_note IS NULL THEN
+    RAISE EXCEPTION '승인·반려 메모를 입력해주세요.' USING ERRCODE = '22023';
+  END IF;
+
+  SELECT full_name, department INTO v_name, v_department
+  FROM public.user_profiles WHERE id = auth.uid();
+
   UPDATE public.do_change_groups
   SET
     status = p_status,
-    review_note = p_note,
+    review_note = CASE WHEN p_status = 'pending' THEN NULL ELSE v_note END,
     reviewed_by = CASE WHEN p_status = 'pending' THEN NULL ELSE auth.uid() END,
+    reviewed_by_name = CASE WHEN p_status = 'pending' THEN NULL ELSE v_name END,
     reviewed_at = CASE WHEN p_status = 'pending' THEN NULL ELSE NOW() END
   WHERE id = p_group_id;
 
   IF NOT FOUND THEN
     RAISE EXCEPTION '후보 묶음을 찾을 수 없습니다.';
   END IF;
+
+  INSERT INTO public.do_change_group_reviews (group_id, status, note, reviewer_id, reviewer_name, reviewer_department)
+  VALUES (p_group_id, p_status, v_note, auth.uid(), v_name, v_department);
 END;
 $$;
 

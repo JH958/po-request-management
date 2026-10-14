@@ -1,0 +1,54 @@
+/**
+ * PO 변경 페이지 필터·집계 유틸리티
+ */
+import { format, subDays } from 'date-fns';
+import type { PoChangeEvent, PoChangeFilters, PoChangeGroup } from '@/types/po-changes';
+
+/** 기본 조회 기간: 오늘 포함 최근 7일 (달력일) */
+export const getDefaultRange = (): { from: string; to: string } => {
+  const today = new Date();
+  return { from: format(subDays(today, 6), 'yyyy-MM-dd'), to: format(today, 'yyyy-MM-dd') };
+};
+
+/** YYYY-MM-DD 형식 검사 */
+export const isIsoDate = (value: string | null | undefined): value is string =>
+  Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value));
+
+/**
+ * 검색어가 고객처·주문번호·DO·품목번호·품목명 중 하나에 들어 있는지
+ */
+const matchesSearch = (event: PoChangeEvent, term: string): boolean =>
+  [event.customer_name, event.order_no, event.do_no, event.item_no, event.item_name, event.item_before, event.item_after]
+    .some((v) => (v ?? '').toLowerCase().includes(term));
+
+/**
+ * 필터 적용 (기간은 조회 단계에서 이미 적용됨)
+ */
+export const filterEvents = (events: PoChangeEvent[], filters: PoChangeFilters): PoChangeEvent[] => {
+  const term = filters.search.trim().toLowerCase();
+  return events.filter((e) => {
+    if (!filters.includeExcluded && e.is_excluded) return false;
+    if (filters.changeType !== 'all' && e.change_type_code !== filters.changeType) return false;
+    if (filters.productClass !== 'all' && e.product_class !== filters.productClass) return false;
+    if (term && !matchesSearch(e, term)) return false;
+    return true;
+  });
+};
+
+/**
+ * 통계 건수 — 반려되지 않은 분할/합배송 묶음은 1건 (stat_unit_key 기준)
+ */
+export const countStatUnits = (events: PoChangeEvent[]): number => new Set(events.map((e) => e.stat_unit_key)).size;
+
+/**
+ * 확인 필요 탭에 보일 묶음 — 추적 제외 고객처만으로 이뤄진 묶음은 토글이 꺼져 있으면 숨김, 변경 유형·검색어 적용
+ */
+export const filterGroups = (groups: PoChangeGroup[], filters: PoChangeFilters): PoChangeGroup[] => {
+  const term = filters.search.trim().toLowerCase();
+  return groups.filter((g) => {
+    if (!filters.includeExcluded && g.events.every((e) => e.is_excluded)) return false;
+    if (filters.changeType !== 'all' && !g.events.some((e) => e.change_type_code === filters.changeType)) return false;
+    if (term && !g.events.some((e) => matchesSearch(e, term))) return false;
+    return true;
+  });
+};

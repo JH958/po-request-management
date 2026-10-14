@@ -3,7 +3,9 @@
  */
 'use client';
 
+import Link from 'next/link';
 import { format } from 'date-fns';
+import { ChevronRight } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -123,7 +125,20 @@ export const UploadHistoryTable = ({ uploads, loading, error }: UploadHistoryTab
               <TableCell
                 className={cn('min-w-56 whitespace-normal text-sm', upload.status === 'failed' && 'text-red-600')}
               >
-                {describeResult(upload, t)}
+                {upload.kind === 'do' && upload.status === 'completed' && !upload.is_baseline ? (
+                  <Link
+                    href={`/po-changes?date=${upload.snapshot_date}`}
+                    className="group inline-flex items-center gap-1 text-[#253143] hover:text-[#8B1538]"
+                    title={t('이 날짜의 PO 변경 보기', 'View PO changes for this date')}
+                  >
+                    <span className="underline decoration-[#D6DDE7] underline-offset-4 group-hover:decoration-[#8B1538]">
+                      {describeResult(upload, t)}
+                    </span>
+                    <ChevronRight className="h-4 w-4 shrink-0" />
+                  </Link>
+                ) : (
+                  describeResult(upload, t)
+                )}
               </TableCell>
               <TableCell className="whitespace-nowrap text-sm text-[#5A6778]">
                 {format(new Date(upload.uploaded_at), 'yyyy-MM-dd HH:mm')}

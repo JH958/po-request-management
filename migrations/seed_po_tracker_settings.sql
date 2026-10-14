@@ -243,3 +243,34 @@ INSERT INTO public.excluded_customers (customer_name, account_no) VALUES
   ('인바디스토어', 'HC000009'),
   ('이노페이', 'HC001952')
 ON CONFLICT (customer_name) DO NOTHING;
+
+-- 품목 구분 예외 (카테고리와 다른 구분이 필요한 품목)
+INSERT INTO public.item_class_overrides (item_no, product_class, note)
+VALUES ('X9W300001', '상품', 'IB Battery 320 — 카테고리(BWA_기성품 기타)는 자재지만 상품으로 구분')
+ON CONFLICT (item_no) DO NOTHING;
+
+-- PO 변경 유형과 판정 기준 연결
+INSERT INTO public.po_change_type_settings (code, label, label_en, sort_order) VALUES
+  ('product_add', '제품/상품 추가', 'Product added', 1),
+  ('material_add', '자재 추가', 'Material added', 2),
+  ('product_delete', '제품/상품 삭제', 'Product removed', 3),
+  ('material_delete', '자재 삭제', 'Material removed', 4),
+  ('item_change', '품목코드 변경', 'Item code changed', 5),
+  ('schedule_change', '출하일정 변경', 'Shipping schedule changed', 6),
+  ('mode_change', '운송방법 변경', 'Delivery mode changed', 7),
+  ('split', '분할/합배송', 'Split/combined shipment', 8),
+  ('other', '기타', 'Other', 99)
+ON CONFLICT (code) DO NOTHING;
+
+INSERT INTO public.po_change_type_rules (rule_key, type_code) VALUES
+  ('add_product', 'product_add'),
+  ('add_material', 'material_add'),
+  ('add_other', 'other'),
+  ('delete_product', 'product_delete'),
+  ('delete_material', 'material_delete'),
+  ('delete_other', 'other'),
+  ('item_change', 'item_change'),
+  ('date_change', 'schedule_change'),
+  ('mode_change', 'mode_change'),
+  ('split', 'split')
+ON CONFLICT (rule_key) DO NOTHING;

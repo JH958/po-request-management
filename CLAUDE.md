@@ -27,7 +27,7 @@ npm run lint     # ESLint — 커밋 전 반드시 통과해야 함
 ## Architecture
 
 ### 라우팅과 셸
-- `app/(shell)/` 하위 페이지(`/` 대시보드, `/request` 요청접수, `/review` 검토대기, `/admin-settings`)는 `components/common/AppShell.tsx`로 감싸짐. AppShell이 `useAuth`로 인증 확인(미로그인 시 `/login` 리다이렉트), 헤더·사이드바·알림 팝오버·제품 투어(driver.js, `lib/tours/`)·`RequestConfigProvider`를 제공.
+- `app/(shell)/` 하위 페이지(`/` 대시보드, `/request` 요청접수, `/review` 검토대기, `/po-upload` 데이터 업로드, `/po-changes` PO 변경, `/admin-settings`)는 `components/common/AppShell.tsx`로 감싸짐. AppShell이 `useAuth`로 인증 확인(미로그인 시 `/login` 리다이렉트), 헤더·사이드바·알림 팝오버·제품 투어(driver.js, `lib/tours/`)·`RequestConfigProvider`를 제공.
 - `app/login`, `app/signup`은 셸 밖.
 
 ### 데이터 계층 (Supabase)
@@ -43,6 +43,9 @@ npm run lint     # ESLint — 커밋 전 반드시 통과해야 함
 - 고객처·구분(제품/상품/자재/제외)·제외 여부는 이벤트에 저장하지 않고 `v_do_change_events` 뷰에서 조회 시점 설정으로 붙임.
 - 판매주문조회 라인번호는 정수로 반올림되어 나오므로 DO↔SO 연결은 주문번호+품목번호로 함.
 - 같은 날·같은 고객처·같은 품목의 삭제+추가는 `po_group_split_candidates`가 **분할/합배송 후보**(`do_change_groups`, group_type `split`)로 묶고 담당자가 `review_change_group`으로 승인/반려. **통계는 `v_do_change_events.stat_unit_key`로 distinct 집계**(반려되지 않은 분할 묶음 = 1건), 표시명은 `stat_label`.
+- `/po-changes`(PO 변경): 기간별 변경 이벤트·후보 승인/반려·재등록 대기 화면. 데이터는 `lib/po-changes-api.ts`, 필터·통계 집계는 `lib/po-changes-utils.ts`(`countStatUnits`). 업로드 이력의 결과 칸이 `?date=` 로 연결됨.
+- **변경 유형은 관리자 설정**(`po_change_type_settings` 이름·순서·사용, `po_change_type_rules` 판정 기준 → 유형). 판정 기준(rule_key)은 뷰가 계산하고(`change_rule`), 화면·통계는 `change_type_code`/`change_type_label` 사용. 연결 없거나 꺼진 유형은 기타(`other`, 삭제 불가). 반려되지 않은 분할/합배송·품목코드 변경 묶음은 각각 1건.
+- 품목 구분은 `item_class_overrides`(품목번호 예외)가 카테고리 구분보다 우선. 후보 승인/반려는 메모 필수이며 처리자 이름(`reviewed_by_name`)과 이력(`do_change_group_reviews`)을 DB 함수가 남긴다(다른 사용자 프로필은 RLS로 못 읽으므로 이름을 저장).
 - 운영 DB 변경은 기본 파일(`add_po_tracker_do_tracking.sql`)을 고치고, 이미 실행된 DB용 후속 파일(`update_po_tracker_*.sql`)을 따로 만든다.
 
 ### 화면 언어 (KOR/ENG)
