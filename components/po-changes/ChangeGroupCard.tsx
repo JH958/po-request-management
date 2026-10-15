@@ -113,6 +113,7 @@ export const ChangeGroupCard = ({ group, currentUserId, busy, onReview }: Change
   const added = group.events.filter((e) => e.direction === 'add');
   const first = group.events[0];
   const customers = [...new Set(group.events.map((e) => e.customer_name).filter(Boolean))];
+  const managers = [...new Set(group.events.map((e) => e.manager_name).filter(Boolean))];
   const isSplit = group.group_type === 'split';
   const noteMissing = note.trim() === '';
   // 현재 처리 상태의 처리자 부서 — 가장 최근 이력에서 가져옴
@@ -136,6 +137,7 @@ export const ChangeGroupCard = ({ group, currentUserId, busy, onReview }: Change
         <span className="ml-auto text-sm text-[#5A6778]">
           {first?.detected_on}
           {customers.length ? ` · ${customers.join(', ')}` : ''}
+          {managers.length ? ` · ${t('담당', 'Manager')} ${managers.join(', ')}` : ''}
         </span>
       </header>
 

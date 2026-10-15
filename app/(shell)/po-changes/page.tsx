@@ -26,6 +26,25 @@ import type { ChangeGroupStatus, PoChangeFilters } from '@/types/po-changes';
 
 type PoChangesTab = 'review' | 'events' | 'pending';
 
+/** "내 담당 고객처만" 선택 기억 (브라우저별 편의 기능) */
+const MINE_ONLY_KEY = 'purchaseOnPoChangesMineOnly';
+
+const readMineOnly = (): boolean => {
+  try {
+    return window.localStorage.getItem(MINE_ONLY_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
+
+const writeMineOnly = (value: boolean) => {
+  try {
+    window.localStorage.setItem(MINE_ONLY_KEY, value ? '1' : '0');
+  } catch {
+    // 저장소를 쓸 수 없으면 기억만 하지 않음
+  }
+};
+
 const Spinner = () => (
   <div className="flex items-center justify-center py-20">
     <div className="h-10 w-10 animate-spin rounded-full border-b-2 border-[#8B1538]" />
@@ -35,7 +54,7 @@ const Spinner = () => (
 /**
  * 페이지 본문 (useSearchParams 사용으로 Suspense 안에서 렌더링)
  */
-const PoChangesContent = ({ userId }: { userId: string }) => {
+const PoChangesContent = ({ userId, userEmail }: { userId: string; userEmail: string | null }) => {
   const { t } = useLanguage();
   const searchParams = useSearchParams();
   const dateParam = searchParams.get('date');
@@ -43,7 +62,7 @@ const PoChangesContent = ({ userId }: { userId: string }) => {
   // 업로드 이력에서 들어오면 그 기준일 하루, 아니면 최근 7일
   const [filters, setFilters] = useState<PoChangeFilters>(() => {
     const range = isIsoDate(dateParam) ? { from: dateParam, to: dateParam } : getDefaultRange();
-    return { ...range, changeType: 'all', productClass: 'all', search: '', includeExcluded: false };
+    return { ...range, changeType: 'all', productClass: 'all', search: '', includeExcluded: false, myEmail: readMineOnly() ? userEmail : null };
   });
   const [tab, setTab] = useState<PoChangesTab>('review');
 
@@ -78,7 +97,7 @@ const PoChangesContent = ({ userId }: { userId: string }) => {
 
   const tabs: { id: PoChangesTab; label: string }[] = [
     { id: 'review', label: t(`확인 필요 ${reviewCount}`, `To review ${reviewCount}`) },
-    { id: 'events', label: t(`변경 이벤트 ${visibleEvents.length}`, `Change events ${visibleEvents.length}`) },
+    { id: 'events', label: t(`변경 이벤트 ${statCount}`, `Change events ${statCount}`) },
     { id: 'pending', label: t(`재등록 대기 ${pendingLines.length}`, `Pending re-registration ${pendingLines.length}`) },
   ];
 
@@ -98,7 +117,16 @@ const PoChangesContent = ({ userId }: { userId: string }) => {
         }
       />
 
-      <PoChangesFilterBar filters={filters} uploadDays={uploadDays} changeTypes={changeTypes} onChange={setFilters} />
+      <PoChangesFilterBar
+        filters={filters}
+        uploadDays={uploadDays}
+        changeTypes={changeTypes}
+        userEmail={userEmail}
+        onChange={(next) => {
+          writeMineOnly(Boolean(next.myEmail));
+          setFilters(next);
+        }}
+      />
 
       {error ? (
         <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
@@ -158,7 +186,7 @@ export default function PoChangesPage() {
 
   return (
     <Suspense fallback={<Spinner />}>
-      <PoChangesContent userId={user.id} />
+      <PoChangesContent userId={user.id} userEmail={user.email ?? null} />
     </Suspense>
   );
 }

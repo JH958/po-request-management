@@ -71,7 +71,7 @@ COMMENT ON COLUMN public.po_source_uploads.summary IS '처리 결과 요약(유�
 
 
 -- ---------------------------------------------------------------------
--- 2. 관리자 설정: 품목군 / 세부분류 → 구분 / 추적 제외 고객처 / 품목 구분 예외 / 변경 유형
+-- 2. 관리자 설정: 품목군 / 세부분류 → 구분 / 추적 제외 고객처 / 품목 구분 예외 / 변경 유형 / 고객처 담당자
 -- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.product_groups (
   code TEXT PRIMARY KEY,
@@ -149,6 +149,21 @@ CREATE TABLE IF NOT EXISTS public.po_change_type_rules (
 COMMENT ON TABLE public.po_change_type_rules IS '시스템 판정 기준 → 변경 유형 연결 (없으면 기타)';
 COMMENT ON COLUMN public.po_change_type_rules.rule_key IS
   'add_/delete_product(제품·상품) material(자재) other(미분류·제외), item_change(품목코드 변경 후보·품목 변경), date_change(요청 배송일), mode_change(납품 모드), split(분할/합배송 후보)';
+
+
+CREATE TABLE IF NOT EXISTS public.customer_managers (
+  account_no TEXT PRIMARY KEY,
+  customer_name TEXT NOT NULL,
+  manager_name TEXT NOT NULL,
+  manager_email TEXT NOT NULL CHECK (manager_email ~* '^[^@[:space:]]+@[^@[:space:]]+$'),
+  note TEXT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_by UUID REFERENCES public.user_profiles(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS customer_managers_email_idx ON public.customer_managers (lower(manager_email));
+
+COMMENT ON TABLE public.customer_managers IS '고객처(판매주문조회 계정 번호) → 영업관리팀 담당자. 담당자 메일 = 이 사이트 로그인 메일';
 
 
 -- ---------------------------------------------------------------------
@@ -445,14 +460,21 @@ SELECT
   -- 통계용: 반려되지 않은 후보 묶음(분할/합배송·품목코드 변경)은 묶음 단위 1건, 나머지는 이벤트 1건
   CASE
     WHEN g.id IS NOT NULL AND g.status <> 'rejected' THEN 'group:' || g.id::TEXT
+    -- 같은 날·같은 주문·같은 DO에서 같은 값으로 바뀐 일정·운송방법 변경은 1건
+    WHEN e.direction IN ('date', 'mode') THEN
+      'shift:' || e.upload_id::TEXT || ':' || e.order_no || ':' || COALESCE(e.do_no, '') || ':' || e.direction || ':'
+        || COALESCE(e.date_before::TEXT, e.mode_before, '') || '>' || COALESCE(e.date_after::TEXT, e.mode_after, '')
     ELSE 'event:' || e.id::TEXT
   END AS stat_unit_key,
   (ov.item_no IS NOT NULL) AS is_class_overridden,
   rk.rule_key AS change_rule,
   COALESCE(ts.code, 'other') AS change_type_code,
-  COALESCE(ts.label, oth.label, '기타') AS change_type_label
+  COALESCE(ts.label, oth.label, '기타') AS change_type_label,
+  cm.manager_name,
+  cm.manager_email
 FROM public.do_change_events e
 LEFT JOIN public.customer_so_map c ON c.order_no = e.order_no
+LEFT JOIN public.customer_managers cm ON cm.account_no = c.account_no
 LEFT JOIN public.item_category_map i ON i.item_no = COALESCE(e.item_after, e.item_no)
 LEFT JOIN public.category_class_settings cs ON cs.category_model = i.category_model
 LEFT JOIN public.item_class_overrides ov ON ov.item_no = COALESCE(e.item_after, e.item_no)
@@ -489,7 +511,23 @@ LEFT JOIN public.po_change_type_rules r ON r.rule_key = rk.rule_key
 LEFT JOIN public.po_change_type_settings ts ON ts.code = r.type_code AND ts.is_active
 LEFT JOIN public.po_change_type_settings oth ON oth.code = 'other';
 
-COMMENT ON VIEW public.v_do_change_events IS '변경 이벤트 + 고객처·품목군·구분(품목 예외 우선)·변경 유형(관리자 설정)·제외 여부·후보 묶음 — 통계는 stat_unit_key 기준으로 셀 것';
+COMMENT ON VIEW public.v_do_change_events IS '변경 이벤트 + 고객처·담당자·품목군·구분(품목 예외 우선)·변경 유형(관리자 설정)·제외 여부·후보 묶음 — 통계는 stat_unit_key 기준으로 셀 것 (후보 묶음·일정/운송방법 묶음은 1건)';
+
+
+CREATE OR REPLACE VIEW public.v_customers_without_manager
+WITH (security_invoker = true)
+AS
+SELECT
+  c.account_no,
+  MAX(c.customer_name) AS customer_name,
+  COUNT(*)::INT AS order_count,
+  MAX(c.last_seen_date) AS last_seen_date
+FROM public.customer_so_map c
+LEFT JOIN public.customer_managers m ON m.account_no = c.account_no
+WHERE c.account_no IS NOT NULL AND m.account_no IS NULL
+GROUP BY c.account_no;
+
+COMMENT ON VIEW public.v_customers_without_manager IS '판매주문조회에 나왔지만 담당자가 지정되지 않은 고객처 (관리자 설정 > 고객처 담당자)';
 
 
 -- ---------------------------------------------------------------------
@@ -515,6 +553,11 @@ CREATE TRIGGER update_item_category_map_updated_at
   BEFORE UPDATE ON public.item_category_map
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
+
+DROP TRIGGER IF EXISTS update_customer_managers_updated_at ON public.customer_managers;
+CREATE TRIGGER update_customer_managers_updated_at
+  BEFORE UPDATE ON public.customer_managers
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 DROP TRIGGER IF EXISTS update_item_class_overrides_updated_at ON public.item_class_overrides;
 CREATE TRIGGER update_item_class_overrides_updated_at
@@ -553,6 +596,7 @@ ALTER TABLE public.do_change_group_reviews ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.item_class_overrides ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.po_change_type_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.po_change_type_rules ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.customer_managers ENABLE ROW LEVEL SECURITY;
 -- 임시 적재 테이블은 정책 없음: 처리 함수로만 접근
 ALTER TABLE public.po_upload_chunks ENABLE ROW LEVEL SECURITY;
 
@@ -563,7 +607,8 @@ BEGIN
   FOREACH t IN ARRAY ARRAY[
     'po_source_uploads', 'product_groups', 'category_class_settings', 'excluded_customers',
     'customer_so_map', 'item_category_map', 'so_lines', 'do_lines', 'do_order_lines', 'do_change_events',
-    'do_change_groups', 'do_change_group_reviews', 'item_class_overrides', 'po_change_type_settings', 'po_change_type_rules'
+    'do_change_groups', 'do_change_group_reviews', 'item_class_overrides', 'po_change_type_settings', 'po_change_type_rules',
+    'customer_managers'
   ] LOOP
     EXECUTE format('DROP POLICY IF EXISTS "Authenticated users can view %1$s" ON public.%1$I', t);
     EXECUTE format(
@@ -575,7 +620,7 @@ BEGIN
   -- 관리자 설정 화면에서 직접 수정하는 테이블 (품목 카테고리는 미분류 품목 수동 지정용 수정만 허용)
   FOREACH t IN ARRAY ARRAY[
     'product_groups', 'category_class_settings', 'excluded_customers',
-    'item_class_overrides', 'po_change_type_settings', 'po_change_type_rules'
+    'item_class_overrides', 'po_change_type_settings', 'po_change_type_rules', 'customer_managers'
   ] LOOP
     EXECUTE format('DROP POLICY IF EXISTS "Admins can insert %1$s" ON public.%1$I', t);
     EXECUTE format('DROP POLICY IF EXISTS "Admins can update %1$s" ON public.%1$I', t);
@@ -1133,6 +1178,204 @@ END;
 $$;
 
 /**
+ * 같은 주문·같은 품목의 삭제와 추가를 차이만큼으로 정리 (apply_do_snapshot 내부 전용, 분할 후보 묶기 전에 실행)
+ *
+ * 같은 업로드에서 한 주문의 같은 품목이 삭제(라인 삭제·수량 감소)되고 추가(라인 추가·수량 증가)되면
+ * DO 라인 번호만 바뀌어 다시 등록된 것으로 보고 차이만 남긴다.
+ *   - 삭제 합계 > 추가 합계: 가장 큰 삭제 이벤트 하나를 수량 감소(차이)로 남김
+ *   - 추가 합계 > 삭제 합계: 가장 큰 추가 이벤트 하나를 수량 증가(차이)로 남김
+ *   - 같으면: 변경 아님 (이벤트 모두 삭제)
+ * 옮겨 간 수량의 요청 배송일·납품 모드가 달라졌으면 그만큼 일정·운송방법 변경 이벤트를 남긴다.
+ * 이미 후보 묶음에 들어간 이벤트와 출하 부족은 건드리지 않는다. 반환값: 정리한 (주문, 품목) 수
+ */
+CREATE OR REPLACE FUNCTION public.po_net_same_item_changes(p_upload_id UUID)
+RETURNS INT
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_date DATE;
+  v_count INT := 0;
+  v_net INT;
+  v_keep UUID;
+  v_ref RECORD;
+  v_shift RECORD;
+  v_date_before JSONB;
+  v_date_after JSONB;
+  v_mode_before JSONB;
+  v_mode_after JSONB;
+  r RECORD;
+BEGIN
+  SELECT snapshot_date INTO v_date FROM public.po_source_uploads WHERE id = p_upload_id;
+
+  FOR r IN
+    SELECT
+      e.order_no,
+      e.item_no,
+      COALESCE(SUM(e.qty) FILTER (WHERE e.direction = 'delete'), 0)::INT AS d_qty,
+      COALESCE(SUM(e.qty) FILTER (WHERE e.direction = 'add'), 0)::INT AS a_qty,
+      ARRAY_AGG(e.id) AS ids,
+      ARRAY_AGG(e.line_no ORDER BY e.line_no) FILTER (WHERE e.direction = 'delete') AS d_lines,
+      ARRAY_AGG(e.line_no ORDER BY e.line_no) FILTER (WHERE e.direction = 'add') AS a_lines
+    FROM public.do_change_events e
+    WHERE e.upload_id = p_upload_id
+      AND e.candidate_group_id IS NULL
+      AND e.change_type IN ('line_removed', 'qty_decreased', 'line_added', 'qty_increased')
+      AND e.item_no IS NOT NULL
+    GROUP BY e.order_no, e.item_no
+    HAVING BOOL_OR(e.direction = 'delete') AND BOOL_OR(e.direction = 'add')
+  LOOP
+    -- 옮겨 간 수량의 대표 배송일·납품 모드: 삭제 쪽은 이번에 빠진 행 포함, 추가 쪽은 현재 행 기준
+    WITH ev AS (
+      SELECT e.line_no, e.direction, e.qty
+      FROM public.do_change_events e
+      WHERE e.id = ANY(r.ids)
+    ),
+    dom AS (
+      SELECT
+        ev.direction,
+        ev.qty,
+        (SELECT COALESCE(to_char(d.requested_delivery_date, 'YYYY-MM-DD'), '(없음)')
+           FROM public.do_lines d
+          WHERE d.order_no = r.order_no AND d.line_no = ev.line_no
+            AND (d.removed_upload_id IS NULL OR (ev.direction = 'delete' AND d.removed_upload_id = p_upload_id))
+          ORDER BY d.ordered_qty DESC, d.do_no LIMIT 1) AS dt,
+        (SELECT COALESCE(d.delivery_mode, '(없음)')
+           FROM public.do_lines d
+          WHERE d.order_no = r.order_no AND d.line_no = ev.line_no
+            AND (d.removed_upload_id IS NULL OR (ev.direction = 'delete' AND d.removed_upload_id = p_upload_id))
+          ORDER BY d.ordered_qty DESC, d.do_no LIMIT 1) AS md
+      FROM ev
+    )
+    SELECT
+      COALESCE((SELECT jsonb_object_agg(dt, q) FROM (SELECT dt, SUM(qty) q FROM dom WHERE direction = 'delete' AND dt IS NOT NULL GROUP BY dt) x), '{}'),
+      COALESCE((SELECT jsonb_object_agg(dt, q) FROM (SELECT dt, SUM(qty) q FROM dom WHERE direction = 'add' AND dt IS NOT NULL GROUP BY dt) x), '{}'),
+      COALESCE((SELECT jsonb_object_agg(md, q) FROM (SELECT md, SUM(qty) q FROM dom WHERE direction = 'delete' AND md IS NOT NULL GROUP BY md) x), '{}'),
+      COALESCE((SELECT jsonb_object_agg(md, q) FROM (SELECT md, SUM(qty) q FROM dom WHERE direction = 'add' AND md IS NOT NULL GROUP BY md) x), '{}')
+    INTO v_date_before, v_date_after, v_mode_before, v_mode_after;
+
+    v_net := r.a_qty - r.d_qty;
+    v_keep := NULL;
+
+    -- 남길 이벤트: 차이 방향에서 수량이 가장 큰 것
+    IF v_net <> 0 THEN
+      SELECT e.id INTO v_keep
+      FROM public.do_change_events e
+      WHERE e.id = ANY(r.ids) AND e.direction = CASE WHEN v_net > 0 THEN 'add' ELSE 'delete' END
+      ORDER BY e.qty DESC, e.line_no
+      LIMIT 1;
+    END IF;
+
+    -- 일정·운송방법 변경을 붙일 기준 라인 (남긴 이벤트, 없으면 가장 큰 추가 라인)
+    SELECT e.line_no, e.do_no, e.item_name, e.is_transfer INTO v_ref
+    FROM public.do_change_events e
+    WHERE e.id = COALESCE(v_keep, (
+      SELECT x.id FROM public.do_change_events x
+      WHERE x.id = ANY(r.ids) AND x.direction = 'add'
+      ORDER BY x.qty DESC, x.line_no LIMIT 1
+    ));
+
+    DELETE FROM public.do_change_events
+    WHERE id = ANY(r.ids) AND id IS DISTINCT FROM v_keep;
+
+    IF v_keep IS NOT NULL THEN
+      UPDATE public.do_change_events
+      SET
+        change_type = CASE WHEN v_net > 0 THEN 'qty_increased' ELSE 'qty_decreased' END,
+        qty = ABS(v_net),
+        qty_before = r.d_qty,
+        qty_after = r.a_qty,
+        detail = COALESCE(detail, '{}'::jsonb) || jsonb_build_object(
+          'netted', TRUE, 'removed_lines', r.d_lines, 'added_lines', r.a_lines
+        )
+      WHERE id = v_keep;
+    END IF;
+
+    SELECT * INTO v_shift FROM public.po_dist_shift(v_date_before, v_date_after);
+    IF v_shift.moved > 0 THEN
+      PERFORM public.po_insert_change_event(
+        p_upload_id, v_date, r.order_no, v_ref.line_no, v_ref.do_no, r.item_no, v_ref.item_name, v_ref.is_transfer,
+        'delivery_date_changed', v_shift.moved,
+        p_date_before => NULLIF(v_shift.from_key, '(없음)')::DATE,
+        p_date_after => NULLIF(v_shift.to_key, '(없음)')::DATE,
+        p_detail => jsonb_build_object('netted', TRUE, 'before', v_date_before, 'after', v_date_after)
+      );
+    END IF;
+
+    SELECT * INTO v_shift FROM public.po_dist_shift(v_mode_before, v_mode_after);
+    IF v_shift.moved > 0 THEN
+      PERFORM public.po_insert_change_event(
+        p_upload_id, v_date, r.order_no, v_ref.line_no, v_ref.do_no, r.item_no, v_ref.item_name, v_ref.is_transfer,
+        'delivery_mode_changed', v_shift.moved,
+        p_mode_before => NULLIF(v_shift.from_key, '(없음)'),
+        p_mode_after => NULLIF(v_shift.to_key, '(없음)'),
+        p_detail => jsonb_build_object('netted', TRUE, 'before', v_mode_before, 'after', v_mode_after)
+      );
+    END IF;
+
+    v_count := v_count + 1;
+  END LOOP;
+
+  RETURN v_count;
+END;
+$$;
+
+/**
+ * PO를 통째로 나눈 분할은 한 묶음으로 (apply_do_snapshot 내부 전용, 분할 후보 묶은 뒤 실행)
+ *
+ * 같은 업로드의 확인 전 분할/합배송 묶음끼리 주문번호가 하나라도 겹치면 하나로 합친다.
+ * (같은 주문을 공유하면 같은 고객처) 이미 승인·반려된 묶음은 건드리지 않는다. 반환값: 합쳐서 없앤 묶음 수
+ */
+CREATE OR REPLACE FUNCTION public.po_merge_split_groups(p_upload_id UUID)
+RETURNS INT
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_merged INT := 0;
+  v_keep UUID;
+  v_drop UUID;
+BEGIN
+  LOOP
+    v_keep := NULL;
+    v_drop := NULL;
+
+    -- 주문번호를 공유하는 두 묶음 (먼저 만든 쪽으로 합침)
+    SELECT g1.id, g2.id INTO v_keep, v_drop
+    FROM public.do_change_groups g1
+    JOIN public.do_change_groups g2
+      ON g2.upload_id = g1.upload_id
+     AND (g2.created_at, g2.id) > (g1.created_at, g1.id)
+    WHERE g1.upload_id = p_upload_id
+      AND g1.group_type = 'split' AND g2.group_type = 'split'
+      AND g1.status = 'pending' AND g2.status = 'pending'
+      AND EXISTS (
+        SELECT 1
+        FROM public.do_change_events a
+        JOIN public.do_change_events b ON b.order_no = a.order_no
+        WHERE a.candidate_group_id = g1.id AND b.candidate_group_id = g2.id
+      )
+    ORDER BY g1.created_at, g1.id
+    LIMIT 1;
+
+    EXIT WHEN v_keep IS NULL;
+
+    UPDATE public.do_change_events SET candidate_group_id = v_keep WHERE candidate_group_id = v_drop;
+    UPDATE public.do_change_groups k
+    SET customer_unverified = k.customer_unverified OR d.customer_unverified
+    FROM public.do_change_groups d
+    WHERE k.id = v_keep AND d.id = v_drop;
+    UPDATE public.do_change_group_reviews SET group_id = v_keep WHERE group_id = v_drop;
+    DELETE FROM public.do_change_groups WHERE id = v_drop;
+
+    v_merged := v_merged + 1;
+  END LOOP;
+
+  RETURN v_merged;
+END;
+$$;
+
+/**
  * 후보 묶음 승인·반려·되돌리기 (담당자 확인) — 반려하면 통계에서 각 이벤트를 개별 삭제·추가로 센다
  * 승인·반려는 메모 필수. 처리자 이름은 묶음에 저장하고 모든 처리를 이력에 남긴다
  */
@@ -1195,7 +1438,10 @@ $$;
  *   - 라인이 남아 있고 수량만 감소: 바로 삭제(수량 감소)
  *   - 라인이 DO에서 사라짐: 판매주문조회에 취소되지 않은 미출고 수량이 남아 있으면 DO 재등록 대기,
  *     5회 업로드(5영업일) 안에 돌아오지 않으면 그때 삭제 확정. SO에서도 취소됐으면 바로 확정
- *   - 같은 날·같은 고객처·같은 품목의 삭제+추가는 분할/합배송 후보로 묶음 (po_group_split_candidates)
+ *   - 같은 주문·같은 품목의 삭제+추가는 차이만 남김, 같으면 변경 아님 (po_net_same_item_changes)
+ *   - 같은 날·같은 고객처·같은 품목의 삭제+추가는 분할/합배송 후보로 묶음 (po_group_split_candidates),
+ *     주문을 공유하는 후보는 한 묶음 (po_merge_split_groups)
+ *   - 통계: 같은 날·같은 주문·같은 DO의 같은 일정·운송방법 변경은 1건 (v_do_change_events.stat_unit_key)
  *   - 요청받은 배송 일자·납품 모드: 값이 바뀐 수량만큼 변경 이벤트
  *   - 미종료 → 종료 전환 시 등록 수량 < 이전 수량이면 차이만큼 출하 부족(삭제)
  *   - 이미 종료된 라인이 파일에서 빠지면 조회 범위 이탈로 보고 변경 아님
@@ -1633,10 +1879,14 @@ BEGIN
     WHERE order_no = r.order_no AND line_no = r.line_no;
   END LOOP;
 
-  -- 10) 분할/합배송 후보: 같은 날·같은 고객처·같은 품목의 삭제+추가
-  PERFORM public.po_group_split_candidates(p_upload_id);
+  -- 10) 같은 주문·같은 품목의 삭제+추가는 차이만 남김 (DO 라인 번호만 바뀐 재등록)
+  PERFORM public.po_net_same_item_changes(p_upload_id);
 
-  -- 10-1) 품목코드 변경 후보: 남은 이벤트 중 같은 SO에서 삭제와 추가 수량이 같고 품목이 다른 쌍
+  -- 10-1) 분할/합배송 후보: 같은 날·같은 고객처·같은 품목의 삭제+추가, 주문을 공유하는 묶음은 하나로
+  PERFORM public.po_group_split_candidates(p_upload_id);
+  PERFORM public.po_merge_split_groups(p_upload_id);
+
+  -- 10-2) 품목코드 변경 후보: 남은 이벤트 중 같은 SO에서 삭제와 추가 수량이 같고 품목이 다른 쌍
   FOR r IN
     SELECT id, order_no, qty, item_no
     FROM public.do_change_events
@@ -1684,6 +1934,7 @@ BEGIN
     'split_candidates', (
       SELECT COUNT(*) FROM public.do_change_groups WHERE upload_id = p_upload_id AND group_type = 'split'
     ),
+    'stat_units', (SELECT COUNT(DISTINCT stat_unit_key) FROM public.v_do_change_events WHERE upload_id = p_upload_id),
     'so_snapshot_date', v_so_date,
     'so_snapshot_stale', v_so_date IS DISTINCT FROM v_date
   );
@@ -1706,6 +1957,8 @@ REVOKE ALL ON FUNCTION public.po_insert_change_event(
   UUID, DATE, TEXT, NUMERIC, TEXT, TEXT, TEXT, BOOLEAN, TEXT, INT, INT, INT, DATE, DATE, TEXT, TEXT, TEXT, TEXT, JSONB
 ) FROM PUBLIC, anon, authenticated;
 
+REVOKE ALL ON FUNCTION public.po_net_same_item_changes(UUID) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.po_merge_split_groups(UUID) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.start_po_upload(TEXT, DATE, TEXT, TEXT) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.fail_po_upload(UUID, TEXT) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.apply_so_snapshot(UUID, JSONB, JSONB, JSONB, INT) FROM PUBLIC, anon;

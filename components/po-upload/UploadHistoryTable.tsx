@@ -16,7 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { countDoEvents } from '@/components/po-upload/UploadResultSummary';
+import { countDoChanges } from '@/components/po-upload/UploadResultSummary';
 import { getUploadKindLabels, getUploadStatusLabels } from '@/lib/po-tracker-labels';
 import type { Translate } from '@/lib/i18n';
 import { useLanguage } from '@/context/LanguageContext';
@@ -60,8 +60,8 @@ const describeResult = (upload: PoSourceUpload, t: Translate): string => {
     );
   }
   return t(
-    `변경 ${numberFormat.format(countDoEvents(s))} · 분할/합배송 후보 ${numberFormat.format(s.split_candidates ?? 0)} · 신규 주문 ${numberFormat.format(s.new_orders ?? 0)} · 재등록 대기 ${numberFormat.format(s.pending_lines ?? 0)}`,
-    `${numberFormat.format(countDoEvents(s))} changes · ${numberFormat.format(s.split_candidates ?? 0)} split candidates · ${numberFormat.format(s.new_orders ?? 0)} new orders · ${numberFormat.format(s.pending_lines ?? 0)} pending re-registration`
+    `변경 ${numberFormat.format(countDoChanges(s))} · 분할/합배송 후보 ${numberFormat.format(s.split_candidates ?? 0)} · 신규 주문 ${numberFormat.format(s.new_orders ?? 0)} · 재등록 대기 ${numberFormat.format(s.pending_lines ?? 0)}`,
+    `${numberFormat.format(countDoChanges(s))} changes · ${numberFormat.format(s.split_candidates ?? 0)} split candidates · ${numberFormat.format(s.new_orders ?? 0)} new orders · ${numberFormat.format(s.pending_lines ?? 0)} pending re-registration`
   );
 };
 

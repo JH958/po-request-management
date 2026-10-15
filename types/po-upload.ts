@@ -41,6 +41,8 @@ export interface DoSnapshotSummary {
   item_change_candidates?: number;
   /** 분할/합배송 후보 묶음 수 (같은 날·같은 고객처·같은 품목 삭제+추가) */
   split_candidates?: number;
+  /** 통계 건수 (후보 묶음·같은 일정/운송방법 변경 묶음은 1건) */
+  stat_units?: number;
   so_snapshot_stale?: boolean;
 }
 

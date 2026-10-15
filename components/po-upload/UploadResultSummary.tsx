@@ -31,6 +31,11 @@ const Stat = ({ label, value, emphasize = false }: { label: string; value: numbe
 export const countDoEvents = (summary: DoSnapshotSummary): number =>
   Object.values(summary.events ?? {}).reduce((sum, n) => sum + (n ?? 0), 0);
 
+/**
+ * 변경 건수 — 통계 건수가 있으면 그것(묶음 1건), 없으면(이전 업로드) 이벤트 수
+ */
+export const countDoChanges = (summary: DoSnapshotSummary): number => summary.stat_units ?? countDoEvents(summary);
+
 export const UploadResultSummary = ({ soSummary, doSummary }: UploadResultSummaryProps) => {
   const { t } = useLanguage();
   if (!soSummary && !doSummary) return null;
@@ -78,8 +83,9 @@ export const UploadResultSummary = ({ soSummary, doSummary }: UploadResultSummar
             </Alert>
           ) : (
             <>
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-                <Stat label={t('변경 이벤트', 'Change events')} value={countDoEvents(doSummary)} emphasize />
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+                <Stat label={t('변경 건수', 'Changes')} value={countDoChanges(doSummary)} emphasize />
+                <Stat label={t('라인 이벤트', 'Line events')} value={countDoEvents(doSummary)} />
                 <Stat label={t('신규 주문', 'New orders')} value={doSummary.new_orders ?? 0} />
                 <Stat label={t('DO 재등록 대기 라인', 'Lines pending DO re-registration')} value={doSummary.pending_lines ?? 0} />
                 <Stat label={t('분할/합배송 후보', 'Split shipment candidates')} value={doSummary.split_candidates ?? 0} emphasize />

@@ -22,7 +22,7 @@ const EVENT_COLUMNS = [
   'mode_before', 'mode_after', 'item_before', 'item_after', 'candidate_group_id', 'account_no',
   'customer_name', 'category_model', 'group_name', 'product_class', 'is_excluded', 'group_type',
   'group_status', 'customer_unverified', 'stat_unit_key', 'is_class_overridden', 'change_rule',
-  'change_type_code', 'change_type_label',
+  'change_type_code', 'change_type_label', 'manager_name', 'manager_email',
 ].join(',');
 
 /**
@@ -32,8 +32,8 @@ export const formatPoTrackerError = (error: unknown): string => {
   const err = asApiError(error);
   if (err.code === '42P01' || err.code === '42703' || err.code === 'PGRST205' || err.code === 'PGRST202' || err.code === 'PGRST200') {
     return tn(
-      'PO 변경 테이블이 없습니다. Supabase에서 migrations/update_po_tracker_change_types_review.sql을 실행해주세요.',
-      'PO change tables are missing. Run migrations/update_po_tracker_change_types_review.sql in Supabase.'
+      'PO 변경 테이블이 없습니다. Supabase에서 migrations/update_po_tracker_rule_refinements.sql을 실행해주세요.',
+      'PO change tables are missing. Run migrations/update_po_tracker_rule_refinements.sql in Supabase.'
     );
   }
   if (err.code === '42501') {

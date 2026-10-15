@@ -90,6 +90,9 @@ export interface PoChangeEvent {
   change_rule: ChangeRuleKey;
   change_type_code: string;
   change_type_label: string;
+  /** 고객처 담당자 (관리자 설정 > 고객처 담당자) */
+  manager_name: string | null;
+  manager_email: string | null;
 }
 
 /** 후보 묶음 (do_change_groups) + 묶인 이벤트 */
@@ -148,4 +151,16 @@ export interface PoChangeFilters {
   productClass: ProductClass | 'all';
   search: string;
   includeExcluded: boolean;
+  /** 값이 있으면 이 메일이 담당하는 고객처만 */
+  myEmail: string | null;
+}
+
+/** 고객처 담당자 (customer_managers) */
+export interface CustomerManager {
+  account_no: string;
+  customer_name: string;
+  manager_name: string;
+  manager_email: string;
+  note: string | null;
+  updated_at: string;
 }

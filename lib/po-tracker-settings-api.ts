@@ -1,9 +1,15 @@
 /**
- * PO Tracker 관리자 설정 Supabase API — 변경 유형·판정 기준 연결·품목 구분 예외
+ * PO Tracker 관리자 설정 Supabase API — 변경 유형·판정 기준 연결·품목 구분 예외·고객처 담당자
  */
 import { createClient } from '@/lib/supabase/client';
 import { formatPoTrackerError } from '@/lib/po-changes-api';
-import type { ItemClassOverride, PoChangeTypeRule, PoChangeTypeSetting, ProductClass } from '@/types/po-changes';
+import type {
+  CustomerManager,
+  ItemClassOverride,
+  PoChangeTypeRule,
+  PoChangeTypeSetting,
+  ProductClass,
+} from '@/types/po-changes';
 
 /** 연결 없는 기준이 모이는 변경 유형 코드 (지울 수 없음) */
 export const OTHER_CHANGE_TYPE_CODE = 'other';
@@ -145,4 +151,94 @@ export const deleteItemClassOverride = async (itemNo: string): Promise<void> => 
   const supabase = createClient();
   const { error } = await supabase.from('item_class_overrides').delete().eq('item_no', itemNo);
   if (error) throw new Error(formatPoTrackerError(error));
+};
+
+/** 담당자 미지정 고객처 (판매주문조회에는 있으나 담당자 없음) */
+export interface UnassignedCustomer {
+  account_no: string;
+  customer_name: string | null;
+  order_count: number;
+  last_seen_date: string | null;
+}
+
+/** PostgREST 한 번에 받는 최대 행 수 */
+const PAGE_SIZE = 1000;
+
+/**
+ * 고객처 담당자 전체 조회 (고객처 이름순)
+ */
+export const fetchCustomerManagers = async (): Promise<CustomerManager[]> => {
+  const supabase = createClient();
+  const rows: CustomerManager[] = [];
+  for (let page = 0; ; page++) {
+    const { data, error } = await supabase
+      .from('customer_managers')
+      .select('account_no, customer_name, manager_name, manager_email, note, updated_at')
+      .order('customer_name')
+      .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+    if (error) throw new Error(formatPoTrackerError(error));
+    rows.push(...((data ?? []) as CustomerManager[]));
+    if ((data ?? []).length < PAGE_SIZE) break;
+  }
+  return rows;
+};
+
+/**
+ * 담당자 미지정 고객처 조회
+ */
+export const fetchUnassignedCustomers = async (): Promise<UnassignedCustomer[]> => {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('v_customers_without_manager')
+    .select('account_no, customer_name, order_count, last_seen_date')
+    .order('last_seen_date', { ascending: false });
+  if (error) throw new Error(formatPoTrackerError(error));
+  return (data ?? []) as UnassignedCustomer[];
+};
+
+/**
+ * 고객처 담당자 추가·수정 (계정 번호 기준, 여러 건 한 번에 가능)
+ */
+export const saveCustomerManagers = async (
+  rows: Pick<CustomerManager, 'account_no' | 'customer_name' | 'manager_name' | 'manager_email' | 'note'>[],
+  userId: string
+): Promise<void> => {
+  const supabase = createClient();
+  for (let i = 0; i < rows.length; i += PAGE_SIZE) {
+    const chunk = rows.slice(i, i + PAGE_SIZE).map((r) => ({
+      ...r,
+      manager_email: r.manager_email.trim().toLowerCase(),
+      updated_by: userId,
+    }));
+    const { error } = await supabase.from('customer_managers').upsert(chunk, { onConflict: 'account_no' });
+    if (error) throw new Error(formatPoTrackerError(error));
+  }
+};
+
+/**
+ * 고객처 담당자 삭제 — 담당자 미지정으로 돌아감
+ */
+export const deleteCustomerManager = async (accountNo: string): Promise<void> => {
+  const supabase = createClient();
+  const { error } = await supabase.from('customer_managers').delete().eq('account_no', accountNo);
+  if (error) throw new Error(formatPoTrackerError(error));
+};
+
+/**
+ * 담당자 일괄 변경 — 한 담당자의 고객처를 모두 다른 담당자에게 넘김
+ * @returns 바뀐 고객처 수
+ */
+export const reassignCustomerManager = async (
+  fromEmail: string,
+  to: { manager_name: string; manager_email: string },
+  userId: string
+): Promise<number> => {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('customer_managers')
+    .update({ manager_name: to.manager_name, manager_email: to.manager_email.trim().toLowerCase(), updated_by: userId })
+    .eq('manager_email', fromEmail)
+    .select('account_no');
+  if (error) throw new Error(formatPoTrackerError(error));
+  return (data ?? []).length;
 };

@@ -22,12 +22,19 @@ const matchesSearch = (event: PoChangeEvent, term: string): boolean =>
     .some((v) => (v ?? '').toLowerCase().includes(term));
 
 /**
+ * 로그인한 담당자의 고객처 이벤트인지 (담당자 메일 = 로그인 메일, 대소문자 무시)
+ */
+const isMine = (event: PoChangeEvent, email: string): boolean =>
+  (event.manager_email ?? '').toLowerCase() === email.toLowerCase();
+
+/**
  * 필터 적용 (기간은 조회 단계에서 이미 적용됨)
  */
 export const filterEvents = (events: PoChangeEvent[], filters: PoChangeFilters): PoChangeEvent[] => {
   const term = filters.search.trim().toLowerCase();
   return events.filter((e) => {
     if (!filters.includeExcluded && e.is_excluded) return false;
+    if (filters.myEmail && !isMine(e, filters.myEmail)) return false;
     if (filters.changeType !== 'all' && e.change_type_code !== filters.changeType) return false;
     if (filters.productClass !== 'all' && e.product_class !== filters.productClass) return false;
     if (term && !matchesSearch(e, term)) return false;
@@ -45,10 +52,31 @@ export const countStatUnits = (events: PoChangeEvent[]): number => new Set(event
  */
 export const filterGroups = (groups: PoChangeGroup[], filters: PoChangeFilters): PoChangeGroup[] => {
   const term = filters.search.trim().toLowerCase();
+  const myEmail = filters.myEmail;
   return groups.filter((g) => {
     if (!filters.includeExcluded && g.events.every((e) => e.is_excluded)) return false;
+    if (myEmail && !g.events.some((e) => isMine(e, myEmail))) return false;
     if (filters.changeType !== 'all' && !g.events.some((e) => e.change_type_code === filters.changeType)) return false;
     if (term && !g.events.some((e) => matchesSearch(e, term))) return false;
     return true;
   });
+};
+
+/** 통계 단위 하나 (같은 stat_unit_key의 이벤트들) */
+export interface PoStatUnit {
+  key: string;
+  events: PoChangeEvent[];
+}
+
+/**
+ * 이벤트를 통계 단위로 묶음 (순서는 각 단위의 첫 이벤트 기준)
+ */
+export const groupByStatUnit = (events: PoChangeEvent[]): PoStatUnit[] => {
+  const map = new Map<string, PoChangeEvent[]>();
+  events.forEach((e) => {
+    const list = map.get(e.stat_unit_key);
+    if (list) list.push(e);
+    else map.set(e.stat_unit_key, [e]);
+  });
+  return [...map].map(([key, list]) => ({ key, events: list }));
 };

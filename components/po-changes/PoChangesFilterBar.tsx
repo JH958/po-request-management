@@ -25,12 +25,14 @@ interface PoChangesFilterBarProps {
   uploadDays: DoUploadDay[];
   /** 변경 유형 설정 (사용 중인 것만 드롭다운에 보임) */
   changeTypes: PoChangeTypeSetting[];
+  /** 로그인 메일 — 담당 고객처 필터에 사용 */
+  userEmail: string | null;
   onChange: (next: PoChangeFilters) => void;
 }
 
 const PRODUCT_CLASSES: ProductClass[] = ['제품', '상품', '자재', '미분류', '제외'];
 
-export const PoChangesFilterBar = ({ filters, uploadDays, changeTypes, onChange }: PoChangesFilterBarProps) => {
+export const PoChangesFilterBar = ({ filters, uploadDays, changeTypes, userEmail, onChange }: PoChangesFilterBarProps) => {
   const { t, lang } = useLanguage();
   const activeTypes = changeTypes.filter((type) => type.is_active);
   const classLabels = getProductClassLabels(t);
@@ -128,6 +130,18 @@ export const PoChangesFilterBar = ({ filters, uploadDays, changeTypes, onChange 
             onChange={(e) => set({ search: e.target.value })}
             aria-label={t('검색', 'Search')}
           />
+        </div>
+
+        <div className="flex h-9 items-center gap-2">
+          <Switch
+            id="po-changes-mine"
+            checked={Boolean(filters.myEmail)}
+            disabled={!userEmail}
+            onCheckedChange={(v) => set({ myEmail: v ? userEmail : null })}
+          />
+          <Label htmlFor="po-changes-mine" className="cursor-pointer text-sm text-[#253143]">
+            {t('내 담당 고객처만', 'My customers only')}
+          </Label>
         </div>
 
         <div className="flex h-9 items-center gap-2">
