@@ -10,6 +10,7 @@ import {
   fetchChangeTypes,
   fetchDoUploadDays,
   fetchPendingLines,
+  fetchRequestOrigins,
 } from '@/lib/po-changes-api';
 import { getReadableErrorMessage } from '@/lib/request-helpers';
 import type {
@@ -18,6 +19,7 @@ import type {
   PoChangeEvent,
   PoChangeGroup,
   PoChangeTypeSetting,
+  PoRequestOrigin,
 } from '@/types/po-changes';
 
 interface UsePoChangesReturn {
@@ -25,6 +27,8 @@ interface UsePoChangesReturn {
   groups: PoChangeGroup[];
   /** 변경 유형 설정 (꺼진 유형 포함) */
   changeTypes: PoChangeTypeSetting[];
+  /** 요청 부서 (꺼진 부서 포함) */
+  origins: PoRequestOrigin[];
   pendingLines: PendingReRegistrationLine[];
   uploadDays: DoUploadDay[];
   loading: boolean;
@@ -39,6 +43,7 @@ export const usePoChanges = (from: string, to: string): UsePoChangesReturn => {
   const [events, setEvents] = useState<PoChangeEvent[]>([]);
   const [groups, setGroups] = useState<PoChangeGroup[]>([]);
   const [changeTypes, setChangeTypes] = useState<PoChangeTypeSetting[]>([]);
+  const [origins, setOrigins] = useState<PoRequestOrigin[]>([]);
   const [pendingLines, setPendingLines] = useState<PendingReRegistrationLine[]>([]);
   const [uploadDays, setUploadDays] = useState<DoUploadDay[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,16 +54,18 @@ export const usePoChanges = (from: string, to: string): UsePoChangesReturn => {
     try {
       setLoading(true);
       setError(null);
-      const [eventRows, pending, days, types] = await Promise.all([
+      const [eventRows, pending, days, types, originRows] = await Promise.all([
         fetchChangeEvents(from, to),
         fetchPendingLines(),
         fetchDoUploadDays(),
         fetchChangeTypes(),
+        fetchRequestOrigins(),
       ]);
       const groupRows = await fetchChangeGroups(eventRows);
       setEvents(eventRows);
       setGroups(groupRows);
       setChangeTypes(types);
+      setOrigins(originRows);
       setPendingLines(pending);
       setUploadDays(days);
     } catch (err) {
@@ -75,5 +82,5 @@ export const usePoChanges = (from: string, to: string): UsePoChangesReturn => {
     void refresh();
   }, [refresh]);
 
-  return { events, groups, changeTypes, pendingLines, uploadDays, loading, error, refresh };
+  return { events, groups, changeTypes, origins, pendingLines, uploadDays, loading, error, refresh };
 };

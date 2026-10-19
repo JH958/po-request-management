@@ -9,17 +9,25 @@ import { Button } from '@/components/ui/button';
 import { ChangeGroupCard } from '@/components/po-changes/ChangeGroupCard';
 import { useLanguage } from '@/context/LanguageContext';
 import { cn } from '@/lib/utils';
-import type { ChangeGroupStatus, PoChangeGroup } from '@/types/po-changes';
+import type { ReasonOption } from '@/lib/request-constants';
+import type { ChangeGroupStatus, ChangeReasonInput, PoChangeGroup, PoRequestOrigin } from '@/types/po-changes';
 
 interface ReviewQueueProps {
   groups: PoChangeGroup[];
   currentUserId: string;
-  onReview: (groupId: string, status: ChangeGroupStatus, note: string | null) => Promise<void>;
+  reasons: ReasonOption[];
+  origins: PoRequestOrigin[];
+  onReview: (
+    groupId: string,
+    status: ChangeGroupStatus,
+    note: string | null,
+    reason?: ChangeReasonInput | null
+  ) => Promise<void>;
 }
 
 type QueueView = 'pending' | 'done';
 
-export const ReviewQueue = ({ groups, currentUserId, onReview }: ReviewQueueProps) => {
+export const ReviewQueue = ({ groups, currentUserId, reasons, origins, onReview }: ReviewQueueProps) => {
   const { t } = useLanguage();
   const [view, setView] = useState<QueueView>('pending');
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -28,10 +36,15 @@ export const ReviewQueue = ({ groups, currentUserId, onReview }: ReviewQueueProp
   const done = groups.filter((g) => g.status !== 'pending');
   const visible = view === 'pending' ? pending : done;
 
-  const handleReview = async (groupId: string, status: ChangeGroupStatus, note: string | null) => {
+  const handleReview = async (
+    groupId: string,
+    status: ChangeGroupStatus,
+    note: string | null,
+    reason?: ChangeReasonInput | null
+  ) => {
     setBusyId(groupId);
     try {
-      await onReview(groupId, status, note);
+      await onReview(groupId, status, note, reason);
     } finally {
       setBusyId(null);
     }
@@ -77,6 +90,8 @@ export const ReviewQueue = ({ groups, currentUserId, onReview }: ReviewQueueProp
             group={group}
             currentUserId={currentUserId}
             busy={busyId === group.id}
+            reasons={reasons}
+            origins={origins}
             onReview={handleReview}
           />
         ))

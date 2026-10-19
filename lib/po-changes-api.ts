@@ -11,6 +11,8 @@ import type {
   PoChangeEvent,
   PoChangeGroup,
   PoChangeTypeSetting,
+  PoRequestOrigin,
+  ChangeReasonInput,
 } from '@/types/po-changes';
 
 /** PostgREST 한 번에 받는 최대 행 수 */
@@ -23,6 +25,8 @@ const EVENT_COLUMNS = [
   'customer_name', 'category_model', 'group_name', 'product_class', 'is_excluded', 'group_type',
   'group_status', 'customer_unverified', 'stat_unit_key', 'is_class_overridden', 'change_rule',
   'change_type_code', 'change_type_label', 'manager_name', 'manager_email',
+  'reason', 'reason_note', 'reason_origin_type', 'reason_origin_code', 'reason_origin_name',
+  'reason_origin_category', 'reason_origin_function', 'reason_set_by_name', 'reason_set_at',
 ].join(',');
 
 /**
@@ -32,15 +36,16 @@ export const formatPoTrackerError = (error: unknown): string => {
   const err = asApiError(error);
   if (err.code === '42P01' || err.code === '42703' || err.code === 'PGRST205' || err.code === 'PGRST202' || err.code === 'PGRST200') {
     return tn(
-      'PO 변경 테이블이 없습니다. Supabase에서 migrations/update_po_tracker_rule_refinements.sql을 실행해주세요.',
-      'PO change tables are missing. Run migrations/update_po_tracker_rule_refinements.sql in Supabase.'
+      'PO 변경 테이블이 없습니다. Supabase에서 migrations/update_po_tracker_change_reasons.sql을 실행해주세요.',
+      'PO change tables are missing. Run migrations/update_po_tracker_change_reasons.sql in Supabase.'
     );
   }
   if (err.code === '42501') {
     return tn('권한이 없습니다. 관리자에게 문의해주세요.', 'You do not have permission. Please contact an administrator.');
   }
   if (err.code === '22023') {
-    return tn('승인·반려 메모를 입력해주세요.', 'Enter a note to approve or reject.');
+    // DB 함수가 알려주는 입력 오류 (메모·사유·출처 누락 등)
+    return err.message || tn('입력값을 확인해주세요.', 'Please check your input.');
   }
   return getReadableErrorMessage(error) || tn('데이터를 불러오지 못했습니다.', 'Could not load data.');
 };
@@ -180,7 +185,8 @@ export const fetchPendingLines = async (): Promise<PendingReRegistrationLine[]> 
 export const reviewChangeGroup = async (
   groupId: string,
   status: ChangeGroupStatus,
-  note: string | null
+  note: string | null,
+  reason?: ChangeReasonInput | null
 ): Promise<void> => {
   const supabase = createClient();
   if (status !== 'pending' && !note?.trim()) {
@@ -190,6 +196,57 @@ export const reviewChangeGroup = async (
     p_group_id: groupId,
     p_status: status,
     p_note: note && note.trim() ? note.trim() : null,
+    p_reason: status !== 'pending' && reason ? reason.reason : null,
+    p_origin_type: status !== 'pending' && reason ? reason.originType : null,
+    p_origin_code: status !== 'pending' && reason?.originType === 'department' ? reason.originCode : null,
   });
   if (error) throw new Error(formatPoTrackerError(error));
+};
+
+/**
+ * 요청 부서 목록 조회 (순서대로, 꺼진 부서 포함)
+ */
+export const fetchRequestOrigins = async (): Promise<PoRequestOrigin[]> => {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('po_request_origins')
+    .select('code, department, company, display_name, category, function_group, sort_order, is_active')
+    .order('sort_order')
+    .order('display_name');
+  if (error) throw new Error(formatPoTrackerError(error));
+  return (data ?? []) as PoRequestOrigin[];
+};
+
+/**
+ * 변경 사유 입력·수정 (여러 건 한 번에)
+ * @param keys 변경 1건 키 목록 (stat_unit_key)
+ * @returns 저장한 건수
+ */
+export const setChangeReasons = async (keys: string[], input: ChangeReasonInput): Promise<number> => {
+  if (!input.reason) throw new Error(tn('변경 사유를 선택해주세요.', 'Select a change reason.'));
+  if (!input.note.trim()) throw new Error(tn('상세 사유 메모를 입력해주세요.', 'Enter a detailed note.'));
+  if (input.originType === 'department' && !input.originCode) {
+    throw new Error(tn('요청 부서를 선택해주세요.', 'Select the requesting department.'));
+  }
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc('set_change_reasons', {
+    p_keys: keys,
+    p_reason: input.reason,
+    p_note: input.note.trim(),
+    p_origin_type: input.originType,
+    p_origin_code: input.originType === 'department' ? input.originCode : null,
+  });
+  if (error) throw new Error(formatPoTrackerError(error));
+  return Number(data ?? 0);
+};
+
+/**
+ * 변경 사유 지우기 (여러 건 한 번에) — 미입력으로 되돌림
+ * @returns 지운 건수
+ */
+export const clearChangeReasons = async (keys: string[]): Promise<number> => {
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc('clear_change_reasons', { p_keys: keys });
+  if (error) throw new Error(formatPoTrackerError(error));
+  return Number(data ?? 0);
 };

@@ -1,5 +1,5 @@
 /**
- * 후보 묶음 카드 — 줄어든 쪽·늘어난 쪽을 나란히 보여주고 승인/반려/되돌리기
+ * 후보 묶음 카드 — 줄어든 쪽·늘어난 쪽을 나란히 보여주고 사유·출처와 함께 승인/반려, 되돌리기
  */
 'use client';
 
@@ -9,17 +9,37 @@ import { ArrowRight, Check, History, Loader2, RotateCcw, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  ReasonOriginFields,
+  isReasonOriginComplete,
+  type ReasonOriginValue,
+} from '@/components/po-changes/ReasonOriginFields';
 import { useLanguage } from '@/context/LanguageContext';
 import type { Translate } from '@/lib/i18n';
 import { getChangeGroupStatusLabels, getChangeGroupTypeLabels } from '@/lib/po-tracker-labels';
 import { cn } from '@/lib/utils';
-import type { ChangeGroupReview, ChangeGroupStatus, PoChangeEvent, PoChangeGroup } from '@/types/po-changes';
+import type { ReasonOption } from '@/lib/request-constants';
+import type {
+  ChangeGroupReview,
+  ChangeGroupStatus,
+  ChangeReasonInput,
+  PoChangeEvent,
+  PoChangeGroup,
+  PoRequestOrigin,
+} from '@/types/po-changes';
 
 interface ChangeGroupCardProps {
   group: PoChangeGroup;
   currentUserId: string;
   busy: boolean;
-  onReview: (groupId: string, status: ChangeGroupStatus, note: string | null) => Promise<void>;
+  reasons: ReasonOption[];
+  origins: PoRequestOrigin[];
+  onReview: (
+    groupId: string,
+    status: ChangeGroupStatus,
+    note: string | null,
+    reason?: ChangeReasonInput | null
+  ) => Promise<void>;
 }
 
 const numberFormat = new Intl.NumberFormat('ko-KR');
@@ -103,9 +123,15 @@ const ReviewHistory = ({ reviews, currentUserId }: { reviews: ChangeGroupReview[
   );
 };
 
-export const ChangeGroupCard = ({ group, currentUserId, busy, onReview }: ChangeGroupCardProps) => {
+export const ChangeGroupCard = ({ group, currentUserId, busy, reasons, origins, onReview }: ChangeGroupCardProps) => {
   const { t } = useLanguage();
   const [note, setNote] = useState('');
+  // 이미 입력된 묶음 사유가 있으면 미리 채움
+  const [reason, setReason] = useState<ReasonOriginValue>(() => ({
+    reason: group.events[0]?.reason ?? '',
+    originType: group.events[0]?.reason_origin_type ?? 'customer',
+    originCode: group.events[0]?.reason_origin_code ?? null,
+  }));
   const typeLabels = getChangeGroupTypeLabels(t);
   const statusLabels = getChangeGroupStatusLabels(t);
 
@@ -116,6 +142,8 @@ export const ChangeGroupCard = ({ group, currentUserId, busy, onReview }: Change
   const managers = [...new Set(group.events.map((e) => e.manager_name).filter(Boolean))];
   const isSplit = group.group_type === 'split';
   const noteMissing = note.trim() === '';
+  const reasonMissing = !isReasonOriginComplete(reason);
+  const reasonInput: ChangeReasonInput = { ...reason, note };
   // 현재 처리 상태의 처리자 부서 — 가장 최근 이력에서 가져옴
   const latestReview = group.reviews[0];
   const reviewerDepartment = latestReview && latestReview.status === group.status ? latestReview.reviewer_department : null;
@@ -161,44 +189,58 @@ export const ChangeGroupCard = ({ group, currentUserId, busy, onReview }: Change
 
       <footer className="mt-4 border-t border-[#E4E9EF] pt-4">
         {group.status === 'pending' ? (
-          <div className="flex flex-col gap-3 md:flex-row md:items-end">
-            <div className="space-y-1 md:flex-1">
-              <Textarea
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder={t(
-                  '메모 (필수) — 판단 근거를 적어주세요. 예: 적재 초과로 2개 PO로 나눠 출하',
-                  'Note (required) — explain your decision, e.g. split into two POs due to load limit'
-                )}
-                rows={2}
-                required
-                aria-required="true"
-                aria-label={t('검토 메모 (필수)', 'Review note (required)')}
-              />
-              {noteMissing ? (
-                <p className="text-xs text-[#8E98A8]">
-                  {t('메모를 입력해야 승인·반려할 수 있습니다.', 'Enter a note to approve or reject.')}
-                </p>
-              ) : null}
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                disabled={busy || noteMissing}
-                onClick={() => void onReview(group.id, 'rejected', note)}
-                className="border-[#D6DDE7] shadow-none"
-              >
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
-                {t('반려', 'Reject')}
-              </Button>
-              <Button
-                disabled={busy || noteMissing}
-                onClick={() => void onReview(group.id, 'approved', note)}
-                className="bg-[#8B1538] hover:bg-[#74112F]"
-              >
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                {t('승인', 'Approve')}
-              </Button>
+          <div className="space-y-3">
+            <ReasonOriginFields
+              value={reason}
+              onChange={setReason}
+              reasons={reasons}
+              origins={origins}
+              customerNames={customers.filter((c): c is string => Boolean(c))}
+              idPrefix={`group-${group.id}`}
+              compact
+            />
+            <div className="flex flex-col gap-3 md:flex-row md:items-end">
+              <div className="space-y-1 md:flex-1">
+                <Textarea
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder={t(
+                    '메모 (필수) — 판단 근거와 상세 사유를 적어주세요. 예: 적재 초과로 2개 PO로 나눠 출하',
+                    'Note (required) — your reasoning and the detailed cause, e.g. split into two POs due to load limit'
+                  )}
+                  rows={2}
+                  required
+                  aria-required="true"
+                  aria-label={t('검토 메모 (필수)', 'Review note (required)')}
+                />
+                {noteMissing || reasonMissing ? (
+                  <p className="text-xs text-[#8E98A8]">
+                    {t(
+                      '변경 사유·요청 출처·메모를 모두 입력해야 승인·반려할 수 있습니다. 메모는 상세 사유로도 저장됩니다.',
+                      'Enter the reason, who requested it and a note to approve or reject. The note is also saved as the detailed reason.'
+                    )}
+                  </p>
+                ) : null}
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  disabled={busy || noteMissing || reasonMissing}
+                  onClick={() => void onReview(group.id, 'rejected', note, reasonInput)}
+                  className="border-[#D6DDE7] shadow-none"
+                >
+                  {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
+                  {t('반려', 'Reject')}
+                </Button>
+                <Button
+                  disabled={busy || noteMissing || reasonMissing}
+                  onClick={() => void onReview(group.id, 'approved', note, reasonInput)}
+                  className="bg-[#8B1538] hover:bg-[#74112F]"
+                >
+                  {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                  {t('승인', 'Approve')}
+                </Button>
+              </div>
             </div>
           </div>
         ) : (
@@ -212,6 +254,14 @@ export const ChangeGroupCard = ({ group, currentUserId, busy, onReview }: Change
                 {reviewerText(group.reviewed_by_name, reviewerDepartment, group.reviewed_by === currentUserId, t)}
               </span>
               {group.review_note ? <p className="mt-1 text-[#253143]">“{group.review_note}”</p> : null}
+              {first?.reason ? (
+                <p className="mt-1 text-xs text-[#5A6778]">
+                  {t('변경 사유', 'Reason')}: <span className="font-medium text-[#253143]">{first.reason}</span>
+                  {' · '}
+                  {t('요청 출처', 'Requested by')}:{' '}
+                  {first.reason_origin_type === 'customer' ? t('고객처', 'Customer') : first.reason_origin_name}
+                </p>
+              ) : null}
               {group.status === 'rejected' ? (
                 <p className="mt-1 text-xs text-[#8E98A8]">
                   {t('반려된 묶음은 통계에서 삭제·추가를 각각 셉니다.', 'Rejected groups are counted as separate removals and additions.')}

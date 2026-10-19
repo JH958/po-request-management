@@ -27,6 +27,44 @@ const matchesSearch = (event: PoChangeEvent, term: string): boolean =>
 const isMine = (event: PoChangeEvent, email: string): boolean =>
   (event.manager_email ?? '').toLowerCase() === email.toLowerCase();
 
+/** 사유 필터 값: 미입력 / 입력됨 (그 밖의 값은 사유 값) */
+export const REASON_FILTER_MISSING = '__missing__';
+export const REASON_FILTER_SET = '__set__';
+/** 출처 필터 값: 고객처 / 부서 / 생산부 (그 밖의 값은 부서 코드) */
+export const ORIGIN_FILTER_CUSTOMER = '__customer__';
+export const ORIGIN_FILTER_DEPARTMENT = '__department__';
+export const ORIGIN_FILTER_PRODUCTION = '__production__';
+
+/** 생산부로 묶는 분류 기능 */
+export const PRODUCTION_FUNCTION = '생산';
+
+/**
+ * 사유 필터 일치 여부 (추적 제외 건은 사유 대상이 아니므로 미입력에 넣지 않음)
+ */
+const matchesReason = (e: PoChangeEvent, filter: string): boolean => {
+  if (filter === 'all') return true;
+  if (filter === REASON_FILTER_MISSING) return !e.reason && !e.is_excluded;
+  if (filter === REASON_FILTER_SET) return Boolean(e.reason);
+  return e.reason === filter;
+};
+
+/**
+ * 요청 출처 필터 일치 여부
+ */
+const matchesOrigin = (e: PoChangeEvent, filter: string): boolean => {
+  if (filter === 'all') return true;
+  if (filter === ORIGIN_FILTER_CUSTOMER) return e.reason_origin_type === 'customer';
+  if (filter === ORIGIN_FILTER_DEPARTMENT) return e.reason_origin_type === 'department';
+  if (filter === ORIGIN_FILTER_PRODUCTION) return e.reason_origin_function === PRODUCTION_FUNCTION;
+  return e.reason_origin_code === filter;
+};
+
+/**
+ * 사유를 아직 입력하지 않은 변경 건수 (추적 제외 제외, 통계 단위 기준)
+ */
+export const countMissingReasons = (events: PoChangeEvent[]): number =>
+  new Set(events.filter((e) => !e.reason && !e.is_excluded).map((e) => e.stat_unit_key)).size;
+
 /**
  * 필터 적용 (기간은 조회 단계에서 이미 적용됨)
  */
@@ -37,6 +75,8 @@ export const filterEvents = (events: PoChangeEvent[], filters: PoChangeFilters):
     if (filters.myEmail && !isMine(e, filters.myEmail)) return false;
     if (filters.changeType !== 'all' && e.change_type_code !== filters.changeType) return false;
     if (filters.productClass !== 'all' && e.product_class !== filters.productClass) return false;
+    if (!matchesReason(e, filters.reasonFilter)) return false;
+    if (!matchesOrigin(e, filters.originFilter)) return false;
     if (term && !matchesSearch(e, term)) return false;
     return true;
   });

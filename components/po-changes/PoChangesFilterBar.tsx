@@ -1,5 +1,5 @@
 /**
- * PO 변경 페이지 필터 (기간·업로드일·변경 유형·구분·검색·추적 제외 포함)
+ * PO 변경 페이지 필터 (기간·업로드일·변경 유형·구분·사유·요청 출처·검색·담당·추적 제외 포함)
  */
 'use client';
 
@@ -17,14 +17,24 @@ import {
 } from '@/components/ui/select';
 import { useLanguage } from '@/context/LanguageContext';
 import { getChangeTypeName, getProductClassLabels } from '@/lib/po-tracker-labels';
-import { getDefaultRange } from '@/lib/po-changes-utils';
-import type { DoUploadDay, PoChangeFilters, PoChangeTypeSetting, ProductClass } from '@/types/po-changes';
+import {
+  ORIGIN_FILTER_CUSTOMER,
+  ORIGIN_FILTER_DEPARTMENT,
+  ORIGIN_FILTER_PRODUCTION,
+  REASON_FILTER_MISSING,
+  REASON_FILTER_SET,
+  getDefaultRange,
+} from '@/lib/po-changes-utils';
+import type { ReasonOption } from '@/lib/request-constants';
+import type { DoUploadDay, PoChangeFilters, PoChangeTypeSetting, PoRequestOrigin, ProductClass } from '@/types/po-changes';
 
 interface PoChangesFilterBarProps {
   filters: PoChangeFilters;
   uploadDays: DoUploadDay[];
   /** 변경 유형 설정 (사용 중인 것만 드롭다운에 보임) */
   changeTypes: PoChangeTypeSetting[];
+  origins: PoRequestOrigin[];
+  reasons: ReasonOption[];
   /** 로그인 메일 — 담당 고객처 필터에 사용 */
   userEmail: string | null;
   onChange: (next: PoChangeFilters) => void;
@@ -32,7 +42,15 @@ interface PoChangesFilterBarProps {
 
 const PRODUCT_CLASSES: ProductClass[] = ['제품', '상품', '자재', '미분류', '제외'];
 
-export const PoChangesFilterBar = ({ filters, uploadDays, changeTypes, userEmail, onChange }: PoChangesFilterBarProps) => {
+export const PoChangesFilterBar = ({
+  filters,
+  uploadDays,
+  changeTypes,
+  origins,
+  reasons,
+  userEmail,
+  onChange,
+}: PoChangesFilterBarProps) => {
   const { t, lang } = useLanguage();
   const activeTypes = changeTypes.filter((type) => type.is_active);
   const classLabels = getProductClassLabels(t);
@@ -116,6 +134,37 @@ export const PoChangesFilterBar = ({ filters, uploadDays, changeTypes, userEmail
               <SelectItem value="all">{t('전체 구분', 'All categories')}</SelectItem>
               {PRODUCT_CLASSES.map((c) => (
                 <SelectItem key={c} value={c}>{classLabels[c]}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label className="text-xs text-[#5A6778]">{t('변경 사유', 'Reason')}</Label>
+          <Select value={filters.reasonFilter} onValueChange={(v) => set({ reasonFilter: v })}>
+            <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t('전체 사유', 'All reasons')}</SelectItem>
+              <SelectItem value={REASON_FILTER_MISSING}>{t('사유 미입력', 'Missing')}</SelectItem>
+              <SelectItem value={REASON_FILTER_SET}>{t('사유 입력됨', 'Entered')}</SelectItem>
+              {reasons.map((r) => (
+                <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label className="text-xs text-[#5A6778]">{t('요청 출처', 'Requested by')}</Label>
+          <Select value={filters.originFilter} onValueChange={(v) => set({ originFilter: v })}>
+            <SelectTrigger className="w-[190px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t('전체 출처', 'All')}</SelectItem>
+              <SelectItem value={ORIGIN_FILTER_CUSTOMER}>{t('고객처 요청', 'Customer')}</SelectItem>
+              <SelectItem value={ORIGIN_FILTER_DEPARTMENT}>{t('본사/국내법인 요청 (전체)', 'HQ/Affiliates (all)')}</SelectItem>
+              <SelectItem value={ORIGIN_FILTER_PRODUCTION}>{t('생산부', 'Production')}</SelectItem>
+              {origins.map((o) => (
+                <SelectItem key={o.code} value={o.code}>{o.display_name}</SelectItem>
               ))}
             </SelectContent>
           </Select>

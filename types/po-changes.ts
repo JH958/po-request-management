@@ -93,6 +93,42 @@ export interface PoChangeEvent {
   /** 고객처 담당자 (관리자 설정 > 고객처 담당자) */
   manager_name: string | null;
   manager_email: string | null;
+  /** 변경 사유 (PO 변경 사유 목록 값) — 묶음이 반려되면 묶음 사유를 물려받음 */
+  reason: string | null;
+  reason_note: string | null;
+  reason_origin_type: ReasonOriginType | null;
+  reason_origin_code: string | null;
+  /** 출처 표시명 (고객처 요청이면 고객처 이름, 부서 요청이면 부서 표시명) */
+  reason_origin_name: string | null;
+  reason_origin_category: string | null;
+  reason_origin_function: string | null;
+  reason_set_by_name: string | null;
+  reason_set_at: string | null;
+}
+
+/** 요청 출처 종류 */
+export type ReasonOriginType = 'customer' | 'department';
+
+/** 요청 부서 (po_request_origins) */
+export interface PoRequestOrigin {
+  code: string;
+  department: string;
+  company: string;
+  display_name: string;
+  /** 분류 (회사구분_기능, 예: 본사_생산) */
+  category: string;
+  /** 분류의 기능 부분 (예: 생산) */
+  function_group: string | null;
+  sort_order: number;
+  is_active: boolean;
+}
+
+/** 사유 입력 값 */
+export interface ChangeReasonInput {
+  reason: string;
+  note: string;
+  originType: ReasonOriginType;
+  originCode: string | null;
 }
 
 /** 후보 묶음 (do_change_groups) + 묶인 이벤트 */
@@ -153,6 +189,10 @@ export interface PoChangeFilters {
   includeExcluded: boolean;
   /** 값이 있으면 이 메일이 담당하는 고객처만 */
   myEmail: string | null;
+  /** 사유: 전체 / 미입력 / 입력됨 / 사유 값 */
+  reasonFilter: string;
+  /** 요청 출처: 전체 / 고객처 / 부서 / 생산부 / 부서 코드 */
+  originFilter: string;
 }
 
 /** 고객처 담당자 (customer_managers) */

@@ -13,11 +13,12 @@ import { RequestReasonSettings } from '@/components/admin/RequestReasonSettings'
 import { PoChangeTypeSettings } from '@/components/admin/PoChangeTypeSettings';
 import { ItemClassOverrideSettings } from '@/components/admin/ItemClassOverrideSettings';
 import { CustomerManagerSettings } from '@/components/admin/CustomerManagerSettings';
+import { RequestOriginSettings } from '@/components/admin/RequestOriginSettings';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { PageHeader } from '@/components/common/PageHeader';
 
-type AdminTab = 'frozen' | 'po-change-types' | 'request-reasons' | 'item-class' | 'customer-managers';
+type AdminTab = 'frozen' | 'po-change-types' | 'request-reasons' | 'request-origins' | 'item-class' | 'customer-managers';
 
 export default function AdminSettingsPage() {
   const router = useRouter();
@@ -48,6 +49,7 @@ export default function AdminSettingsPage() {
     { id: 'frozen', label: t('프로즌 데이트 관리', 'Frozen Date') },
     { id: 'po-change-types', label: t('PO 변경 유형', 'PO Change Types') },
     { id: 'request-reasons', label: t('PO 변경 사유', 'PO Change Reasons') },
+    { id: 'request-origins', label: t('요청 부서', 'Requesting Departments') },
     { id: 'item-class', label: t('품목 구분 예외', 'Item Category Exceptions') },
     { id: 'customer-managers', label: t('고객처 담당자', 'Customer Owners') },
   ];
@@ -77,6 +79,7 @@ export default function AdminSettingsPage() {
       {tab === 'frozen' && <FrozenDateSettings userId={user.id} />}
       {tab === 'po-change-types' && <PoChangeTypeSettings userId={user.id} />}
       {tab === 'request-reasons' && <RequestReasonSettings userId={user.id} />}
+      {tab === 'request-origins' && <RequestOriginSettings userId={user.id} />}
       {tab === 'item-class' && <ItemClassOverrideSettings userId={user.id} />}
       {tab === 'customer-managers' && <CustomerManagerSettings userId={user.id} />}
     </div>

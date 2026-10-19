@@ -285,3 +285,19 @@ FROM (VALUES
   ('split', '기 발주 건 중 일부 물량 앞당겨 배송 요청, 인바디 헬스케어와의 혼적 요청 등')
 ) AS d(code, description)
 WHERE s.code = d.code AND s.description IS NULL;
+
+-- 요청 부서 (요청부서별 분류 매칭 테이블.xlsx, 2026-10-19 전달)
+INSERT INTO public.po_request_origins (code, department, company, display_name, category, sort_order) VALUES
+  ('hq_global_sales_marketing', '해외영업마케팅팀', '본사', '해외영업마케팅팀 (본사)', '본사_영업', 1),
+  ('hq_strategic_business', '전략사업팀', '본사', '전략사업팀 (본사)', '본사_영업', 2),
+  ('hq_sales_admin', '영업관리팀', '본사', '영업관리팀 (본사)', '본사_영업관리', 3),
+  ('hq_manufacturing', '제조팀', '본사', '제조팀 (본사·웰니스 생산)', '본사_생산', 4),
+  ('hq_manufacturing_mgmt', '제조관리팀', '본사', '제조관리팀 (본사·인바디/신장계/컨슈머 생산)', '본사_생산', 5),
+  ('hq_people', 'People 파트', '본사', 'People 파트 (본사)', '본사_인사', 6),
+  ('hq_gbd', 'GBD 육성팀', '본사', 'GBD 육성팀 (본사)', '본사_영업', 7),
+  ('hq_business_growth', '사업성장팀', '본사', '사업성장팀 (본사·웰니스 영업/CS)', '본사_영업·CS', 8),
+  ('hq_global_cs', '글로벌 CS팀', '본사', '글로벌 CS팀 (본사)', '본사_CS', 9),
+  ('ihc', '인바디헬스케어', '인바디헬스케어', '인바디헬스케어 (국내법인)', '국내법인_영업관리', 10),
+  ('kort_production_mgmt', '생산관리팀', '코르트', '생산관리팀 (코르트·혈압계 생산)', '본사, 국내법인_생산', 11),
+  ('kort_purchasing', '구매팀', '코르트', '구매팀 (코르트)', '국내법인_생산', 12)
+ON CONFLICT (code) DO NOTHING;

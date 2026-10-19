@@ -1,5 +1,5 @@
 /**
- * PO 변경 페이지 — 기간별 변경 이벤트, 분할/합배송·품목코드 변경 후보 확인, 재등록 대기 (관리자 전용)
+ * PO 변경 페이지 — 기간별 변경 이벤트·사유 입력, 분할/합배송·품목코드 변경 후보 확인, 재등록 대기 (관리자 전용)
  */
 'use client';
 
@@ -14,15 +14,26 @@ import { PoChangesSummaryCards } from '@/components/po-changes/PoChangesSummaryC
 import { ReviewQueue } from '@/components/po-changes/ReviewQueue';
 import { ChangeEventsTable } from '@/components/po-changes/ChangeEventsTable';
 import { PendingLinesTable } from '@/components/po-changes/PendingLinesTable';
+import { ReasonDialog } from '@/components/po-changes/ReasonDialog';
 import { useAuth } from '@/hooks/use-auth';
 import { usePoChanges } from '@/hooks/use-po-changes';
 import { useLanguage } from '@/context/LanguageContext';
+import { useRequestConfig } from '@/context/RequestConfigContext';
 import { canAccessAdminSettings } from '@/lib/dashboard-scope';
-import { reviewChangeGroup } from '@/lib/po-changes-api';
-import { countStatUnits, filterEvents, filterGroups, getDefaultRange, isIsoDate } from '@/lib/po-changes-utils';
+import { clearChangeReasons, reviewChangeGroup, setChangeReasons } from '@/lib/po-changes-api';
+import {
+  REASON_FILTER_MISSING,
+  countMissingReasons,
+  countStatUnits,
+  filterEvents,
+  filterGroups,
+  getDefaultRange,
+  isIsoDate,
+  type PoStatUnit,
+} from '@/lib/po-changes-utils';
 import { getReadableErrorMessage } from '@/lib/request-helpers';
 import { cn } from '@/lib/utils';
-import type { ChangeGroupStatus, PoChangeFilters } from '@/types/po-changes';
+import type { ChangeGroupStatus, ChangeReasonInput, PoChangeFilters } from '@/types/po-changes';
 
 type PoChangesTab = 'review' | 'events' | 'pending';
 
@@ -62,23 +73,35 @@ const PoChangesContent = ({ userId, userEmail }: { userId: string; userEmail: st
   // 업로드 이력에서 들어오면 그 기준일 하루, 아니면 최근 7일
   const [filters, setFilters] = useState<PoChangeFilters>(() => {
     const range = isIsoDate(dateParam) ? { from: dateParam, to: dateParam } : getDefaultRange();
-    return { ...range, changeType: 'all', productClass: 'all', search: '', includeExcluded: false, myEmail: readMineOnly() ? userEmail : null };
+    return { ...range, changeType: 'all', productClass: 'all', search: '', includeExcluded: false, myEmail: readMineOnly() ? userEmail : null, reasonFilter: 'all', originFilter: 'all' };
   });
   const [tab, setTab] = useState<PoChangesTab>('review');
+  const [reasonUnits, setReasonUnits] = useState<PoStatUnit[] | null>(null);
+  const { requestReasons } = useRequestConfig();
 
-  const { events, groups, changeTypes, pendingLines, uploadDays, loading, error, refresh } = usePoChanges(filters.from, filters.to);
+  const { events, groups, changeTypes, origins, pendingLines, uploadDays, loading, error, refresh } = usePoChanges(filters.from, filters.to);
 
   const visibleEvents = useMemo(() => filterEvents(events, filters), [events, filters]);
   const visibleGroups = useMemo(() => filterGroups(groups, filters), [groups, filters]);
   const statCount = useMemo(() => countStatUnits(visibleEvents), [visibleEvents]);
+  // 사유 미입력 건수는 사유 필터와 관계없이 (다른 필터는 적용)
+  const missingReasonCount = useMemo(
+    () => countMissingReasons(filterEvents(events, { ...filters, reasonFilter: 'all' })),
+    [events, filters]
+  );
   const reviewCount = visibleGroups.filter((g) => g.status === 'pending').length;
   const newOrders = uploadDays
     .filter((d) => d.snapshot_date >= filters.from && d.snapshot_date <= filters.to)
     .reduce((sum, d) => sum + d.new_orders, 0);
 
-  const handleReview = async (groupId: string, status: ChangeGroupStatus, note: string | null) => {
+  const handleReview = async (
+    groupId: string,
+    status: ChangeGroupStatus,
+    note: string | null,
+    reason?: ChangeReasonInput | null
+  ) => {
     try {
-      await reviewChangeGroup(groupId, status, note);
+      await reviewChangeGroup(groupId, status, note, reason);
       toast.success(
         status === 'approved'
           ? t('승인했습니다.', 'Approved.')
@@ -92,6 +115,42 @@ const PoChangesContent = ({ userId, userEmail }: { userId: string; userEmail: st
         console.error('후보 묶음 처리 실패:', err);
       }
       toast.error(t('처리하지 못했습니다.', 'Could not update.'), { description: getReadableErrorMessage(err) });
+    }
+  };
+
+  /**
+   * 사유 저장 — 성공하면 true (창 닫기)
+   */
+  const handleSaveReasons = async (keys: string[], input: ChangeReasonInput): Promise<boolean> => {
+    try {
+      const count = await setChangeReasons(keys, input);
+      toast.success(t(`변경 ${count}건의 사유를 저장했습니다.`, `Saved the reason for ${count} changes.`));
+      await refresh();
+      return true;
+    } catch (err) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('변경 사유 저장 실패:', err);
+      }
+      toast.error(t('사유를 저장하지 못했습니다.', 'Could not save the reason.'), { description: getReadableErrorMessage(err) });
+      return false;
+    }
+  };
+
+  /**
+   * 사유 지우기 — 성공하면 true (창 닫기)
+   */
+  const handleClearReasons = async (keys: string[]): Promise<boolean> => {
+    try {
+      const count = await clearChangeReasons(keys);
+      toast.success(t(`변경 ${count}건의 사유를 지웠습니다.`, `Cleared the reason on ${count} changes.`));
+      await refresh();
+      return true;
+    } catch (err) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('변경 사유 지우기 실패:', err);
+      }
+      toast.error(t('사유를 지우지 못했습니다.', 'Could not clear the reason.'), { description: getReadableErrorMessage(err) });
+      return false;
     }
   };
 
@@ -121,6 +180,8 @@ const PoChangesContent = ({ userId, userEmail }: { userId: string; userEmail: st
         filters={filters}
         uploadDays={uploadDays}
         changeTypes={changeTypes}
+        origins={origins}
+        reasons={requestReasons}
         userEmail={userEmail}
         onChange={(next) => {
           writeMineOnly(Boolean(next.myEmail));
@@ -137,6 +198,11 @@ const PoChangesContent = ({ userId, userEmail }: { userId: string; userEmail: st
         reviewCount={reviewCount}
         newOrders={newOrders}
         pendingCount={pendingLines.length}
+        missingReasonCount={missingReasonCount}
+        onShowMissingReasons={() => {
+          setFilters({ ...filters, reasonFilter: REASON_FILTER_MISSING });
+          setTab('events');
+        }}
       />
 
       <div className="flex flex-wrap gap-2" role="tablist">
@@ -160,12 +226,28 @@ const PoChangesContent = ({ userId, userEmail }: { userId: string; userEmail: st
       {loading && events.length === 0 ? (
         <Spinner />
       ) : tab === 'review' ? (
-        <ReviewQueue groups={visibleGroups} currentUserId={userId} onReview={handleReview} />
+        <ReviewQueue
+          groups={visibleGroups}
+          currentUserId={userId}
+          reasons={requestReasons}
+          origins={origins}
+          onReview={handleReview}
+        />
       ) : tab === 'events' ? (
-        <ChangeEventsTable events={visibleEvents} changeTypes={changeTypes} statCount={statCount} from={filters.from} to={filters.to} />
+        <ChangeEventsTable onEditReasons={setReasonUnits} events={visibleEvents} changeTypes={changeTypes} statCount={statCount} from={filters.from} to={filters.to} />
       ) : (
         <PendingLinesTable lines={pendingLines} />
       )}
+
+      <ReasonDialog
+        units={reasonUnits}
+        reasons={requestReasons}
+        origins={origins}
+        changeTypes={changeTypes}
+        onClose={() => setReasonUnits(null)}
+        onSubmit={handleSaveReasons}
+        onClear={handleClearReasons}
+      />
     </div>
   );
 };

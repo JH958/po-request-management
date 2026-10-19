@@ -1,13 +1,14 @@
 /**
- * 변경 이벤트 탭 — 통계 단위(묶음)별 표, 펼치면 라인별 이벤트 + Excel 다운로드
+ * 변경 이벤트 탭 — 통계 단위(묶음)별 표, 펼치면 라인별 이벤트, 사유 입력(여러 건 선택 가능) + Excel 다운로드
  */
 'use client';
 
 import { Fragment, useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, Download } from 'lucide-react';
+import { ChevronDown, ChevronRight, Download, MessageSquarePlus, PencilLine } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Table,
   TableBody,
@@ -24,7 +25,7 @@ import {
   getEventTypeName,
   getProductClassLabels,
 } from '@/lib/po-tracker-labels';
-import { groupByStatUnit } from '@/lib/po-changes-utils';
+import { groupByStatUnit, type PoStatUnit } from '@/lib/po-changes-utils';
 import type { Translate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PoChangeEvent, PoChangeTypeSetting } from '@/types/po-changes';
@@ -35,6 +36,8 @@ interface ChangeEventsTableProps {
   statCount: number;
   from: string;
   to: string;
+  /** 사유 입력 창 열기 (고른 변경들) */
+  onEditReasons: (units: PoStatUnit[]) => void;
 }
 
 const numberFormat = new Intl.NumberFormat('ko-KR');
@@ -73,7 +76,7 @@ const qtySummary = (events: PoChangeEvent[]): string => {
   return numberFormat.format(events.reduce((s, e) => s + e.qty, 0));
 };
 
-export const ChangeEventsTable = ({ events, changeTypes, statCount, from, to }: ChangeEventsTableProps) => {
+export const ChangeEventsTable = ({ events, changeTypes, statCount, from, to, onEditReasons }: ChangeEventsTableProps) => {
   const { t, lang } = useLanguage();
   const classLabels = getProductClassLabels(t);
   const typeLabels = getDoChangeTypeLabels(t);
@@ -82,6 +85,19 @@ export const ChangeEventsTable = ({ events, changeTypes, statCount, from, to }: 
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const units = useMemo(() => groupByStatUnit(events), [events]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  // 사유 입력 대상 (추적 제외만으로 된 변경은 제외)
+  const selectable = useMemo(() => units.filter((u) => !u.events.every((e) => e.is_excluded)), [units]);
+  const selectedUnits = selectable.filter((u) => selected.has(u.key));
+  const allSelected = selectable.length > 0 && selectedUnits.length === selectable.length;
+
+  const toggleSelect = (key: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
 
   const toggle = (key: string) =>
     setExpanded((prev) => {
@@ -115,6 +131,11 @@ export const ChangeEventsTable = ({ events, changeTypes, statCount, from, to }: 
           [t('후보 묶음', 'Candidate group')]: e.group_type ? groupTypeLabels[e.group_type] : '',
           [t('묶음 상태', 'Group status')]: e.group_status ? groupStatusLabels[e.group_status] : '',
           [t('추적 제외', 'Excluded')]: e.is_excluded ? 'Y' : '',
+          [t('변경 사유', 'Change reason')]: e.reason ?? '',
+          [t('상세 사유', 'Reason note')]: e.reason_note ?? '',
+          [t('요청 출처', 'Requested by')]: e.reason_origin_name ?? '',
+          [t('출처 분류', 'Origin category')]: e.reason_origin_type === 'customer' ? t('고객처', 'Customer') : e.reason_origin_category ?? '',
+          [t('사유 입력자', 'Reason by')]: e.reason_set_by_name ?? '',
         }))
       );
       const sheet = XLSX.utils.json_to_sheet(rows);
@@ -179,6 +200,71 @@ export const ChangeEventsTable = ({ events, changeTypes, statCount, from, to }: 
     </>
   );
 
+  /**
+   * 사유·출처·입력 버튼 칸 (변경 1건 기준)
+   */
+  const renderReasonCells = (unit: PoStatUnit) => {
+    const e = unit.events[0];
+    const excluded = unit.events.every((x) => x.is_excluded);
+    return (
+      <>
+        <TableCell className="max-w-52">
+          {e.reason ? (
+            <span className="block truncate" title={e.reason_note ?? ''}>
+              <span className="font-medium text-[#253143]">{e.reason}</span>
+              {e.reason_note ? <span className="ml-1 text-xs text-[#5A6778]">{e.reason_note}</span> : null}
+            </span>
+          ) : excluded ? (
+            <span className="text-[#8E98A8]">-</span>
+          ) : (
+            <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700">{t('미입력', 'Missing')}</Badge>
+          )}
+        </TableCell>
+        <TableCell className="max-w-48 whitespace-nowrap">
+          {e.reason_origin_name ? (
+            <span className="block truncate" title={e.reason_origin_category ?? e.reason_origin_name}>
+              {e.reason_origin_type === 'customer' ? t('고객처', 'Customer') : e.reason_origin_name}
+            </span>
+          ) : (
+            <span className="text-[#8E98A8]">-</span>
+          )}
+        </TableCell>
+        <TableCell onClick={(ev) => ev.stopPropagation()}>
+          {excluded ? null : (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-2 text-[#8B1538] hover:text-[#74112F]"
+              onClick={() => onEditReasons([unit])}
+              aria-label={e.reason ? t('사유 수정', 'Edit reason') : t('사유 입력', 'Enter reason')}
+              title={e.reason ? t('사유 수정', 'Edit reason') : t('사유 입력', 'Enter reason')}
+            >
+              {e.reason ? <PencilLine className="h-4 w-4" /> : <MessageSquarePlus className="h-4 w-4" />}
+            </Button>
+          )}
+        </TableCell>
+      </>
+    );
+  };
+
+  /**
+   * 선택 칸
+   */
+  const renderSelectCell = (unit: PoStatUnit) => {
+    const excluded = unit.events.every((x) => x.is_excluded);
+    return (
+      <TableCell className="w-8" onClick={(ev) => ev.stopPropagation()}>
+        {excluded ? null : (
+          <Checkbox
+            checked={selected.has(unit.key)}
+            onCheckedChange={() => toggleSelect(unit.key)}
+            aria-label={t('변경 선택', 'Select change')}
+          />
+        )}
+      </TableCell>
+    );
+  };
+
   const renderBadge = (e: PoChangeEvent) =>
     e.group_type ? (
       <Badge variant="outline" className="border-[#8B1538]/30 text-[#8B1538]">
@@ -191,6 +277,17 @@ export const ChangeEventsTable = ({ events, changeTypes, statCount, from, to }: 
 
   return (
     <div className="space-y-3">
+      {selectedUnits.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-[#8B1538]/30 bg-[#8B1538]/5 px-4 py-2.5 text-sm">
+          <span className="font-medium text-[#253143]">{t(`${selectedUnits.length}건 선택`, `${selectedUnits.length} selected`)}</span>
+          <Button size="sm" className="bg-[#8B1538] hover:bg-[#74112F]" onClick={() => onEditReasons(selectedUnits)}>
+            <MessageSquarePlus className="h-4 w-4" />
+            {t('선택한 변경 사유 입력', 'Enter reason for selected')}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>{t('선택 해제', 'Clear')}</Button>
+        </div>
+      ) : null}
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-[#5A6778]">
           {t(
@@ -225,6 +322,13 @@ export const ChangeEventsTable = ({ events, changeTypes, statCount, from, to }: 
           <Table>
             <TableHeader className="sticky top-0 z-10 bg-white">
               <TableRow>
+                <TableHead className="w-8 bg-white">
+                  <Checkbox
+                    checked={allSelected}
+                    onCheckedChange={(v) => setSelected(v ? new Set(selectable.map((u) => u.key)) : new Set())}
+                    aria-label={t('전체 선택', 'Select all')}
+                  />
+                </TableHead>
                 {[
                   '',
                   t('기준일', 'Date'),
@@ -238,6 +342,9 @@ export const ChangeEventsTable = ({ events, changeTypes, statCount, from, to }: 
                   t('수량 (전 → 후)', 'Qty (before → after)'),
                   t('상세 (전 → 후)', 'Detail (before → after)'),
                   t('후보 묶음', 'Candidate'),
+                  t('변경 사유', 'Reason'),
+                  t('요청 출처', 'Requested by'),
+                  '',
                 ].map((h, i) => (
                   <TableHead key={`${h}-${i}`} className="whitespace-nowrap bg-white">{h}</TableHead>
                 ))}
@@ -252,9 +359,11 @@ export const ChangeEventsTable = ({ events, changeTypes, statCount, from, to }: 
                 if (unit.events.length === 1) {
                   return (
                     <TableRow key={unit.key} className={cn(excluded && 'opacity-60')}>
+                      {renderSelectCell(unit)}
                       <TableCell />
                       {renderEventCells(first)}
                       <TableCell className="whitespace-nowrap">{renderBadge(first)}</TableCell>
+                      {renderReasonCells(unit)}
                     </TableRow>
                   );
                 }
@@ -272,6 +381,7 @@ export const ChangeEventsTable = ({ events, changeTypes, statCount, from, to }: 
                       onClick={() => toggle(unit.key)}
                       aria-expanded={open}
                     >
+                      {renderSelectCell(unit)}
                       <TableCell className="w-8">
                         {open ? <ChevronDown className="h-4 w-4 text-[#5A6778]" /> : <ChevronRight className="h-4 w-4 text-[#5A6778]" />}
                       </TableCell>
@@ -303,13 +413,16 @@ export const ChangeEventsTable = ({ events, changeTypes, statCount, from, to }: 
                       <TableCell className="whitespace-nowrap font-semibold">{qtySummary(unit.events)}</TableCell>
                       <TableCell className="whitespace-nowrap text-[#5A6778]">{isShift ? detailText(first) : '-'}</TableCell>
                       <TableCell className="whitespace-nowrap">{renderBadge(first)}</TableCell>
+                      {renderReasonCells(unit)}
                     </TableRow>
                     {open
                       ? unit.events.map((e) => (
                           <TableRow key={e.id} className={cn('text-sm', e.is_excluded && 'opacity-60')}>
                             <TableCell />
+                            <TableCell />
                             {renderEventCells(e, true)}
                             <TableCell />
+                            <TableCell colSpan={3} />
                           </TableRow>
                         ))
                       : null}

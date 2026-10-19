@@ -1,13 +1,15 @@
 /**
- * PO Tracker 관리자 설정 Supabase API — 변경 유형·판정 기준 연결·품목 구분 예외·고객처 담당자
+ * PO Tracker 관리자 설정 Supabase API — 변경 유형·판정 기준 연결·품목 구분 예외·고객처 담당자·요청 부서
  */
 import { createClient } from '@/lib/supabase/client';
 import { formatPoTrackerError } from '@/lib/po-changes-api';
+import { translateNow as tn } from '@/lib/i18n';
 import type {
   CustomerManager,
   ItemClassOverride,
   PoChangeTypeRule,
   PoChangeTypeSetting,
+  PoRequestOrigin,
   ProductClass,
 } from '@/types/po-changes';
 
@@ -241,4 +243,44 @@ export const reassignCustomerManager = async (
     .select('account_no');
   if (error) throw new Error(formatPoTrackerError(error));
   return (data ?? []).length;
+};
+
+/**
+ * 요청 부서 추가·수정 (code가 없으면 새로 추가 — code는 DB가 만든다)
+ */
+export const saveRequestOrigin = async (
+  origin: Omit<PoRequestOrigin, 'code' | 'function_group'> & { code?: string },
+  userId: string
+): Promise<void> => {
+  const supabase = createClient();
+  const values = {
+    department: origin.department,
+    company: origin.company,
+    display_name: origin.display_name,
+    category: origin.category,
+    sort_order: origin.sort_order,
+    is_active: origin.is_active,
+    updated_by: userId,
+  };
+  const { error } = origin.code
+    ? await supabase.from('po_request_origins').update(values).eq('code', origin.code)
+    : await supabase.from('po_request_origins').insert(values);
+  if (error) throw new Error(formatPoTrackerError(error));
+};
+
+/**
+ * 요청 부서 삭제 — 사유에 쓰인 부서는 DB가 막음 (대신 사용 중을 끔)
+ */
+export const deleteRequestOrigin = async (code: string): Promise<void> => {
+  const supabase = createClient();
+  const { error } = await supabase.from('po_request_origins').delete().eq('code', code);
+  if (error) {
+    if (error.code === '23503') {
+      throw new Error(tn(
+        '이미 변경 사유에 쓰인 부서라 삭제할 수 없습니다. 수정에서 "사용 중"을 꺼주세요.',
+        'This department is used in change reasons and cannot be deleted. Turn off "Active" instead.'
+      ));
+    }
+    throw new Error(formatPoTrackerError(error));
+  }
 };
