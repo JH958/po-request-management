@@ -15,6 +15,7 @@ import { ItemClassOverrideSettings } from '@/components/admin/ItemClassOverrideS
 import { CustomerManagerSettings } from '@/components/admin/CustomerManagerSettings';
 import { RequestOriginSettings } from '@/components/admin/RequestOriginSettings';
 import { CustomerAccountSettings } from '@/components/admin/CustomerAccountSettings';
+import { ViewGrantSettings } from '@/components/admin/ViewGrantSettings';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { PageHeader } from '@/components/common/PageHeader';
@@ -25,6 +26,7 @@ type AdminTab =
   | 'request-reasons'
   | 'request-origins'
   | 'customer-accounts'
+  | 'view-grants'
   | 'item-class'
   | 'customer-managers';
 
@@ -59,6 +61,7 @@ export default function AdminSettingsPage() {
     { id: 'request-reasons', label: t('PO 변경 사유', 'PO Change Reasons') },
     { id: 'request-origins', label: t('요청 부서', 'Requesting Departments') },
     { id: 'customer-accounts', label: t('고객처 계정', 'Customer Accounts') },
+    { id: 'view-grants', label: t('조회 권한', 'View Access') },
     { id: 'item-class', label: t('품목 구분 예외', 'Item Category Exceptions') },
     { id: 'customer-managers', label: t('고객처 담당자', 'Customer Owners') },
   ];
@@ -90,6 +93,7 @@ export default function AdminSettingsPage() {
       {tab === 'request-reasons' && <RequestReasonSettings userId={user.id} />}
       {tab === 'request-origins' && <RequestOriginSettings userId={user.id} />}
       {tab === 'customer-accounts' && <CustomerAccountSettings userId={user.id} />}
+      {tab === 'view-grants' && <ViewGrantSettings />}
       {tab === 'item-class' && <ItemClassOverrideSettings userId={user.id} />}
       {tab === 'customer-managers' && <CustomerManagerSettings userId={user.id} />}
     </div>

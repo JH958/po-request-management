@@ -212,3 +212,13 @@ export interface CustomerAccount {
   sort_order: number;
   is_active: boolean;
 }
+
+/** 추가 조회 권한 (po_view_grants) — 부서에 특정 고객처의 PO 현황을 열어 줌 */
+export interface ViewGrant {
+  id: string;
+  origin_code: string;
+  customer_name: string;
+  note: string | null;
+  granted_by_name: string | null;
+  created_at: string;
+}

@@ -6,6 +6,7 @@ import { formatPoTrackerError } from '@/lib/po-changes-api';
 import { translateNow as tn } from '@/lib/i18n';
 import type {
   CustomerAccount,
+  ViewGrant,
   CustomerManager,
   ItemClassOverride,
   PoChangeTypeRule,
@@ -320,5 +321,42 @@ export const saveCustomerAccount = async (account: CustomerAccount, userId: stri
 export const deleteCustomerAccount = async (customerName: string): Promise<void> => {
   const supabase = createClient();
   const { error } = await supabase.from('po_customer_accounts').delete().eq('customer_name', customerName);
+  if (error) throw new Error(formatPoTrackerError(error));
+};
+
+/**
+ * 추가 조회 권한 목록 (부서·고객처 순)
+ */
+export const fetchViewGrants = async (): Promise<ViewGrant[]> => {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('po_view_grants')
+    .select('id, origin_code, customer_name, note, granted_by_name, created_at')
+    .order('origin_code')
+    .order('customer_name');
+  if (error) throw new Error(formatPoTrackerError(error));
+  return (data ?? []) as ViewGrant[];
+};
+
+/**
+ * 추가 조회 권한 부여 (한 부서에 여러 고객처, 이미 있는 것은 건너뜀)
+ */
+export const addViewGrants = async (originCode: string, customerNames: string[], note: string | null): Promise<void> => {
+  const supabase = createClient();
+  const { error } = await supabase
+    .from('po_view_grants')
+    .upsert(
+      customerNames.map((customer_name) => ({ origin_code: originCode, customer_name, note })),
+      { onConflict: 'origin_code,customer_name', ignoreDuplicates: true }
+    );
+  if (error) throw new Error(formatPoTrackerError(error));
+};
+
+/**
+ * 추가 조회 권한 회수
+ */
+export const deleteViewGrant = async (id: string): Promise<void> => {
+  const supabase = createClient();
+  const { error } = await supabase.from('po_view_grants').delete().eq('id', id);
   if (error) throw new Error(formatPoTrackerError(error));
 };
