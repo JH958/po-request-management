@@ -1,5 +1,5 @@
 /**
- * PO 변경 페이지 — 기간별 변경 이벤트·사유 입력, 분할/합배송·품목코드 변경 후보 확인, 재등록 대기 (관리자 전용)
+ * PO 변경 페이지 — 기간별 변경 이벤트·사유 입력, 분할/합배송·품목코드 변경 후보 확인, 재등록 대기 (영업관리팀·관리자)
  */
 'use client';
 
@@ -19,7 +19,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { usePoChanges } from '@/hooks/use-po-changes';
 import { useLanguage } from '@/context/LanguageContext';
 import { useRequestConfig } from '@/context/RequestConfigContext';
-import { canAccessAdminSettings } from '@/lib/dashboard-scope';
+import { isSalesTeam } from '@/lib/dashboard-scope';
 import { clearChangeReasons, reviewChangeGroup, setChangeReasons } from '@/lib/po-changes-api';
 import {
   REASON_FILTER_MISSING,
@@ -255,7 +255,7 @@ const PoChangesContent = ({ userId, userEmail }: { userId: string; userEmail: st
 export default function PoChangesPage() {
   const router = useRouter();
   const { user, profile, loading } = useAuth();
-  const hasAccess = profile && canAccessAdminSettings(profile.department, profile.role);
+  const hasAccess = profile && isSalesTeam(profile.department, profile.role);
 
   useEffect(() => {
     if (!loading && profile && !hasAccess) {

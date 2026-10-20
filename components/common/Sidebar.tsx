@@ -27,7 +27,10 @@ interface SidebarProps {
   userName: string;
   department?: string;
   onOpenTour?: () => void;
+  /** 관리자 메뉴 (데이터 업로드·관리자 설정) */
   showAdminSettings?: boolean;
+  /** 영업관리팀 메뉴 (PO 변경) */
+  showSalesTeamMenus?: boolean;
 }
 
 interface MenuItem {
@@ -64,7 +67,13 @@ const itemClass = (active: boolean, collapsed: boolean) =>
       : 'border-transparent text-[#687487] hover:bg-white/70 hover:text-[#253143]'
   );
 
-export const Sidebar = ({ userName, department, onOpenTour, showAdminSettings = false }: SidebarProps) => {
+export const Sidebar = ({
+  userName,
+  department,
+  onOpenTour,
+  showAdminSettings = false,
+  showSalesTeamMenus = false,
+}: SidebarProps) => {
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === 'undefined') return false;
     try {
@@ -96,14 +105,15 @@ export const Sidebar = ({ userName, department, onOpenTour, showAdminSettings = 
         { href: '/review', label: t('검토대기', 'Pending Review'), icon: CheckSquare },
       ],
     },
-    ...(showAdminSettings
+    ...(showAdminSettings || showSalesTeamMenus
       ? [
           {
             title: t('관리', 'Admin'),
+            // 데이터 업로드·관리자 설정은 관리자, PO 변경은 영업관리팀(관리자 포함)
             items: [
-              { href: '/po-upload', label: t('데이터 업로드', 'Data Upload'), icon: Upload },
+              ...(showAdminSettings ? [{ href: '/po-upload', label: t('데이터 업로드', 'Data Upload'), icon: Upload }] : []),
               { href: '/po-changes', label: t('PO 변경', 'PO Changes'), icon: ListChecks },
-              { href: '/admin-settings', label: t('관리자 설정', 'Admin Settings'), icon: Settings },
+              ...(showAdminSettings ? [{ href: '/admin-settings', label: t('관리자 설정', 'Admin Settings'), icon: Settings }] : []),
             ],
           },
         ]

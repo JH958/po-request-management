@@ -1,6 +1,7 @@
 /**
  * PO 변경 요청 관련 헬퍼 함수
  */
+import { isInternalDepartment } from '@/lib/account-directory';
 import { isSameDay, isSameMonth, isSameWeek } from 'date-fns';
 import type { PORequest } from '@/types/request';
 import { ADD_TYPE_VALUES, PRODUCT_CATEGORIES, REQUEST_TYPES } from '@/lib/request-constants';
@@ -30,10 +31,8 @@ export const getReadableErrorMessage = (error: unknown): string => {
 /**
  * 요청 부서를 고객처/본사로 분류
  */
-export const classifyDepartment = (department: string): 'customer' | 'headquarters' => {
-  if (department.endsWith('팀')) return 'headquarters';
-  return 'customer';
-};
+export const classifyDepartment = (department: string): 'customer' | 'headquarters' =>
+  isInternalDepartment(department) ? 'headquarters' : 'customer';
 
 /**
  * 고객처/본사 필터 적용

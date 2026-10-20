@@ -23,7 +23,7 @@
 
 
 -- ---------------------------------------------------------------------
--- 0. 권한 헬퍼 (기존 관리자 판정과 동일: role에 admin 포함 또는 영업관리 부서)
+-- 0. 권한 헬퍼 (2026-10-20 분리: 관리자 = role에 admin, 영업관리팀 = 부서에 영업관리 또는 관리자)
 -- ---------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.is_po_tracker_admin()
 RETURNS BOOLEAN
@@ -35,11 +35,29 @@ AS $$
   SELECT EXISTS (
     SELECT 1 FROM public.user_profiles
     WHERE id = auth.uid()
-      AND (role LIKE '%admin%' OR department LIKE '%영업관리%')
+      AND 'admin' = ANY (string_to_array(replace(COALESCE(role, ''), ' ', ''), ','))
   );
 $$;
 
-COMMENT ON FUNCTION public.is_po_tracker_admin() IS 'PO Tracker 업로드·설정 권한(관리자·영업관리팀) 여부';
+COMMENT ON FUNCTION public.is_po_tracker_admin() IS '관리자(role에 admin) — 데이터 업로드·관리자 설정 전체·조회 권한 부여';
+
+/**
+ * 영업관리팀 또는 관리자 — PO 변경 페이지·후보 승인/반려·사유 입력, 전체 조회
+ */
+CREATE OR REPLACE FUNCTION public.po_is_sales_team()
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT public.is_po_tracker_admin() OR EXISTS (
+    SELECT 1 FROM public.user_profiles
+    WHERE id = auth.uid() AND department LIKE '%영업관리%'
+  );
+$$;
+
+COMMENT ON FUNCTION public.po_is_sales_team() IS '영업관리팀 또는 관리자 — PO 변경 페이지·후보 승인/반려·사유 입력, 전체 조회';
 
 
 -- ---------------------------------------------------------------------
@@ -75,7 +93,7 @@ COMMENT ON COLUMN public.po_source_uploads.summary IS '처리 결과 요약(유�
 
 -- ---------------------------------------------------------------------
 -- 2. 관리자 설정: 품목군 / 세부분류 → 구분 / 추적 제외 고객처 / 품목 구분 예외 / 변경 유형 / 고객처 담당자
---    / 요청 부서 / 변경 사유
+--    / 요청 부서 / 변경 사유 / 고객처 계정
 -- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.product_groups (
   code TEXT PRIMARY KEY,
@@ -221,6 +239,18 @@ CREATE TABLE IF NOT EXISTS public.po_change_reason_history (
 CREATE INDEX IF NOT EXISTS po_change_reason_history_key_idx ON public.po_change_reason_history (stat_unit_key, created_at);
 
 COMMENT ON TABLE public.po_change_reason_history IS '변경 사유 입력·수정 이력';
+
+
+CREATE TABLE IF NOT EXISTS public.po_customer_accounts (
+  customer_name TEXT PRIMARY KEY,
+  account_no TEXT,
+  sort_order INT NOT NULL DEFAULT 0,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_by UUID REFERENCES public.user_profiles(id) ON DELETE SET NULL
+);
+
+COMMENT ON TABLE public.po_customer_accounts IS '회원가입·요청서에서 고르는 고객처 계정 (고객처 이름 = 판매주문조회 고객처 이름 = 계정의 부서명) — 관리자 설정 ''고객처 계정''';
 
 
 -- ---------------------------------------------------------------------
@@ -634,6 +664,11 @@ CREATE TRIGGER update_item_category_map_updated_at
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 
+DROP TRIGGER IF EXISTS update_po_customer_accounts_updated_at ON public.po_customer_accounts;
+CREATE TRIGGER update_po_customer_accounts_updated_at
+  BEFORE UPDATE ON public.po_customer_accounts
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
 DROP TRIGGER IF EXISTS update_po_request_origins_updated_at ON public.po_request_origins;
 CREATE TRIGGER update_po_request_origins_updated_at
   BEFORE UPDATE ON public.po_request_origins
@@ -683,6 +718,7 @@ ALTER TABLE public.po_change_type_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.po_change_type_rules ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.customer_managers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.po_request_origins ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.po_customer_accounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.po_change_reasons ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.po_change_reason_history ENABLE ROW LEVEL SECURITY;
 -- 임시 적재 테이블은 정책 없음: 처리 함수로만 접근
@@ -696,7 +732,8 @@ BEGIN
     'po_source_uploads', 'product_groups', 'category_class_settings', 'excluded_customers',
     'customer_so_map', 'item_category_map', 'so_lines', 'do_lines', 'do_order_lines', 'do_change_events',
     'do_change_groups', 'do_change_group_reviews', 'item_class_overrides', 'po_change_type_settings', 'po_change_type_rules',
-    'customer_managers', 'po_request_origins', 'po_change_reasons', 'po_change_reason_history'
+    'customer_managers', 'po_request_origins', 'po_change_reasons', 'po_change_reason_history',
+    'po_customer_accounts'
   ] LOOP
     EXECUTE format('DROP POLICY IF EXISTS "Authenticated users can view %1$s" ON public.%1$I', t);
     EXECUTE format(
@@ -709,7 +746,7 @@ BEGIN
   FOREACH t IN ARRAY ARRAY[
     'product_groups', 'category_class_settings', 'excluded_customers',
     'item_class_overrides', 'po_change_type_settings', 'po_change_type_rules', 'customer_managers',
-    'po_request_origins'
+    'po_request_origins', 'po_customer_accounts'
   ] LOOP
     EXECUTE format('DROP POLICY IF EXISTS "Admins can insert %1$s" ON public.%1$I', t);
     EXECUTE format('DROP POLICY IF EXISTS "Admins can update %1$s" ON public.%1$I', t);
@@ -732,6 +769,14 @@ BEGIN
   CREATE POLICY "Admins can update item_category_map" ON public.item_category_map
     FOR UPDATE USING (public.is_po_tracker_admin());
 END $$;
+
+-- 회원가입 화면(로그인 전)에서 부서·고객처 목록을 고를 수 있도록 사용 중인 항목만 공개
+DROP POLICY IF EXISTS "Anyone can view active po_request_origins" ON public.po_request_origins;
+CREATE POLICY "Anyone can view active po_request_origins" ON public.po_request_origins
+  FOR SELECT TO anon USING (is_active);
+DROP POLICY IF EXISTS "Anyone can view active po_customer_accounts" ON public.po_customer_accounts;
+CREATE POLICY "Anyone can view active po_customer_accounts" ON public.po_customer_accounts
+  FOR SELECT TO anon USING (is_active);
 
 
 -- ---------------------------------------------------------------------
@@ -1492,7 +1537,7 @@ DECLARE
   v_keys TEXT[];
   v_found INT;
 BEGIN
-  IF NOT public.is_po_tracker_admin() THEN
+  IF NOT public.po_is_sales_team() THEN
     RAISE EXCEPTION '사유 입력 권한이 없습니다.' USING ERRCODE = '42501';
   END IF;
 
@@ -1574,7 +1619,7 @@ DECLARE
   v_name TEXT;
   v_count INT;
 BEGIN
-  IF NOT public.is_po_tracker_admin() THEN
+  IF NOT public.po_is_sales_team() THEN
     RAISE EXCEPTION '사유 입력 권한이 없습니다.' USING ERRCODE = '42501';
   END IF;
 
@@ -1618,7 +1663,7 @@ DECLARE
   v_name TEXT;
   v_department TEXT;
 BEGIN
-  IF NOT public.is_po_tracker_admin() THEN
+  IF NOT public.po_is_sales_team() THEN
     RAISE EXCEPTION '검토 권한이 없습니다.' USING ERRCODE = '42501';
   END IF;
 

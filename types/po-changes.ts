@@ -204,3 +204,11 @@ export interface CustomerManager {
   note: string | null;
   updated_at: string;
 }
+
+/** 고객처 계정 (po_customer_accounts) — 회원가입·요청서에서 고르는 고객처 */
+export interface CustomerAccount {
+  customer_name: string;
+  account_no: string | null;
+  sort_order: number;
+  is_active: boolean;
+}

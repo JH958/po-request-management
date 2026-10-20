@@ -30,8 +30,6 @@ import {
 import { Package } from 'lucide-react';
 import { RequestReasonSelect } from '@/components/request/RequestReasonSelect';
 import {
-  ALL_CUSTOMERS,
-  HEADQUARTERS_TEAMS,
   DOMESTIC_BRANCH_SHIPPING_METHODS,
   OVERSEAS_CUSTOMER_SHIPPING_METHODS,
   ALL_SHIPPING_METHODS,
@@ -51,6 +49,8 @@ import { resolveFrozenStatus } from '@/lib/frozen-date';
 import type { FrozenStatus } from '@/types/frozen-date';
 import { cn } from '@/lib/utils';
 import { useLanguage } from '@/context/LanguageContext';
+import { useRequestConfig } from '@/context/RequestConfigContext';
+import { isInternalDepartment } from '@/lib/account-directory';
 
 interface UserProfile {
   id: string;
@@ -110,6 +110,7 @@ export const RequestFormModal = ({
   onSuccess,
 }: RequestFormModalProps) => {
   const { t } = useLanguage();
+  const { customerAccounts } = useRequestConfig();
   const [form, setForm] = useState<FormState>(getInitialForm);
   const [currentItem, setCurrentItem] = useState({ erp_code: '', item_name: '', quantity: 0 });
   const [productCategory, setProductCategory] = useState<string[]>([]);
@@ -128,24 +129,23 @@ export const RequestFormModal = ({
   const showShippingMethod = categoryLabel === '운송방법 변경';
 
   const availableCustomers = useMemo((): string[] => {
-    if (isAdmin) return [...ALL_CUSTOMERS];
+    // 관리자·본사/국내법인 부서는 고객처 계정 전체, 고객처 계정은 자기 고객처
+    if (isAdmin) return customerAccounts;
     const dept = profile.department;
-    if (dept && HEADQUARTERS_TEAMS.includes(dept as (typeof HEADQUARTERS_TEAMS)[number])) {
-      return [...ALL_CUSTOMERS];
-    }
+    if (dept && isInternalDepartment(dept)) return customerAccounts;
     if (dept) return [dept];
-    return [...ALL_CUSTOMERS];
-  }, [isAdmin, profile.department]);
+    return customerAccounts;
+  }, [isAdmin, profile.department, customerAccounts]);
 
   const availableShippingMethods = useMemo((): string[] => {
     const department = (profile.department ?? '').trim();
     if (!department) return [...ALL_SHIPPING_METHODS];
     if (department.endsWith('지사')) return [...DOMESTIC_BRANCH_SHIPPING_METHODS];
-    if ((ALL_CUSTOMERS as readonly string[]).includes(department)) {
+    if (customerAccounts.includes(department)) {
       return [...OVERSEAS_CUSTOMER_SHIPPING_METHODS];
     }
     return [...ALL_SHIPPING_METHODS];
-  }, [profile.department]);
+  }, [profile.department, customerAccounts]);
 
   const resetForm = useCallback(() => {
     setForm(getInitialForm());

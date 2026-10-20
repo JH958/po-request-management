@@ -61,8 +61,9 @@ npm run lint     # ESLint — 커밋 전 반드시 통과해야 함
 
 ### 권한/조회 범위 모델 (여러 파일에 걸친 핵심 규칙)
 - `user_profiles.role`은 **콤마로 구분된 다중 역할 문자열**(예: `"reviewer,requester"`, `"admin"`). 항상 split해서 검사.
-- 부서명으로 계정 유형 판별: 부서명이 `팀`으로 끝나면 **본사 부서**, 아니면 **고객처 계정**(`lib/request-access-scope.ts`).
-- 관리자 = role에 `admin` 포함 **또는** 부서명에 `영업관리` 포함 (`canAccessAdminSettings`, `getDashboardScope` in `lib/dashboard-scope.ts`).
+- 계정 유형 판별(2026-10-20~): 부서명이 **요청 부서 목록**(`po_request_origins.department`)에 있으면 **본사/국내법인 부서**, **고객처 계정 목록**(`po_customer_accounts`)에 있으면 **고객처 계정**. 화면은 `lib/account-directory.ts`(`isInternalDepartment`, `getCustomerAccounts` — `RequestConfigContext`가 채움, 못 읽으면 예전 '팀' 규칙)로, DB는 `user_profiles.origin_code`(부서 저장 시 트리거 `po_profile_guard`가 연결)로 판단. 관리자가 아니면 본인 역할·부서를 바꿀 수 없고, 회원가입은 항상 requester.
+- **관리자** = role에 `admin`(우선 jhee105@inbody.com만): 데이터 업로드, 관리자 설정 전체, 조회 권한 부여 — 화면 `canAccessAdminSettings`, DB `is_po_tracker_admin()`.
+- **영업관리팀** = 부서에 `영업관리` 또는 관리자: PO 변경 페이지, 후보 승인/반려, 사유 입력, 전체 조회 — 화면 `isSalesTeam`, DB `po_is_sales_team()`. `getDashboardScope`의 전체 범위도 영업관리팀.
 - 목록 조회 필터는 `applyRequestListFilter`(모드: `request-intake` = 본인 부서가 요청한 건 / `review-history` = 관리자 전체, 고객처는 자기 customer + 본사 요청, 본사는 타 본사 부서 요청). 대시보드는 `applyDashboardScope`로 클라이언트 측 필터링.
 - 관리자 설정 화면 진입은 Supabase 인증과 별개로 비밀번호 기반 HttpOnly 쿠키(`po_admin_session`, HMAC 서명, 8시간; `lib/admin-session-cookie.ts`)를 `/api/admin/{verify,session,logout}`로 관리.
 

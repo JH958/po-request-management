@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client';
 import { formatPoTrackerError } from '@/lib/po-changes-api';
 import { translateNow as tn } from '@/lib/i18n';
 import type {
+  CustomerAccount,
   CustomerManager,
   ItemClassOverride,
   PoChangeTypeRule,
@@ -283,4 +284,41 @@ export const deleteRequestOrigin = async (code: string): Promise<void> => {
     }
     throw new Error(formatPoTrackerError(error));
   }
+};
+
+/**
+ * 고객처 계정 목록 조회 (순서대로)
+ * @param activeOnly true면 사용 중인 것만
+ */
+export const fetchCustomerAccounts = async (activeOnly = false): Promise<CustomerAccount[]> => {
+  const supabase = createClient();
+  let query = supabase
+    .from('po_customer_accounts')
+    .select('customer_name, account_no, sort_order, is_active')
+    .order('sort_order')
+    .order('customer_name');
+  if (activeOnly) query = query.eq('is_active', true);
+  const { data, error } = await query;
+  if (error) throw new Error(formatPoTrackerError(error));
+  return (data ?? []) as CustomerAccount[];
+};
+
+/**
+ * 고객처 계정 추가·수정 (고객처 이름 기준)
+ */
+export const saveCustomerAccount = async (account: CustomerAccount, userId: string): Promise<void> => {
+  const supabase = createClient();
+  const { error } = await supabase
+    .from('po_customer_accounts')
+    .upsert({ ...account, updated_by: userId }, { onConflict: 'customer_name' });
+  if (error) throw new Error(formatPoTrackerError(error));
+};
+
+/**
+ * 고객처 계정 삭제 — 이미 가입한 계정은 그대로 두고 목록에서만 빠짐
+ */
+export const deleteCustomerAccount = async (customerName: string): Promise<void> => {
+  const supabase = createClient();
+  const { error } = await supabase.from('po_customer_accounts').delete().eq('customer_name', customerName);
+  if (error) throw new Error(formatPoTrackerError(error));
 };

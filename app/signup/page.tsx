@@ -3,7 +3,7 @@
  */
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -15,13 +15,16 @@ import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertCircle, CheckCircle2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { ALL_CUSTOMERS } from '@/lib/request-constants';
 import { useLanguage } from '@/context/LanguageContext';
 import { LanguageToggle } from '@/components/common/LanguageToggle';
 import { translateFormError } from '@/lib/auth-form-messages';
@@ -44,49 +47,35 @@ const signupSchema = z
 
 type SignupFormData = z.infer<typeof signupSchema>;
 
+/** 회원가입 부서 선택지 (값 = 저장되는 부서명, 이름 = 화면 표시명) */
+interface DepartmentOption {
+  value: string;
+  label: string;
+}
+
+/** DB를 읽지 못했을 때의 기본 본사 부서 */
+const FALLBACK_INTERNAL: DepartmentOption[] = ['영업관리팀', '제조관리팀', '제조팀', '생산관리팀', '글로벌 CS팀'].map((d) => ({
+  value: d,
+  label: d,
+}));
+
 /**
- * 부서 목록
+ * 회원가입 부서 목록 — 본사/국내법인 부서(관리자 설정 '요청 부서')와 고객처(관리자 설정 '고객처 계정')
+ * 로그인 전이라 사용 중인 항목만 읽을 수 있음. 실패하면 기본 목록
  */
-const departments = [
-  // 본사 팀
-  '영업관리팀',
-  '제조관리팀',
-  '혈압계팀',
-  'W팀',
-  '글로벌 CS팀',
-  // 해외 법인 및 지사
-  '일본(일본법인)',
-  '미국(미국법인)',
-  '중국(중국법인)',
-  '말레이시아(아시아법인)',
-  '인도(인도법인)',
-  '네덜란드(유럽법인)',
-  '멕시코(멕시코법인)',
-  '중국(중국법인_생산)',
-  '독일(유럽법인_독일지사)',
-  '주식회사 코르트',
-  '호주(호주법인)',
-  '미국(미국동부법인)',
-  '주식회사 인바디헬스케어',
-  '영국(유럽법인_영국지사)',
-  '베트남(베트남법인)',
-  '튀르키예(튀르키예법인)',
-  // 국내 지사
-  '국내_인바디 서부지사',
-  '국내_인바디 남부지사',
-  '국내_인바디 강남지사',
-  '국내_인바디 대전지사',
-  '국내_인바디 대구지사',
-  '국내_인바디 광주지사',
-  '국내_인바디 강북지사',
-  '국내_인바디 강서지사',
-  '국내_인바디 강원지사',
-  '국내_인바디 중부지사',
-  '국내_인바디 부산지사',
-  // 기타 해외 법인
-  '태국(InBody Thailand Co., Ltd.)',
-  '인도네시아(PT. InBody Global Healthcare)',
-];
+const loadDepartmentOptions = async (): Promise<{ internal: DepartmentOption[]; customers: DepartmentOption[] }> => {
+  const supabase = createClient();
+  const [origins, accounts] = await Promise.all([
+    supabase.from('po_request_origins').select('department, display_name').eq('is_active', true).order('sort_order'),
+    supabase.from('po_customer_accounts').select('customer_name').eq('is_active', true).order('sort_order'),
+  ]);
+  const internal = (origins.data ?? []).map((o) => ({ value: o.department as string, label: o.display_name as string }));
+  const customers = (accounts.data ?? []).map((a) => ({ value: a.customer_name as string, label: a.customer_name as string }));
+  return {
+    internal: internal.length ? internal : FALLBACK_INTERNAL,
+    customers: customers.length ? customers : ALL_CUSTOMERS.map((c) => ({ value: c, label: c })),
+  };
+};
 
 export default function SignupPage() {
   const [showPassword, setShowPassword] = useState(false);
@@ -95,6 +84,24 @@ export default function SignupPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const { t } = useLanguage();
+  const [departmentOptions, setDepartmentOptions] = useState<{ internal: DepartmentOption[]; customers: DepartmentOption[] }>({
+    internal: FALLBACK_INTERNAL,
+    customers: ALL_CUSTOMERS.map((c) => ({ value: c, label: c })),
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    loadDepartmentOptions()
+      .then((options) => {
+        if (!cancelled) setDepartmentOptions(options);
+      })
+      .catch(() => {
+        // 기본 목록 유지
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const {
     register,
@@ -310,11 +317,22 @@ export default function SignupPage() {
                             <SelectValue placeholder={t('부서를 선택하세요', 'Select your department')} />
                           </SelectTrigger>
                           <SelectContent>
-                            {departments.map((dept) => (
-                              <SelectItem key={dept} value={dept}>
-                                {dept}
-                              </SelectItem>
-                            ))}
+                            <SelectGroup>
+                              <SelectLabel className="text-xs text-[#8E98A8]">{t('본사/국내법인', 'HQ/Affiliates')}</SelectLabel>
+                              {departmentOptions.internal.map((dept) => (
+                                <SelectItem key={`i-${dept.value}`} value={dept.value}>
+                                  {dept.label}
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                            <SelectGroup>
+                              <SelectLabel className="text-xs text-[#8E98A8]">{t('고객처', 'Customers')}</SelectLabel>
+                              {departmentOptions.customers.map((dept) => (
+                                <SelectItem key={`c-${dept.value}`} value={dept.value}>
+                                  {dept.label}
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
                           </SelectContent>
                         </Select>
                         {errors.department && (

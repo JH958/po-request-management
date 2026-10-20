@@ -301,3 +301,39 @@ INSERT INTO public.po_request_origins (code, department, company, display_name, 
   ('kort_production_mgmt', '생산관리팀', '코르트', '생산관리팀 (코르트·혈압계 생산)', '본사, 국내법인_생산', 11),
   ('kort_purchasing', '구매팀', '코르트', '구매팀 (코르트)', '국내법인_생산', 12)
 ON CONFLICT (code) DO NOTHING;
+
+-- 고객처 계정 (기존 회원가입 목록 29곳, 계정 번호는 고객처 담당자 표에서 이름으로 찾음)
+INSERT INTO public.po_customer_accounts (customer_name, account_no, sort_order)
+SELECT v.name, (SELECT m.account_no FROM public.customer_managers m WHERE m.customer_name = v.name ORDER BY m.account_no LIMIT 1), v.ord
+FROM (VALUES
+  ('일본(일본법인)', 1),
+  ('미국(미국법인)', 2),
+  ('중국(중국법인)', 3),
+  ('말레이시아(아시아법인)', 4),
+  ('인도(인도법인)', 5),
+  ('네덜란드(유럽법인)', 6),
+  ('멕시코(멕시코법인)', 7),
+  ('중국(중국법인_생산)', 8),
+  ('독일(유럽법인_독일지사)', 9),
+  ('주식회사 코르트', 10),
+  ('호주(호주법인)', 11),
+  ('미국(미국동부법인)', 12),
+  ('주식회사 인바디헬스케어', 13),
+  ('영국(유럽법인_영국지사)', 14),
+  ('베트남(베트남법인)', 15),
+  ('튀르키예(튀르키예법인)', 16),
+  ('국내_인바디 서부지사', 17),
+  ('국내_인바디 남부지사', 18),
+  ('국내_인바디 강남지사', 19),
+  ('국내_인바디 대전지사', 20),
+  ('국내_인바디 대구지사', 21),
+  ('국내_인바디 광주지사', 22),
+  ('국내_인바디 강북지사', 23),
+  ('국내_인바디 강서지사', 24),
+  ('국내_인바디 강원지사', 25),
+  ('국내_인바디 중부지사', 26),
+  ('국내_인바디 부산지사', 27),
+  ('태국(InBody Thailand Co., Ltd.)', 28),
+  ('인도네시아(PT. InBody Global Healthcare)', 29)
+) AS v(name, ord)
+ON CONFLICT (customer_name) DO NOTHING;
