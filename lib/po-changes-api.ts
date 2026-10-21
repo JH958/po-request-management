@@ -30,6 +30,7 @@ const EVENT_COLUMNS = [
   'is_dismissed', 'dismiss_note', 'dismissed_by_name', 'dismissed_at',
   'display_customer_name', 'dest_port', 'dest_country', 'dest_country_name', 'actual_customer',
   'needs_destination_choice', 'destination_candidates', 'destination_chosen_by_name',
+  'is_type_overridden', 'rule_type_code', 'type_set_by_name', 'type_set_at',
 ].join(',');
 
 /**
@@ -39,8 +40,8 @@ export const formatPoTrackerError = (error: unknown): string => {
   const err = asApiError(error);
   if (err.code === '42P01' || err.code === '42703' || err.code === 'PGRST205' || err.code === 'PGRST202' || err.code === 'PGRST200') {
     return tn(
-      'PO 변경 테이블이 없습니다. Supabase에서 migrations/update_po_tracker_destinations.sql을 실행해주세요.',
-      'PO change tables are missing. Run migrations/update_po_tracker_destinations.sql in Supabase.'
+      'PO 변경 테이블이 없습니다. Supabase에서 migrations/update_po_tracker_change_type_edit.sql을 실행해주세요.',
+      'PO change tables are missing. Run migrations/update_po_tracker_change_type_edit.sql in Supabase.'
     );
   }
   if (err.code === '42501') {
@@ -183,13 +184,14 @@ export const fetchPendingLines = async (): Promise<PendingReRegistrationLine[]> 
 };
 
 /**
- * 후보 묶음 승인·반려·되돌리기
+ * 후보 묶음 승인·반려·되돌리기 (승인할 때 변경 유형을 넘기면 묶음을 그 유형으로 셈)
  */
 export const reviewChangeGroup = async (
   groupId: string,
   status: ChangeGroupStatus,
   note: string | null,
-  reason?: ChangeReasonInput | null
+  reason?: ChangeReasonInput | null,
+  typeCode?: string | null
 ): Promise<void> => {
   const supabase = createClient();
   if (status !== 'pending' && !note?.trim()) {
@@ -202,8 +204,21 @@ export const reviewChangeGroup = async (
     p_reason: status !== 'pending' && reason ? reason.reason : null,
     p_origin_type: status !== 'pending' && reason ? reason.originType : null,
     p_origin_code: status !== 'pending' && reason?.originType === 'department' ? reason.originCode : null,
+    p_type_code: status === 'approved' && typeCode ? typeCode : null,
   });
   if (error) throw new Error(formatPoTrackerError(error));
+};
+
+/**
+ * 변경 유형 고치기 (여러 건 한 번에) — 자동 판정과 같은 유형이나 null이면 자동 판정으로 되돌림
+ * @param keys 변경 1건 키 목록 (stat_unit_key)
+ * @returns 처리한 건수
+ */
+export const setChangeTypes = async (keys: string[], typeCode: string | null): Promise<number> => {
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc('set_change_types', { p_keys: keys, p_type_code: typeCode });
+  if (error) throw new Error(formatPoTrackerError(error));
+  return Number(data ?? 0);
 };
 
 /**

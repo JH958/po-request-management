@@ -1,5 +1,5 @@
 /**
- * 후보 묶음 카드 — 줄어든 쪽·늘어난 쪽을 나란히 보여주고 사유·출처와 함께 승인/반려, 되돌리기
+ * 후보 묶음 카드 — 줄어든 쪽·늘어난 쪽을 나란히 보여주고 변경 유형·사유·출처와 함께 승인/반려, 되돌리기
  */
 'use client';
 
@@ -10,13 +10,20 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   ReasonOriginFields,
   isReasonOriginComplete,
   type ReasonOriginValue,
 } from '@/components/po-changes/ReasonOriginFields';
 import { useLanguage } from '@/context/LanguageContext';
 import type { Translate } from '@/lib/i18n';
-import { getChangeGroupStatusLabels, getChangeGroupTypeLabels } from '@/lib/po-tracker-labels';
+import { getChangeGroupStatusLabels, getChangeGroupTypeLabels, getChangeTypeName, getEventTypeName } from '@/lib/po-tracker-labels';
 import { cn } from '@/lib/utils';
 import type { ReasonOption } from '@/lib/request-constants';
 import type {
@@ -25,6 +32,7 @@ import type {
   ChangeReasonInput,
   PoChangeEvent,
   PoChangeGroup,
+  PoChangeTypeSetting,
   PoRequestOrigin,
 } from '@/types/po-changes';
 
@@ -34,11 +42,14 @@ interface ChangeGroupCardProps {
   busy: boolean;
   reasons: ReasonOption[];
   origins: PoRequestOrigin[];
+  /** PO 변경 유형 (꺼진 유형 포함) */
+  changeTypes: PoChangeTypeSetting[];
   onReview: (
     groupId: string,
     status: ChangeGroupStatus,
     note: string | null,
-    reason?: ChangeReasonInput | null
+    reason?: ChangeReasonInput | null,
+    typeCode?: string | null
   ) => Promise<void>;
 }
 
@@ -123,8 +134,8 @@ const ReviewHistory = ({ reviews, currentUserId }: { reviews: ChangeGroupReview[
   );
 };
 
-export const ChangeGroupCard = ({ group, currentUserId, busy, reasons, origins, onReview }: ChangeGroupCardProps) => {
-  const { t } = useLanguage();
+export const ChangeGroupCard = ({ group, currentUserId, busy, reasons, origins, changeTypes, onReview }: ChangeGroupCardProps) => {
+  const { t, lang } = useLanguage();
   const [note, setNote] = useState('');
   // 이미 입력된 묶음 사유가 있으면 미리 채움
   const [reason, setReason] = useState<ReasonOriginValue>(() => ({
@@ -134,6 +145,9 @@ export const ChangeGroupCard = ({ group, currentUserId, busy, reasons, origins, 
   }));
   const typeLabels = getChangeGroupTypeLabels(t);
   const statusLabels = getChangeGroupStatusLabels(t);
+  // 변경 유형: 지금 셈하는 유형(자동 판정 또는 고친 유형)으로 시작, 승인할 때 함께 저장
+  const [typeCode, setTypeCode] = useState(() => group.events[0]?.change_type_code ?? '');
+  const activeTypes = changeTypes.filter((type) => type.is_active || type.code === typeCode);
 
   const removed = group.events.filter((e) => e.direction === 'delete');
   const added = group.events.filter((e) => e.direction === 'add');
@@ -190,6 +204,19 @@ export const ChangeGroupCard = ({ group, currentUserId, busy, reasons, origins, 
       <footer className="mt-4 border-t border-[#E4E9EF] pt-4">
         {group.status === 'pending' ? (
           <div className="space-y-3">
+            <div className="space-y-1.5 md:max-w-xs">
+              <span className="block text-xs font-medium text-[#5A6778]">{t('변경 유형', 'Change type')}</span>
+              <Select value={typeCode} onValueChange={setTypeCode}>
+                <SelectTrigger className="w-full" aria-label={t('변경 유형', 'Change type')}>
+                  <SelectValue placeholder={t('변경 유형 선택', 'Select a change type')} />
+                </SelectTrigger>
+                <SelectContent>
+                  {activeTypes.map((type) => (
+                    <SelectItem key={type.code} value={type.code}>{getChangeTypeName(type, lang)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <ReasonOriginFields
               value={reason}
               onChange={setReason}
@@ -234,7 +261,7 @@ export const ChangeGroupCard = ({ group, currentUserId, busy, reasons, origins, 
                 </Button>
                 <Button
                   disabled={busy || noteMissing || reasonMissing}
-                  onClick={() => void onReview(group.id, 'approved', note, reasonInput)}
+                  onClick={() => void onReview(group.id, 'approved', note, reasonInput, typeCode || null)}
                   className="bg-[#8B1538] hover:bg-[#74112F]"
                 >
                   {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
@@ -254,6 +281,13 @@ export const ChangeGroupCard = ({ group, currentUserId, busy, reasons, origins, 
                 {reviewerText(group.reviewed_by_name, reviewerDepartment, group.reviewed_by === currentUserId, t)}
               </span>
               {group.review_note ? <p className="mt-1 text-[#253143]">“{group.review_note}”</p> : null}
+              {group.status === 'approved' && first ? (
+                <p className="mt-1 text-xs text-[#5A6778]">
+                  {t('변경 유형', 'Change type')}:{' '}
+                  <span className="font-medium text-[#253143]">{getEventTypeName(first, changeTypes, lang)}</span>
+                  {first.is_type_overridden ? ` (${t('수정', 'edited')})` : ''}
+                </p>
+              ) : null}
               {first?.reason ? (
                 <p className="mt-1 text-xs text-[#5A6778]">
                   {t('변경 사유', 'Reason')}: <span className="font-medium text-[#253143]">{first.reason}</span>

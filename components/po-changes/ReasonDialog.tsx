@@ -1,5 +1,5 @@
 /**
- * 변경 사유 입력 창 — 고른 변경(1건 또는 여러 건)에 사유·상세 메모·요청 출처를 저장·지우거나, "변경 아님(정정)"으로 처리·해제
+ * 변경 사유 입력 창 — 고른 변경(1건 또는 여러 건)의 변경 유형을 고치고 사유·상세 메모·요청 출처를 저장·지우거나, "변경 아님(정정)"으로 처리·해제
  */
 'use client';
 
@@ -9,6 +9,13 @@ import { Ban, Eraser, Loader2, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Dialog,
   DialogContent,
@@ -24,7 +31,7 @@ import {
 } from '@/components/po-changes/ReasonOriginFields';
 import { useLanguage } from '@/context/LanguageContext';
 import { cn } from '@/lib/utils';
-import { getEventTypeName } from '@/lib/po-tracker-labels';
+import { getChangeTypeName, getEventTypeName } from '@/lib/po-tracker-labels';
 import type { PoStatUnit } from '@/lib/po-changes-utils';
 import type { ReasonOption } from '@/lib/request-constants';
 import type { ChangeReasonInput, PoChangeTypeSetting, PoRequestOrigin } from '@/types/po-changes';
@@ -36,6 +43,8 @@ interface ReasonDialogProps {
   changeTypes: PoChangeTypeSetting[];
   onClose: () => void;
   onSubmit: (keys: string[], input: ChangeReasonInput) => Promise<boolean>;
+  /** 변경 유형 고치기 — 성공하면 true */
+  onSetType: (keys: string[], typeCode: string) => Promise<boolean>;
   /** 사유 지우기 — 성공하면 true */
   onClear: (keys: string[]) => Promise<boolean>;
   /** "변경 아님(정정)" 처리 — 성공하면 true */
@@ -74,15 +83,30 @@ const ReasonDialogBody = ({
   changeTypes,
   onClose,
   onSubmit,
+  onSetType,
   onClear,
   onDismiss,
   onRestore,
 }: ReasonDialogProps) => {
   const { t, lang } = useLanguage();
-  const [value, setValue] = useState(() => initialValue(units));
+  const [initial] = useState(() => initialValue(units));
+  const [value, setValue] = useState(initial);
   const [saving, setSaving] = useState(false);
+  // 변경 유형: 고른 변경이 모두 같은 유형이면 그 값으로 시작 (다르면 비워 두고 고르면 모두 그 유형으로)
+  const currentTypes = [...new Set(units.map((u) => u.events[0]?.change_type_code))];
+  const [typeCode, setTypeCode] = useState(currentTypes.length === 1 ? currentTypes[0] ?? '' : '');
+  const typeChanged = typeCode !== '' && units.some((u) => u.events[0]?.change_type_code !== typeCode);
+  const typeOptions = changeTypes.filter((type) => type.is_active || type.code === typeCode);
+  const findTypeName = (code: string | undefined) => {
+    const setting = changeTypes.find((type) => type.code === code);
+    return setting ? getChangeTypeName(setting, lang) : code ?? '';
+  };
   const customers = [...new Set(units.flatMap((u) => u.events.map((e) => e.display_customer_name ?? e.customer_name)).filter((v): v is string => Boolean(v)))];
   const complete = isReasonOriginComplete(value) && value.note.trim() !== '';
+  const reasonTouched = Boolean(value.reason) || value.note.trim() !== '';
+  const reasonChanged = JSON.stringify(value) !== JSON.stringify(initial);
+  // 유형만 고치거나, 사유를 모두 채웠을 때 저장 (사유를 쓰다 말았으면 저장하지 않음)
+  const canSave = (typeChanged || (complete && reasonChanged)) && (!reasonTouched || complete);
   const single = units.length === 1 ? units[0].events[0] : null;
   const withReason = units.filter((u) => u.events[0]?.reason);
   const dismissed = units.filter((u) => u.events[0]?.is_dismissed);
@@ -122,10 +146,12 @@ const ReasonDialogBody = ({
 
   const handleSubmit = async () => {
     setSaving(true);
-    const ok = await onSubmit(
-      units.map((u) => u.key),
-      { reason: value.reason, note: value.note, originType: value.originType, originCode: value.originCode }
-    );
+    const keys = units.map((u) => u.key);
+    let ok = true;
+    if (typeChanged) ok = await onSetType(keys, typeCode);
+    if (ok && complete && reasonChanged) {
+      ok = await onSubmit(keys, { reason: value.reason, note: value.note, originType: value.originType, originCode: value.originCode });
+    }
     setSaving(false);
     if (ok) onClose();
   };
@@ -134,7 +160,7 @@ const ReasonDialogBody = ({
     <DialogContent className="max-w-2xl">
       <DialogHeader>
         <DialogTitle>
-          {units.length === 1 ? t('변경 사유 입력', 'Enter change reason') : t(`변경 ${units.length}건 사유 입력`, `Reason for ${units.length} changes`)}
+          {units.length === 1 ? t('변경 사유·유형 입력', 'Change reason and type') : t(`변경 ${units.length}건 사유·유형 입력`, `Reason and type for ${units.length} changes`)}
         </DialogTitle>
         <DialogDescription>
           {t(
@@ -190,7 +216,7 @@ const ReasonDialogBody = ({
 
       <div className="flex gap-1 rounded-md border border-[#D6DDE7] bg-white p-0.5 text-sm" role="tablist">
         {([
-          ['reason', t('변경 사유 입력', 'Change reason')],
+          ['reason', t('변경 사유·유형', 'Reason and type')],
           ['dismiss', t('변경 아님 (정정)', 'Not a change (correction)')],
         ] as const).map(([key, label]) => (
           <button
@@ -230,6 +256,30 @@ const ReasonDialogBody = ({
         </div>
       ) : (
       <div className="space-y-4">
+        <div className="space-y-1.5">
+          <Label htmlFor="reason-dialog-type" className="text-xs text-[#5A6778]">{t('변경 유형', 'Change type')}</Label>
+          <Select value={typeCode} onValueChange={setTypeCode}>
+            <SelectTrigger id="reason-dialog-type" className="w-full md:w-72">
+              <SelectValue placeholder={t('각자 현재 유형 유지', 'Keep each current type')} />
+            </SelectTrigger>
+            <SelectContent>
+              {typeOptions.map((type) => (
+                <SelectItem key={type.code} value={type.code}>{getChangeTypeName(type, lang)}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-[#8E98A8]">
+            {single?.is_type_overridden
+              ? t(
+                  `자동 판정: ${findTypeName(single.rule_type_code)} · 수정 ${single.type_set_by_name ?? ''}${single.type_set_at ? ` ${format(new Date(single.type_set_at), 'yyyy-MM-dd HH:mm')}` : ''} — 자동 판정과 같은 유형을 고르면 되돌아갑니다.`,
+                  `Detected as ${findTypeName(single.rule_type_code)} · edited by ${single.type_set_by_name ?? ''} — pick the detected type to undo.`
+                )
+              : t(
+                  '자동 판정과 다르게 셀 때만 바꿔주세요. 사유 없이 유형만 고쳐도 저장됩니다.',
+                  'Change it only when it should count differently from the detected type. You can save a type change without a reason.'
+                )}
+          </p>
+        </div>
         <ReasonOriginFields
           value={value}
           onChange={(next) => setValue({ ...value, ...next })}
@@ -273,7 +323,7 @@ const ReasonDialogBody = ({
             {t('변경 아님으로 처리', 'Mark as not a change')}
           </Button>
         ) : (
-          <Button className="bg-[#8B1538] hover:bg-[#74112F]" onClick={() => void handleSubmit()} disabled={saving || !complete}>
+          <Button className="bg-[#8B1538] hover:bg-[#74112F]" onClick={() => void handleSubmit()} disabled={saving || !canSave}>
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             {t('저장', 'Save')}
           </Button>

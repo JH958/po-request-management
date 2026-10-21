@@ -120,6 +120,12 @@ export interface PoChangeEvent {
   needs_destination_choice: boolean;
   destination_candidates: string[] | null;
   destination_chosen_by_name: string | null;
+  /** 영업관리팀이 변경 유형을 고침 (change_type_code·label은 고친 유형) */
+  is_type_overridden: boolean;
+  /** 자동 판정 유형 코드 */
+  rule_type_code: string;
+  type_set_by_name: string | null;
+  type_set_at: string | null;
 }
 
 /** 요청 출처 종류 */

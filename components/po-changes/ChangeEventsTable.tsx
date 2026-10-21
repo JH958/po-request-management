@@ -136,6 +136,9 @@ export const ChangeEventsTable = ({
           [t('품목명', 'Item name')]: e.item_name ?? '',
           [t('구분', 'Category')]: classLabels[e.product_class],
           [t('변경 유형', 'Change type')]: getEventTypeName(e, changeTypes, lang),
+          [t('자동 판정 유형', 'Detected type')]: e.is_type_overridden
+            ? getEventTypeName({ change_type_code: e.rule_type_code, change_type_label: e.rule_type_code }, changeTypes, lang)
+            : '',
           [t('세부 유형', 'Detail type')]: typeLabels[e.change_type],
           [t('수량', 'Qty')]: e.qty,
           [t('수량 전', 'Qty before')]: e.qty_before ?? '',
@@ -206,6 +209,7 @@ export const ChangeEventsTable = ({
         <span className={cn(e.direction === 'delete' ? 'text-[#8B1538]' : e.direction === 'add' ? 'text-[#1E40AF]' : 'text-[#253143]')}>
           {nested ? typeLabels[e.change_type] : getEventTypeName(e, changeTypes, lang)}
         </span>
+        {!nested ? renderTypeEdited(e) : null}
         {!nested && e.change_type === 'shipment_shortfall' ? (
           <span className="ml-1 text-xs text-[#8E98A8]">· {t('출하 부족', 'Short shipment')}</span>
         ) : null}
@@ -221,6 +225,25 @@ export const ChangeEventsTable = ({
       <TableCell className="whitespace-nowrap text-[#5A6778]">{detailText(e)}</TableCell>
     </>
   );
+
+  /**
+   * 고친 변경 유형 표시 — 자동 판정과 고친 사람은 툴팁으로
+   */
+  const renderTypeEdited = (e: PoChangeEvent) => {
+    if (!e.is_type_overridden) return null;
+    const detected = getEventTypeName({ change_type_code: e.rule_type_code, change_type_label: e.rule_type_code }, changeTypes, lang);
+    return (
+      <span
+        className="ml-1 text-xs text-[#8E98A8]"
+        title={t(
+          `자동 판정: ${detected}${e.type_set_by_name ? ` · 수정 ${e.type_set_by_name}` : ''}`,
+          `Detected as ${detected}${e.type_set_by_name ? ` · edited by ${e.type_set_by_name}` : ''}`
+        )}
+      >
+        · {t('수정', 'edited')}
+      </span>
+    );
+  };
 
   /**
    * 사유·출처·입력 버튼 칸 (변경 1건 기준)
@@ -441,6 +464,7 @@ export const ChangeEventsTable = ({
                       <TableCell className="whitespace-nowrap">{classes.join(', ')}</TableCell>
                       <TableCell className="whitespace-nowrap font-medium text-[#253143]">
                         {getEventTypeName(first, changeTypes, lang)}
+                        {renderTypeEdited(first)}
                       </TableCell>
                       <TableCell className="whitespace-nowrap font-semibold">{qtySummary(unit.events)}</TableCell>
                       <TableCell className="whitespace-nowrap text-[#5A6778]">{isShift ? detailText(first) : '-'}</TableCell>

@@ -242,6 +242,29 @@ CREATE TABLE IF NOT EXISTS public.po_change_reason_history (
 CREATE INDEX IF NOT EXISTS po_change_reason_history_key_idx ON public.po_change_reason_history (stat_unit_key, created_at);
 
 COMMENT ON TABLE public.po_change_reason_history IS '변경 사유 입력·수정 이력';
+CREATE TABLE IF NOT EXISTS public.po_change_type_overrides (
+  stat_unit_key TEXT PRIMARY KEY,
+  type_code TEXT NOT NULL REFERENCES public.po_change_type_settings(code) ON UPDATE CASCADE ON DELETE CASCADE,
+  set_by UUID REFERENCES public.user_profiles(id) ON DELETE SET NULL,
+  set_by_name TEXT,
+  set_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.po_change_type_overrides IS '영업관리팀이 고친 변경 유형 — 변경 1건(v_do_change_events.stat_unit_key)을 자동 판정 대신 이 유형으로 셈. set_change_types()로만 기록. 묶음이 반려되면 각 라인은 자동 판정으로';
+
+CREATE TABLE IF NOT EXISTS public.po_change_type_override_history (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  stat_unit_key TEXT NOT NULL,
+  type_code TEXT,
+  rule_type_code TEXT,
+  set_by UUID REFERENCES public.user_profiles(id) ON DELETE SET NULL,
+  set_by_name TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS po_change_type_override_history_key_idx ON public.po_change_type_override_history (stat_unit_key, created_at);
+
+COMMENT ON TABLE public.po_change_type_override_history IS '변경 유형 고치기 이력 (type_code NULL = 자동 판정으로 되돌림, rule_type_code = 그때의 자동 판정)';
 
 
 CREATE TABLE IF NOT EXISTS public.po_customer_accounts (
@@ -694,14 +717,14 @@ SELECT
   g.group_type,
   g.status AS group_status,
   g.customer_unverified,
-  -- 통계 표시명: 관리자 설정의 변경 유형 이름
-  COALESCE(ts.label, oth.label, '기타') AS stat_label,
+  -- 통계 표시명: 관리자 설정의 변경 유형 이름 (영업관리팀이 고친 유형 우선)
+  COALESCE(tos.label, ts.label, oth.label, '기타') AS stat_label,
   -- 통계용: 반려되지 않은 후보 묶음(분할/합배송·품목코드 변경)은 묶음 단위 1건, 나머지는 이벤트 1건
   uk.stat_unit_key,
   (ov.item_no IS NOT NULL) AS is_class_overridden,
   rk.rule_key AS change_rule,
-  COALESCE(ts.code, 'other') AS change_type_code,
-  COALESCE(ts.label, oth.label, '기타') AS change_type_label,
+  COALESCE(tos.code, ts.code, 'other') AS change_type_code,
+  COALESCE(tos.label, ts.label, oth.label, '기타') AS change_type_label,
   cm.manager_name,
   cm.manager_email,
   -- 변경 사유 (묶음이 반려되면 각 라인이 묶음 사유를 물려받음)
@@ -728,7 +751,12 @@ SELECT
   od.actual_customer,
   COALESCE(od.needs_destination_choice, FALSE) AS needs_destination_choice,
   od.choice_candidates AS destination_candidates,
-  od.chosen_by_name AS destination_chosen_by_name
+  od.chosen_by_name AS destination_chosen_by_name,
+  -- 변경 유형을 영업관리팀이 고쳤는지, 자동 판정 유형, 고친 사람
+  (tos.code IS NOT NULL) AS is_type_overridden,
+  COALESCE(ts.code, 'other') AS rule_type_code,
+  CASE WHEN tos.code IS NOT NULL THEN tov.set_by_name END AS type_set_by_name,
+  CASE WHEN tos.code IS NOT NULL THEN tov.set_at END AS type_set_at
 FROM public.do_change_events e
 LEFT JOIN public.customer_so_map c ON c.order_no = e.order_no
 LEFT JOIN public.v_order_destinations od ON od.order_no = e.order_no
@@ -798,9 +826,12 @@ CROSS JOIN LATERAL (
 ) rk
 LEFT JOIN public.po_change_type_rules r ON r.rule_key = rk.rule_key
 LEFT JOIN public.po_change_type_settings ts ON ts.code = r.type_code AND ts.is_active
-LEFT JOIN public.po_change_type_settings oth ON oth.code = 'other';
+LEFT JOIN public.po_change_type_settings oth ON oth.code = 'other'
+-- 영업관리팀이 고친 변경 유형 (변경 1건 키 기준, 꺼진 유형이면 자동 판정으로)
+LEFT JOIN public.po_change_type_overrides tov ON tov.stat_unit_key = uk.stat_unit_key
+LEFT JOIN public.po_change_type_settings tos ON tos.code = tov.type_code AND tos.is_active;
 
-COMMENT ON VIEW public.v_do_change_events IS '변경 이벤트 + 고객처·담당자·변경 사유·요청 출처·품목군·구분(품목 예외 우선)·변경 유형(관리자 설정)·제외 여부·후보 묶음 — 통계는 stat_unit_key 기준으로 셀 것 (후보 묶음·일정/운송방법 묶음은 1건)';
+COMMENT ON VIEW public.v_do_change_events IS '변경 이벤트 + 고객처·담당자·변경 사유·요청 출처·품목군·구분(품목 예외 우선)·변경 유형(관리자 설정, 영업관리팀이 고친 유형 우선)·제외 여부·후보 묶음 — 통계는 stat_unit_key 기준으로 셀 것 (후보 묶음·일정/운송방법 묶음은 1건)';
 
 
 CREATE OR REPLACE VIEW public.v_customers_without_manager
@@ -908,6 +939,8 @@ ALTER TABLE public.po_order_destinations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.po_change_dismissal_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.po_change_reasons ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.po_change_reason_history ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.po_change_type_overrides ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.po_change_type_override_history ENABLE ROW LEVEL SECURITY;
 -- 임시 적재 테이블은 정책 없음: 처리 함수로만 접근
 ALTER TABLE public.po_upload_chunks ENABLE ROW LEVEL SECURITY;
 
@@ -933,7 +966,7 @@ BEGIN
     'po_source_uploads', 'customer_so_map', 'item_category_map', 'so_lines', 'do_lines',
     'do_order_lines', 'do_change_events', 'do_change_groups', 'do_change_group_reviews', 'po_change_reasons',
     'po_change_reason_history', 'customer_managers', 'po_view_grants', 'po_change_dismissals', 'po_change_dismissal_history',
-    'po_order_destinations'
+    'po_order_destinations', 'po_change_type_overrides', 'po_change_type_override_history'
   ] LOOP
     EXECUTE format('DROP POLICY IF EXISTS "Authenticated users can view %1$s" ON public.%1$I', t);
     EXECUTE format('DROP POLICY IF EXISTS "Sales team can view %1$s" ON public.%1$I', t);
@@ -1771,13 +1804,13 @@ BEGIN
     RAISE EXCEPTION 'PO 변경 사유 목록에 없는 사유입니다: %', v_reason USING ERRCODE = '22023';
   END IF;
 
-  -- 존재하는 변경 1건 키인지 (group:묶음, event:이벤트, shift:일정·운송방법 묶음)
+  -- 존재하는 변경 1건 키인지 (group:묶음, event:이벤트, shift:일정·운송방법 묶음, order:주문 전체 삭제)
   SELECT COUNT(*) INTO v_found
   FROM unnest(v_keys) k
   WHERE CASE
     WHEN k ~ '^group:[0-9a-f-]{36}$' THEN EXISTS (SELECT 1 FROM public.do_change_groups g WHERE g.id = substring(k FROM 7)::UUID)
     WHEN k ~ '^event:[0-9a-f-]{36}$' THEN EXISTS (SELECT 1 FROM public.do_change_events e WHERE e.id = substring(k FROM 7)::UUID)
-    WHEN k LIKE 'shift:%' THEN EXISTS (SELECT 1 FROM public.v_do_change_events v WHERE v.stat_unit_key = k)
+    WHEN k LIKE 'shift:%' OR k LIKE 'order:%' THEN EXISTS (SELECT 1 FROM public.v_do_change_events v WHERE v.stat_unit_key = k)
     ELSE FALSE
   END;
   IF v_found <> array_length(v_keys, 1) THEN
@@ -1843,14 +1876,91 @@ BEGIN
 END;
 $$;
 
--- 인자가 3개였던 이전 버전 제거 (같은 이름 함수가 두 개 생기지 않도록)
+/**
+ * 변경 유형 고치기 (여러 건 한 번에) — 자동 판정과 다르게 셀 변경을 영업관리팀이 PO 변경 유형 중 하나로 지정
+ * 자동 판정과 같은 유형을 고르거나 p_type_code가 NULL이면 고친 값을 지우고 자동 판정으로 되돌린다. 모든 처리는 이력에 남김
+ * @param p_keys 변경 1건 키 목록 (v_do_change_events.stat_unit_key)
+ * @param p_type_code PO 변경 유형 코드 (po_change_type_settings.code), NULL = 자동 판정으로
+ * @returns 처리한 건수
+ */
+CREATE OR REPLACE FUNCTION public.set_change_types(p_keys TEXT[], p_type_code TEXT)
+RETURNS INT
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_type TEXT := NULLIF(btrim(p_type_code), '');
+  v_keys TEXT[];
+  v_name TEXT;
+  r RECORD;
+BEGIN
+  IF NOT public.po_is_sales_team() THEN
+    RAISE EXCEPTION '변경 유형을 고칠 권한이 없습니다.' USING ERRCODE = '42501';
+  END IF;
+
+  SELECT ARRAY_AGG(DISTINCT k) INTO v_keys FROM unnest(p_keys) k WHERE NULLIF(btrim(k), '') IS NOT NULL;
+  IF v_keys IS NULL THEN
+    RAISE EXCEPTION '처리할 변경을 선택해주세요.' USING ERRCODE = '22023';
+  END IF;
+  IF v_type IS NOT NULL AND NOT EXISTS (SELECT 1 FROM public.po_change_type_settings WHERE code = v_type AND is_active) THEN
+    RAISE EXCEPTION '사용 중인 변경 유형이 아닙니다: %', v_type USING ERRCODE = '22023';
+  END IF;
+
+  -- 키마다 자동 판정 유형 (없으면 찾을 수 없는 변경)
+  DROP TABLE IF EXISTS t_type_keys;
+  CREATE TEMP TABLE t_type_keys ON COMMIT DROP AS
+  SELECT k AS stat_unit_key, x.rule_type_code
+  FROM unnest(v_keys) k
+  LEFT JOIN (
+    SELECT v.stat_unit_key, MIN(v.rule_type_code) AS rule_type_code
+    FROM public.v_do_change_events v
+    WHERE v.stat_unit_key = ANY (v_keys)
+    GROUP BY v.stat_unit_key
+  ) x ON x.stat_unit_key = k;
+
+  IF EXISTS (SELECT 1 FROM t_type_keys WHERE rule_type_code IS NULL) THEN
+    RAISE EXCEPTION '찾을 수 없는 변경이 있습니다. 새로고침 후 다시 시도해주세요.' USING ERRCODE = '22023';
+  END IF;
+
+  SELECT full_name INTO v_name FROM public.user_profiles WHERE id = auth.uid();
+
+  FOR r IN SELECT * FROM t_type_keys LOOP
+    IF v_type IS NULL OR v_type = r.rule_type_code THEN
+      DELETE FROM public.po_change_type_overrides WHERE stat_unit_key = r.stat_unit_key;
+    ELSE
+      INSERT INTO public.po_change_type_overrides (stat_unit_key, type_code, set_by, set_by_name, set_at)
+      VALUES (r.stat_unit_key, v_type, auth.uid(), v_name, NOW())
+      ON CONFLICT (stat_unit_key) DO UPDATE SET
+        type_code = EXCLUDED.type_code,
+        set_by = EXCLUDED.set_by,
+        set_by_name = EXCLUDED.set_by_name,
+        set_at = EXCLUDED.set_at;
+    END IF;
+
+    INSERT INTO public.po_change_type_override_history (stat_unit_key, type_code, rule_type_code, set_by, set_by_name)
+    VALUES (
+      r.stat_unit_key,
+      CASE WHEN v_type = r.rule_type_code THEN NULL ELSE v_type END,
+      r.rule_type_code, auth.uid(), v_name
+    );
+  END LOOP;
+
+  RETURN array_length(v_keys, 1);
+END;
+$$;
+
+-- 이전 버전 제거 (같은 이름 함수가 두 개 생기지 않도록 — 인자 3개·6개, 인자 이름이 달랐던 7개)
 DROP FUNCTION IF EXISTS public.review_change_group(UUID, TEXT, TEXT);
+DROP FUNCTION IF EXISTS public.review_change_group(UUID, TEXT, TEXT, TEXT, TEXT, TEXT);
+DROP FUNCTION IF EXISTS public.review_change_group(UUID, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT);
 
 /**
  * 후보 묶음 승인·반려·되돌리기 (담당자 확인) — 반려하면 통계에서 각 이벤트를 개별 삭제·추가로 센다
  * 승인·반려는 메모 필수. 처리자 이름은 묶음에 저장하고 모든 처리를 이력에 남긴다
  * 사유(p_reason)를 함께 넘기면 메모를 상세 사유로 하여 묶음의 변경 사유도 저장한다
  * (반려되면 각 라인이 묶음 사유를 물려받음)
+ * 승인할 때 변경 유형(p_type_code)을 넘기면 묶음을 그 유형으로 센다 (자동 판정과 같으면 고친 값 없음, 반려되면 각 라인은 자동 판정)
  */
 CREATE OR REPLACE FUNCTION public.review_change_group(
   p_group_id UUID,
@@ -1858,7 +1968,8 @@ CREATE OR REPLACE FUNCTION public.review_change_group(
   p_note TEXT DEFAULT NULL,
   p_reason TEXT DEFAULT NULL,
   p_origin_type TEXT DEFAULT NULL,
-  p_origin_code TEXT DEFAULT NULL
+  p_origin_code TEXT DEFAULT NULL,
+  p_type_code TEXT DEFAULT NULL
 )
 RETURNS VOID
 LANGUAGE plpgsql
@@ -1906,6 +2017,11 @@ BEGIN
     PERFORM public.set_change_reasons(
       ARRAY['group:' || p_group_id::TEXT], p_reason, v_note, COALESCE(p_origin_type, 'customer'), p_origin_code
     );
+  END IF;
+
+  -- 묶음 변경 유형 (승인과 함께)
+  IF p_status = 'approved' AND NULLIF(btrim(p_type_code), '') IS NOT NULL THEN
+    PERFORM public.set_change_types(ARRAY['group:' || p_group_id::TEXT], p_type_code);
   END IF;
 END;
 $$;
@@ -2749,7 +2865,7 @@ REVOKE ALL ON FUNCTION public.apply_so_snapshot(UUID, JSONB, JSONB, JSONB, INT) 
 REVOKE ALL ON FUNCTION public.stage_po_upload_chunk(UUID, INT, JSONB) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.apply_do_snapshot(UUID, INT) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.po_group_split_candidates(UUID) FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.review_change_group(UUID, TEXT, TEXT, TEXT, TEXT, TEXT) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.review_change_group(UUID, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.set_change_reasons(TEXT[], TEXT, TEXT, TEXT, TEXT) FROM PUBLIC, anon;
 
 GRANT EXECUTE ON FUNCTION public.start_po_upload(TEXT, DATE, TEXT, TEXT) TO authenticated;
@@ -2757,10 +2873,12 @@ GRANT EXECUTE ON FUNCTION public.fail_po_upload(UUID, TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.apply_so_snapshot(UUID, JSONB, JSONB, JSONB, INT) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.stage_po_upload_chunk(UUID, INT, JSONB) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.apply_do_snapshot(UUID, INT) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.review_change_group(UUID, TEXT, TEXT, TEXT, TEXT, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.review_change_group(UUID, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.set_change_reasons(TEXT[], TEXT, TEXT, TEXT, TEXT) TO authenticated;
 REVOKE ALL ON FUNCTION public.clear_change_reasons(TEXT[]) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.clear_change_reasons(TEXT[]) TO authenticated;
+REVOKE ALL ON FUNCTION public.set_change_types(TEXT[], TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.set_change_types(TEXT[], TEXT) TO authenticated;
 REVOKE ALL ON FUNCTION public.po_my_view_scope() FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.po_dashboard_changes(DATE, DATE) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.po_dashboard_requests(DATE, DATE) FROM PUBLIC, anon;

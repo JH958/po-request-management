@@ -10,24 +10,32 @@ import { ChangeGroupCard } from '@/components/po-changes/ChangeGroupCard';
 import { useLanguage } from '@/context/LanguageContext';
 import { cn } from '@/lib/utils';
 import type { ReasonOption } from '@/lib/request-constants';
-import type { ChangeGroupStatus, ChangeReasonInput, PoChangeGroup, PoRequestOrigin } from '@/types/po-changes';
+import type {
+  ChangeGroupStatus,
+  ChangeReasonInput,
+  PoChangeGroup,
+  PoChangeTypeSetting,
+  PoRequestOrigin,
+} from '@/types/po-changes';
 
 interface ReviewQueueProps {
   groups: PoChangeGroup[];
   currentUserId: string;
   reasons: ReasonOption[];
   origins: PoRequestOrigin[];
+  changeTypes: PoChangeTypeSetting[];
   onReview: (
     groupId: string,
     status: ChangeGroupStatus,
     note: string | null,
-    reason?: ChangeReasonInput | null
+    reason?: ChangeReasonInput | null,
+    typeCode?: string | null
   ) => Promise<void>;
 }
 
 type QueueView = 'pending' | 'done';
 
-export const ReviewQueue = ({ groups, currentUserId, reasons, origins, onReview }: ReviewQueueProps) => {
+export const ReviewQueue = ({ groups, currentUserId, reasons, origins, changeTypes, onReview }: ReviewQueueProps) => {
   const { t } = useLanguage();
   const [view, setView] = useState<QueueView>('pending');
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -40,11 +48,12 @@ export const ReviewQueue = ({ groups, currentUserId, reasons, origins, onReview 
     groupId: string,
     status: ChangeGroupStatus,
     note: string | null,
-    reason?: ChangeReasonInput | null
+    reason?: ChangeReasonInput | null,
+    typeCode?: string | null
   ) => {
     setBusyId(groupId);
     try {
-      await onReview(groupId, status, note, reason);
+      await onReview(groupId, status, note, reason, typeCode);
     } finally {
       setBusyId(null);
     }
@@ -92,6 +101,7 @@ export const ReviewQueue = ({ groups, currentUserId, reasons, origins, onReview 
             busy={busyId === group.id}
             reasons={reasons}
             origins={origins}
+            changeTypes={changeTypes}
             onReview={handleReview}
           />
         ))

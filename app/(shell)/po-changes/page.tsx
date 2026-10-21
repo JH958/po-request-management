@@ -26,6 +26,7 @@ import {
   restoreChanges,
   reviewChangeGroup,
   setChangeReasons,
+  setChangeTypes,
   setOrderDestination,
 } from '@/lib/po-changes-api';
 import {
@@ -105,10 +106,11 @@ const PoChangesContent = ({ userId, userEmail }: { userId: string; userEmail: st
     groupId: string,
     status: ChangeGroupStatus,
     note: string | null,
-    reason?: ChangeReasonInput | null
+    reason?: ChangeReasonInput | null,
+    typeCode?: string | null
   ) => {
     try {
-      await reviewChangeGroup(groupId, status, note, reason);
+      await reviewChangeGroup(groupId, status, note, reason, typeCode);
       toast.success(
         status === 'approved'
           ? t('승인했습니다.', 'Approved.')
@@ -139,6 +141,24 @@ const PoChangesContent = ({ userId, userEmail }: { userId: string; userEmail: st
         console.error('변경 사유 저장 실패:', err);
       }
       toast.error(t('사유를 저장하지 못했습니다.', 'Could not save the reason.'), { description: getReadableErrorMessage(err) });
+      return false;
+    }
+  };
+
+  /**
+   * 변경 유형 고치기 — 성공하면 true
+   */
+  const handleSetTypes = async (keys: string[], typeCode: string): Promise<boolean> => {
+    try {
+      const count = await setChangeTypes(keys, typeCode);
+      toast.success(t(`변경 ${count}건의 유형을 저장했습니다.`, `Saved the type for ${count} changes.`));
+      await refresh();
+      return true;
+    } catch (err) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('변경 유형 저장 실패:', err);
+      }
+      toast.error(t('변경 유형을 저장하지 못했습니다.', 'Could not save the change type.'), { description: getReadableErrorMessage(err) });
       return false;
     }
   };
@@ -290,6 +310,7 @@ const PoChangesContent = ({ userId, userEmail }: { userId: string; userEmail: st
           currentUserId={userId}
           reasons={requestReasons}
           origins={origins}
+          changeTypes={changeTypes}
           onReview={handleReview}
         />
       ) : tab === 'events' ? (
@@ -305,6 +326,7 @@ const PoChangesContent = ({ userId, userEmail }: { userId: string; userEmail: st
         changeTypes={changeTypes}
         onClose={() => setReasonUnits(null)}
         onSubmit={handleSaveReasons}
+        onSetType={handleSetTypes}
         onClear={handleClearReasons}
         onDismiss={handleDismiss}
         onRestore={handleRestore}
