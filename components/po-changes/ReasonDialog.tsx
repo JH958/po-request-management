@@ -1,11 +1,11 @@
 /**
- * 변경 사유 입력 창 — 고른 변경(1건 또는 여러 건)에 사유·상세 메모·요청 출처를 한 번에 저장하거나 지움
+ * 변경 사유 입력 창 — 고른 변경(1건 또는 여러 건)에 사유·상세 메모·요청 출처를 저장·지우거나, "변경 아님(정정)"으로 처리·해제
  */
 'use client';
 
 import { useState } from 'react';
 import { format } from 'date-fns';
-import { Eraser, Loader2 } from 'lucide-react';
+import { Ban, Eraser, Loader2, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -23,6 +23,7 @@ import {
   type ReasonOriginValue,
 } from '@/components/po-changes/ReasonOriginFields';
 import { useLanguage } from '@/context/LanguageContext';
+import { cn } from '@/lib/utils';
 import { getEventTypeName } from '@/lib/po-tracker-labels';
 import type { PoStatUnit } from '@/lib/po-changes-utils';
 import type { ReasonOption } from '@/lib/request-constants';
@@ -37,7 +38,13 @@ interface ReasonDialogProps {
   onSubmit: (keys: string[], input: ChangeReasonInput) => Promise<boolean>;
   /** 사유 지우기 — 성공하면 true */
   onClear: (keys: string[]) => Promise<boolean>;
+  /** "변경 아님(정정)" 처리 — 성공하면 true */
+  onDismiss: (keys: string[], note: string) => Promise<boolean>;
+  /** "변경 아님" 해제 — 성공하면 true */
+  onRestore: (keys: string[]) => Promise<boolean>;
 }
+
+type DialogMode = 'reason' | 'dismiss';
 
 /**
  * 고른 변경이 모두 같은 사유를 갖고 있으면 그 값으로 미리 채움
@@ -60,7 +67,17 @@ const initialValue = (units: PoStatUnit[]): ReasonOriginValue & { note: string }
   };
 };
 
-const ReasonDialogBody = ({ units, reasons, origins, changeTypes, onClose, onSubmit, onClear }: ReasonDialogProps) => {
+const ReasonDialogBody = ({
+  units,
+  reasons,
+  origins,
+  changeTypes,
+  onClose,
+  onSubmit,
+  onClear,
+  onDismiss,
+  onRestore,
+}: ReasonDialogProps) => {
   const { t, lang } = useLanguage();
   const [value, setValue] = useState(() => initialValue(units));
   const [saving, setSaving] = useState(false);
@@ -68,6 +85,23 @@ const ReasonDialogBody = ({ units, reasons, origins, changeTypes, onClose, onSub
   const complete = isReasonOriginComplete(value) && value.note.trim() !== '';
   const single = units.length === 1 ? units[0].events[0] : null;
   const withReason = units.filter((u) => u.events[0]?.reason);
+  const dismissed = units.filter((u) => u.events[0]?.is_dismissed);
+  const [mode, setMode] = useState<DialogMode>('reason');
+  const [dismissNote, setDismissNote] = useState(() => (units.length === 1 ? units[0].events[0]?.dismiss_note ?? '' : ''));
+
+  const handleDismiss = async () => {
+    setSaving(true);
+    const ok = await onDismiss(units.map((u) => u.key), dismissNote);
+    setSaving(false);
+    if (ok) onClose();
+  };
+
+  const handleRestore = async () => {
+    setSaving(true);
+    const ok = await onRestore(dismissed.map((u) => u.key));
+    setSaving(false);
+    if (ok) onClose();
+  };
 
   const handleClear = async () => {
     if (
@@ -136,6 +170,65 @@ const ReasonDialogBody = ({ units, reasons, origins, changeTypes, onClose, onSub
         </p>
       ) : null}
 
+      {dismissed.length > 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+          <span>
+            {t(`${dismissed.length}건이 "변경 아님"으로 처리되어 있습니다.`, `${dismissed.length} marked as not a change.`)}
+            {units.length === 1 && units[0].events[0]?.dismissed_by_name ? (
+              <span className="ml-1 text-xs text-slate-500">
+                {units[0].events[0].dismissed_by_name}
+                {units[0].events[0].dismissed_at ? ` · ${format(new Date(units[0].events[0].dismissed_at), 'yyyy-MM-dd HH:mm')}` : ''}
+              </span>
+            ) : null}
+          </span>
+          <Button size="sm" variant="outline" className="h-8 border-slate-300 bg-white shadow-none" onClick={() => void handleRestore()} disabled={saving}>
+            <RotateCcw className="h-4 w-4" />
+            {t('변경 아님 해제', 'Count as change again')}
+          </Button>
+        </div>
+      ) : null}
+
+      <div className="flex gap-1 rounded-md border border-[#D6DDE7] bg-white p-0.5 text-sm" role="tablist">
+        {([
+          ['reason', t('변경 사유 입력', 'Change reason')],
+          ['dismiss', t('변경 아님 (정정)', 'Not a change (correction)')],
+        ] as const).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            aria-selected={mode === key}
+            onClick={() => setMode(key)}
+            className={cn('flex-1 rounded px-3 py-1.5 text-[#5A6778]', mode === key && 'bg-[#8B1538] text-white')}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {mode === 'dismiss' ? (
+        <div className="space-y-1.5">
+          <p className="text-xs text-[#5A6778]">
+            {t(
+              '오입력 정정처럼 실제 변경이 아닌 건입니다. 처리하면 변경 건수·통계·사유 입력 대상에서 빠지고, 언제든 해제할 수 있습니다.',
+              'For entries that are not real changes, such as data-entry corrections. They are left out of counts, statistics and reason entry, and can be restored anytime.'
+            )}
+          </p>
+          <Label htmlFor="reason-dialog-dismiss" className="text-xs text-[#5A6778]">
+            {t('정정 내용 메모', 'Correction note')} <span className="text-red-500">*</span>
+          </Label>
+          <Textarea
+            id="reason-dialog-dismiss"
+            value={dismissNote}
+            onChange={(e) => setDismissNote(e.target.value)}
+            rows={3}
+            placeholder={t(
+              '예: 출하 예정일은 원래 10/22 — 잘못 넣었던 요청 배송일을 출하 처리 때 바로잡음',
+              'e.g. Ship date was always 10/22 — the wrong requested date was corrected at shipment'
+            )}
+          />
+        </div>
+      ) : (
       <div className="space-y-4">
         <ReasonOriginFields
           value={value}
@@ -161,9 +254,10 @@ const ReasonDialogBody = ({ units, reasons, origins, changeTypes, onClose, onSub
           />
         </div>
       </div>
+      )}
 
       <DialogFooter className="gap-2 sm:justify-between">
-        {withReason.length > 0 ? (
+        {mode === 'reason' && withReason.length > 0 ? (
           <Button variant="ghost" className="text-red-600 hover:text-red-700" onClick={() => void handleClear()} disabled={saving}>
             <Eraser className="h-4 w-4" />
             {t(`사유 지우기 (${withReason.length}건)`, `Clear reason (${withReason.length})`)}
@@ -173,10 +267,17 @@ const ReasonDialogBody = ({ units, reasons, origins, changeTypes, onClose, onSub
         )}
         <div className="flex gap-2">
         <Button variant="outline" onClick={onClose} disabled={saving}>{t('취소', 'Cancel')}</Button>
-        <Button className="bg-[#8B1538] hover:bg-[#74112F]" onClick={() => void handleSubmit()} disabled={saving || !complete}>
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-          {t('저장', 'Save')}
-        </Button>
+        {mode === 'dismiss' ? (
+          <Button className="bg-slate-700 hover:bg-slate-800" onClick={() => void handleDismiss()} disabled={saving || !dismissNote.trim()}>
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Ban className="h-4 w-4" />}
+            {t('변경 아님으로 처리', 'Mark as not a change')}
+          </Button>
+        ) : (
+          <Button className="bg-[#8B1538] hover:bg-[#74112F]" onClick={() => void handleSubmit()} disabled={saving || !complete}>
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            {t('저장', 'Save')}
+          </Button>
+        )}
         </div>
       </DialogFooter>
     </DialogContent>

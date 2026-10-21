@@ -27,6 +27,7 @@ const EVENT_COLUMNS = [
   'change_type_code', 'change_type_label', 'manager_name', 'manager_email',
   'reason', 'reason_note', 'reason_origin_type', 'reason_origin_code', 'reason_origin_name',
   'reason_origin_category', 'reason_origin_function', 'reason_set_by_name', 'reason_set_at',
+  'is_dismissed', 'dismiss_note', 'dismissed_by_name', 'dismissed_at',
 ].join(',');
 
 /**
@@ -36,8 +37,8 @@ export const formatPoTrackerError = (error: unknown): string => {
   const err = asApiError(error);
   if (err.code === '42P01' || err.code === '42703' || err.code === 'PGRST205' || err.code === 'PGRST202' || err.code === 'PGRST200') {
     return tn(
-      'PO 변경 테이블이 없습니다. Supabase에서 migrations/update_po_tracker_change_reasons.sql을 실행해주세요.',
-      'PO change tables are missing. Run migrations/update_po_tracker_change_reasons.sql in Supabase.'
+      'PO 변경 테이블이 없습니다. Supabase에서 migrations/update_po_tracker_rule_refinements_2.sql을 실행해주세요.',
+      'PO change tables are missing. Run migrations/update_po_tracker_rule_refinements_2.sql in Supabase.'
     );
   }
   if (err.code === '42501') {
@@ -247,6 +248,29 @@ export const setChangeReasons = async (keys: string[], input: ChangeReasonInput)
 export const clearChangeReasons = async (keys: string[]): Promise<number> => {
   const supabase = createClient();
   const { data, error } = await supabase.rpc('clear_change_reasons', { p_keys: keys });
+  if (error) throw new Error(formatPoTrackerError(error));
+  return Number(data ?? 0);
+};
+
+/**
+ * "변경 아님(정정)" 처리 (여러 건 한 번에) — 오입력 정정 등 실제 변경이 아닌 건을 통계에서 뺌
+ * @returns 처리한 건수
+ */
+export const dismissChanges = async (keys: string[], note: string): Promise<number> => {
+  if (!note.trim()) throw new Error(tn('변경이 아닌 이유를 메모로 입력해주세요.', 'Enter why this is not a change.'));
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc('dismiss_changes', { p_keys: keys, p_note: note.trim() });
+  if (error) throw new Error(formatPoTrackerError(error));
+  return Number(data ?? 0);
+};
+
+/**
+ * "변경 아님" 해제 — 다시 변경으로 셈
+ * @returns 해제한 건수
+ */
+export const restoreChanges = async (keys: string[]): Promise<number> => {
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc('restore_changes', { p_keys: keys });
   if (error) throw new Error(formatPoTrackerError(error));
   return Number(data ?? 0);
 };

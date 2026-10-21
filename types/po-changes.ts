@@ -104,6 +104,11 @@ export interface PoChangeEvent {
   reason_origin_function: string | null;
   reason_set_by_name: string | null;
   reason_set_at: string | null;
+  /** "변경 아님(정정)" 처리됨 — 변경 건수·통계·사유 입력 대상에서 빠짐 */
+  is_dismissed: boolean;
+  dismiss_note: string | null;
+  dismissed_by_name: string | null;
+  dismissed_at: string | null;
 }
 
 /** 요청 출처 종류 */
@@ -193,6 +198,8 @@ export interface PoChangeFilters {
   reasonFilter: string;
   /** 요청 출처: 전체 / 고객처 / 부서 / 생산부 / 부서 코드 */
   originFilter: string;
+  /** "변경 아님" 처리한 건도 표에 보이기 */
+  includeDismissed: boolean;
 }
 
 /** 고객처 담당자 (customer_managers) */

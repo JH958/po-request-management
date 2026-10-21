@@ -16,6 +16,7 @@
 --   set_change_reasons()     변경 1건마다 사유·메모·요청 출처 입력 (영업관리팀)
 --   clear_change_reasons()   잘못 입력한 사유 지우기 (이력에 남김)
 --   po_dashboard_changes() / po_dashboard_requests()  PO 현황 대시보드용 (조회 범위 적용)
+--   dismiss_changes() / restore_changes()  "변경 아님(정정)" 처리·해제 (영업관리팀)
 --   fail_po_upload()         처리 실패 시 업로드 기록을 실패로 표시
 --
 -- PO 변경 판단 단위는 판매주문 라인(주문번호+라인번호)이며 DO는 합산해서 본다.
@@ -267,6 +268,31 @@ CREATE TABLE IF NOT EXISTS public.po_view_grants (
 
 COMMENT ON TABLE public.po_view_grants IS '추가 조회 권한 — 본사/국내법인 부서(요청 부서)에 특정 고객처의 변경·요청 통계를 열어 줌. 관리자만 관리';
 COMMENT ON COLUMN public.po_view_grants.customer_name IS '판매주문조회 고객처 이름 (customer_so_map.customer_name / requests.customer)';
+
+
+CREATE TABLE IF NOT EXISTS public.po_change_dismissals (
+  stat_unit_key TEXT PRIMARY KEY,
+  note TEXT NOT NULL CHECK (btrim(note) <> ''),
+  dismissed_by UUID REFERENCES public.user_profiles(id) ON DELETE SET NULL,
+  dismissed_by_name TEXT,
+  dismissed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.po_change_dismissals IS '"변경 아님(정정)" 처리 — 오입력 정정 등 실제 변경이 아닌 건. 변경 건수·통계·사유 입력 대상에서 빠짐. dismiss_changes()로만 기록';
+
+CREATE TABLE IF NOT EXISTS public.po_change_dismissal_history (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  stat_unit_key TEXT NOT NULL,
+  action TEXT NOT NULL CHECK (action IN ('dismissed', 'restored')),
+  note TEXT,
+  acted_by UUID REFERENCES public.user_profiles(id) ON DELETE SET NULL,
+  acted_by_name TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS po_change_dismissal_history_key_idx ON public.po_change_dismissal_history (stat_unit_key, created_at);
+
+COMMENT ON TABLE public.po_change_dismissal_history IS '"변경 아님" 처리·해제 이력';
 
 
 -- ---------------------------------------------------------------------
@@ -578,7 +604,12 @@ SELECT
   ro.function_group AS reason_origin_function,
   rr.source AS reason_source,
   rr.set_by_name AS reason_set_by_name,
-  rr.set_at AS reason_set_at
+  rr.set_at AS reason_set_at,
+  -- "변경 아님(정정)" 처리 — 통계·사유 입력 대상에서 빠짐 (묶음이 반려되면 묶음 처리를 물려받음)
+  (dm.stat_unit_key IS NOT NULL) AS is_dismissed,
+  dm.note AS dismiss_note,
+  dm.dismissed_by_name,
+  dm.dismissed_at
 FROM public.do_change_events e
 LEFT JOIN public.customer_so_map c ON c.order_no = e.order_no
 LEFT JOIN public.customer_managers cm ON cm.account_no = c.account_no
@@ -592,6 +623,10 @@ LEFT JOIN public.do_change_groups g ON g.id = e.candidate_group_id
 CROSS JOIN LATERAL (
   SELECT CASE
     WHEN g.id IS NOT NULL AND g.status <> 'rejected' THEN 'group:' || g.id::TEXT
+    -- 같은 날 한 주문의 라인이 모두 삭제(주문 취소)되면 주문 단위 1건
+    WHEN e.change_type = 'line_removed' AND NOT EXISTS (
+      SELECT 1 FROM public.do_order_lines ol WHERE ol.order_no = e.order_no AND ol.status <> 'removed'
+    ) THEN 'order:' || e.upload_id::TEXT || ':' || e.order_no
     WHEN e.direction IN ('date', 'mode') THEN
       'shift:' || e.upload_id::TEXT || ':' || e.order_no || ':' || COALESCE(e.do_no, '') || ':' || e.direction || ':'
         || COALESCE(e.date_before::TEXT, e.mode_before, '') || '>' || COALESCE(e.date_after::TEXT, e.mode_after, '')
@@ -607,6 +642,14 @@ LEFT JOIN LATERAL (
   LIMIT 1
 ) rr ON TRUE
 LEFT JOIN public.po_request_origins ro ON ro.code = rr.origin_code
+LEFT JOIN LATERAL (
+  SELECT x.*
+  FROM public.po_change_dismissals x
+  WHERE x.stat_unit_key = uk.stat_unit_key
+     OR (e.candidate_group_id IS NOT NULL AND x.stat_unit_key = 'group:' || e.candidate_group_id::TEXT)
+  ORDER BY (x.stat_unit_key = uk.stat_unit_key) DESC
+  LIMIT 1
+) dm ON TRUE
 CROSS JOIN LATERAL (SELECT COALESCE(ov.product_class, cs.product_class) AS product_class) cls
 CROSS JOIN LATERAL (
   SELECT EXISTS (
@@ -737,6 +780,8 @@ ALTER TABLE public.customer_managers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.po_request_origins ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.po_customer_accounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.po_view_grants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.po_change_dismissals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.po_change_dismissal_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.po_change_reasons ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.po_change_reason_history ENABLE ROW LEVEL SECURITY;
 -- 임시 적재 테이블은 정책 없음: 처리 함수로만 접근
@@ -762,7 +807,7 @@ BEGIN
   FOREACH t IN ARRAY ARRAY[
     'po_source_uploads', 'customer_so_map', 'item_category_map', 'so_lines', 'do_lines',
     'do_order_lines', 'do_change_events', 'do_change_groups', 'do_change_group_reviews', 'po_change_reasons',
-    'po_change_reason_history', 'customer_managers', 'po_view_grants'
+    'po_change_reason_history', 'customer_managers', 'po_view_grants', 'po_change_dismissals', 'po_change_dismissal_history'
   ] LOOP
     EXECUTE format('DROP POLICY IF EXISTS "Authenticated users can view %1$s" ON public.%1$I', t);
     EXECUTE format('DROP POLICY IF EXISTS "Sales team can view %1$s" ON public.%1$I', t);
@@ -1466,7 +1511,7 @@ BEGIN
       );
     END IF;
 
-    SELECT * INTO v_shift FROM public.po_dist_shift(v_mode_before, v_mode_after);
+    SELECT * INTO v_shift FROM public.po_dist_shift(v_mode_before - '(없음)', v_mode_after - '(없음)');
     IF v_shift.moved > 0 THEN
       PERFORM public.po_insert_change_event(
         p_upload_id, v_date, r.order_no, v_ref.line_no, v_ref.do_no, r.item_no, v_ref.item_name, v_ref.is_transfer,
@@ -1755,6 +1800,82 @@ CREATE TRIGGER po_view_grants_stamp
   FOR EACH ROW EXECUTE FUNCTION public.po_view_grants_stamp();
 
 /**
+ * "변경 아님(정정)" 처리 (여러 건 한 번에) — 오입력 정정 등 실제 변경이 아닌 건을 통계에서 뺌
+ * @param p_keys 변경 1건 키 목록 (v_do_change_events.stat_unit_key)
+ * @param p_note 정정 내용 메모 (필수)
+ * @returns 처리한 건수
+ */
+CREATE OR REPLACE FUNCTION public.dismiss_changes(p_keys TEXT[], p_note TEXT)
+RETURNS INT
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_note TEXT := NULLIF(btrim(p_note), '');
+  v_name TEXT;
+  v_keys TEXT[];
+BEGIN
+  IF NOT public.po_is_sales_team() THEN
+    RAISE EXCEPTION '처리 권한이 없습니다.' USING ERRCODE = '42501';
+  END IF;
+  IF v_note IS NULL THEN
+    RAISE EXCEPTION '변경이 아닌 이유를 메모로 입력해주세요.' USING ERRCODE = '22023';
+  END IF;
+
+  SELECT ARRAY_AGG(DISTINCT k) INTO v_keys FROM unnest(p_keys) k WHERE NULLIF(btrim(k), '') IS NOT NULL;
+  IF v_keys IS NULL THEN
+    RAISE EXCEPTION '처리할 변경을 선택해주세요.' USING ERRCODE = '22023';
+  END IF;
+
+  SELECT full_name INTO v_name FROM public.user_profiles WHERE id = auth.uid();
+
+  INSERT INTO public.po_change_dismissals (stat_unit_key, note, dismissed_by, dismissed_by_name, dismissed_at)
+  SELECT k, v_note, auth.uid(), v_name, NOW() FROM unnest(v_keys) k
+  ON CONFLICT (stat_unit_key) DO UPDATE SET
+    note = EXCLUDED.note,
+    dismissed_by = EXCLUDED.dismissed_by,
+    dismissed_by_name = EXCLUDED.dismissed_by_name,
+    dismissed_at = EXCLUDED.dismissed_at;
+
+  INSERT INTO public.po_change_dismissal_history (stat_unit_key, action, note, acted_by, acted_by_name)
+  SELECT k, 'dismissed', v_note, auth.uid(), v_name FROM unnest(v_keys) k;
+
+  RETURN array_length(v_keys, 1);
+END;
+$$;
+
+/**
+ * "변경 아님" 해제 — 다시 변경으로 셈
+ * @returns 해제한 건수
+ */
+CREATE OR REPLACE FUNCTION public.restore_changes(p_keys TEXT[])
+RETURNS INT
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_name TEXT;
+  v_count INT;
+BEGIN
+  IF NOT public.po_is_sales_team() THEN
+    RAISE EXCEPTION '처리 권한이 없습니다.' USING ERRCODE = '42501';
+  END IF;
+
+  SELECT full_name INTO v_name FROM public.user_profiles WHERE id = auth.uid();
+
+  INSERT INTO public.po_change_dismissal_history (stat_unit_key, action, note, acted_by, acted_by_name)
+  SELECT d.stat_unit_key, 'restored', d.note, auth.uid(), v_name
+  FROM public.po_change_dismissals d WHERE d.stat_unit_key = ANY(p_keys);
+
+  DELETE FROM public.po_change_dismissals WHERE stat_unit_key = ANY(p_keys);
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  RETURN v_count;
+END;
+$$;
+
+/**
  * 로그인 사용자의 PO 현황 조회 범위
  * @returns scope('all' 영업관리팀·관리자 / 'customer' 고객처 계정 / 'department' 본사·국내법인 / 'none'),
  *          customer_name(고객처 계정의 고객처), origin_code(부서), granted_customers(추가 조회 권한으로 열린 고객처)
@@ -1845,6 +1966,7 @@ BEGIN
   FROM public.v_do_change_events v
   WHERE v.detected_on BETWEEN p_from AND p_to
     AND NOT v.is_excluded
+    AND NOT v.is_dismissed
     AND (
       s.scope = 'all'
       OR (s.scope = 'customer' AND v.customer_name = s.customer_name)
@@ -1920,7 +2042,8 @@ $$;
  *   - 같은 날·같은 고객처·같은 품목의 삭제+추가는 분할/합배송 후보로 묶음 (po_group_split_candidates),
  *     주문을 공유하는 후보는 한 묶음 (po_merge_split_groups)
  *   - 통계: 같은 날·같은 주문·같은 DO의 같은 일정·운송방법 변경은 1건 (v_do_change_events.stat_unit_key)
- *   - 요청받은 배송 일자·납품 모드: 값이 바뀐 수량만큼 변경 이벤트
+ *   - 요청받은 배송 일자·납품 모드: 값이 바뀐 수량만큼 변경 이벤트 (납품 모드는 빈칸 → 값 입력 제외,
+ *     이번에 출하 완료되는 라인의 요청 배송일 갱신은 출하 처리 때의 정리로 보고 제외)
  *   - 미종료 → 종료 전환 시 등록 수량 < 이전 수량이면 차이만큼 출하 부족(삭제)
  *   - 이미 종료된 라인이 파일에서 빠지면 조회 범위 이탈로 보고 변경 아님
  */
@@ -2318,8 +2441,9 @@ BEGIN
     END IF;
 
     IF r.present AND r.cur_qty > 0 AND r.conf_qty > 0 THEN
+      -- 요청 배송일: 이번에 출하 완료(미종료 → 종료)되는 라인은 출하 처리 때의 정보 정리로 보고 기록하지 않음
       SELECT * INTO v_shift FROM public.po_dist_shift(r.conf_date, r.cur_date);
-      IF v_shift.moved > 0 THEN
+      IF v_shift.moved > 0 AND NOT (r.cur_closed AND r.status <> 'closed') THEN
         PERFORM public.po_insert_change_event(
           p_upload_id, v_date, r.order_no, r.line_no, v_do, r.cur_item, r.cur_item_name, r.is_transfer,
           'delivery_date_changed', v_shift.moved,
@@ -2329,7 +2453,8 @@ BEGIN
         );
       END IF;
 
-      SELECT * INTO v_shift FROM public.po_dist_shift(r.conf_mode, r.cur_mode);
+      -- 운송방법은 값이 다른 값으로 바뀔 때만 (빈칸 → 값 입력은 변경 아님)
+      SELECT * INTO v_shift FROM public.po_dist_shift(r.conf_mode - '(없음)', r.cur_mode - '(없음)');
       IF v_shift.moved > 0 THEN
         PERFORM public.po_insert_change_event(
           p_upload_id, v_date, r.order_no, r.line_no, v_do, r.cur_item, r.cur_item_name, r.is_transfer,
@@ -2461,3 +2586,7 @@ REVOKE ALL ON FUNCTION public.po_dashboard_requests(DATE, DATE) FROM PUBLIC, ano
 GRANT EXECUTE ON FUNCTION public.po_my_view_scope() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.po_dashboard_changes(DATE, DATE) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.po_dashboard_requests(DATE, DATE) TO authenticated;
+REVOKE ALL ON FUNCTION public.dismiss_changes(TEXT[], TEXT) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.restore_changes(TEXT[]) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.dismiss_changes(TEXT[], TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.restore_changes(TEXT[]) TO authenticated;

@@ -195,6 +195,17 @@ export const PoChangesFilterBar = ({
 
         <div className="flex h-9 items-center gap-2">
           <Switch
+            id="po-changes-dismissed"
+            checked={filters.includeDismissed}
+            onCheckedChange={(v) => set({ includeDismissed: v })}
+          />
+          <Label htmlFor="po-changes-dismissed" className="cursor-pointer text-sm text-[#253143]">
+            {t('변경 아님 포함', 'Include not-a-change')}
+          </Label>
+        </div>
+
+        <div className="flex h-9 items-center gap-2">
+          <Switch
             id="po-changes-excluded"
             checked={filters.includeExcluded}
             onCheckedChange={(v) => set({ includeExcluded: v })}

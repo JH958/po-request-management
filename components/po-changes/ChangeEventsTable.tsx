@@ -136,6 +136,8 @@ export const ChangeEventsTable = ({ events, changeTypes, statCount, from, to, on
           [t('요청 출처', 'Requested by')]: e.reason_origin_name ?? '',
           [t('출처 분류', 'Origin category')]: e.reason_origin_type === 'customer' ? t('고객처', 'Customer') : e.reason_origin_category ?? '',
           [t('사유 입력자', 'Reason by')]: e.reason_set_by_name ?? '',
+          [t('변경 아님', 'Not a change')]: e.is_dismissed ? 'Y' : '',
+          [t('정정 메모', 'Correction note')]: e.dismiss_note ?? '',
         }))
       );
       const sheet = XLSX.utils.json_to_sheet(rows);
@@ -209,7 +211,12 @@ export const ChangeEventsTable = ({ events, changeTypes, statCount, from, to, on
     return (
       <>
         <TableCell className="max-w-52">
-          {e.reason ? (
+          {e.is_dismissed ? (
+            <span className="block truncate" title={e.dismiss_note ?? ''}>
+              <Badge variant="outline" className="border-slate-300 bg-slate-100 text-slate-600">{t('변경 아님', 'Not a change')}</Badge>
+              {e.dismiss_note ? <span className="ml-1 text-xs text-[#5A6778]">{e.dismiss_note}</span> : null}
+            </span>
+          ) : e.reason ? (
             <span className="block truncate" title={e.reason_note ?? ''}>
               <span className="font-medium text-[#253143]">{e.reason}</span>
               {e.reason_note ? <span className="ml-1 text-xs text-[#5A6778]">{e.reason_note}</span> : null}
@@ -353,7 +360,7 @@ export const ChangeEventsTable = ({ events, changeTypes, statCount, from, to, on
             <TableBody>
               {units.map((unit) => {
                 const first = unit.events[0];
-                const excluded = unit.events.every((e) => e.is_excluded);
+                const excluded = unit.events.every((e) => e.is_excluded) || first.is_dismissed;
 
                 // 이벤트 1건짜리 묶음은 그대로 한 줄
                 if (unit.events.length === 1) {

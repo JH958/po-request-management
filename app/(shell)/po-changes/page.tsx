@@ -20,7 +20,7 @@ import { usePoChanges } from '@/hooks/use-po-changes';
 import { useLanguage } from '@/context/LanguageContext';
 import { useRequestConfig } from '@/context/RequestConfigContext';
 import { isSalesTeam } from '@/lib/dashboard-scope';
-import { clearChangeReasons, reviewChangeGroup, setChangeReasons } from '@/lib/po-changes-api';
+import { clearChangeReasons, dismissChanges, restoreChanges, reviewChangeGroup, setChangeReasons } from '@/lib/po-changes-api';
 import {
   REASON_FILTER_MISSING,
   countMissingReasons,
@@ -73,7 +73,7 @@ const PoChangesContent = ({ userId, userEmail }: { userId: string; userEmail: st
   // 업로드 이력에서 들어오면 그 기준일 하루, 아니면 최근 7일
   const [filters, setFilters] = useState<PoChangeFilters>(() => {
     const range = isIsoDate(dateParam) ? { from: dateParam, to: dateParam } : getDefaultRange();
-    return { ...range, changeType: 'all', productClass: 'all', search: '', includeExcluded: false, myEmail: readMineOnly() ? userEmail : null, reasonFilter: 'all', originFilter: 'all' };
+    return { ...range, changeType: 'all', productClass: 'all', search: '', includeExcluded: false, myEmail: readMineOnly() ? userEmail : null, reasonFilter: 'all', originFilter: 'all', includeDismissed: false };
   });
   const [tab, setTab] = useState<PoChangesTab>('review');
   const [reasonUnits, setReasonUnits] = useState<PoStatUnit[] | null>(null);
@@ -150,6 +150,42 @@ const PoChangesContent = ({ userId, userEmail }: { userId: string; userEmail: st
         console.error('변경 사유 지우기 실패:', err);
       }
       toast.error(t('사유를 지우지 못했습니다.', 'Could not clear the reason.'), { description: getReadableErrorMessage(err) });
+      return false;
+    }
+  };
+
+  /**
+   * "변경 아님(정정)" 처리 — 성공하면 true (창 닫기)
+   */
+  const handleDismiss = async (keys: string[], note: string): Promise<boolean> => {
+    try {
+      const count = await dismissChanges(keys, note);
+      toast.success(t(`변경 ${count}건을 "변경 아님"으로 처리했습니다.`, `Marked ${count} as not a change.`));
+      await refresh();
+      return true;
+    } catch (err) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('변경 아님 처리 실패:', err);
+      }
+      toast.error(t('처리하지 못했습니다.', 'Could not update.'), { description: getReadableErrorMessage(err) });
+      return false;
+    }
+  };
+
+  /**
+   * "변경 아님" 해제 — 성공하면 true (창 닫기)
+   */
+  const handleRestore = async (keys: string[]): Promise<boolean> => {
+    try {
+      const count = await restoreChanges(keys);
+      toast.success(t(`변경 ${count}건을 다시 변경으로 셉니다.`, `${count} counted as changes again.`));
+      await refresh();
+      return true;
+    } catch (err) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('변경 아님 해제 실패:', err);
+      }
+      toast.error(t('처리하지 못했습니다.', 'Could not update.'), { description: getReadableErrorMessage(err) });
       return false;
     }
   };
@@ -247,6 +283,8 @@ const PoChangesContent = ({ userId, userEmail }: { userId: string; userEmail: st
         onClose={() => setReasonUnits(null)}
         onSubmit={handleSaveReasons}
         onClear={handleClearReasons}
+        onDismiss={handleDismiss}
+        onRestore={handleRestore}
       />
     </div>
   );
