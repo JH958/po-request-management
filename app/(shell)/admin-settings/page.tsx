@@ -16,6 +16,7 @@ import { CustomerManagerSettings } from '@/components/admin/CustomerManagerSetti
 import { RequestOriginSettings } from '@/components/admin/RequestOriginSettings';
 import { CustomerAccountSettings } from '@/components/admin/CustomerAccountSettings';
 import { ViewGrantSettings } from '@/components/admin/ViewGrantSettings';
+import { DestinationSettings } from '@/components/admin/DestinationSettings';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { PageHeader } from '@/components/common/PageHeader';
@@ -28,7 +29,8 @@ type AdminTab =
   | 'customer-accounts'
   | 'view-grants'
   | 'item-class'
-  | 'customer-managers';
+  | 'customer-managers'
+  | 'destinations';
 
 export default function AdminSettingsPage() {
   const router = useRouter();
@@ -64,6 +66,7 @@ export default function AdminSettingsPage() {
     { id: 'view-grants', label: t('조회 권한', 'View Access') },
     { id: 'item-class', label: t('품목 구분 예외', 'Item Category Exceptions') },
     { id: 'customer-managers', label: t('고객처 담당자', 'Customer Owners') },
+    { id: 'destinations', label: t('경유 고객처·도착지', 'Via Customers & Destinations') },
   ];
 
   return (
@@ -96,6 +99,7 @@ export default function AdminSettingsPage() {
       {tab === 'view-grants' && <ViewGrantSettings />}
       {tab === 'item-class' && <ItemClassOverrideSettings userId={user.id} />}
       {tab === 'customer-managers' && <CustomerManagerSettings userId={user.id} />}
+      {tab === 'destinations' && <DestinationSettings userId={user.id} />}
     </div>
   );
 }

@@ -17,6 +17,7 @@
 --   clear_change_reasons()   잘못 입력한 사유 지우기 (이력에 남김)
 --   po_dashboard_changes() / po_dashboard_requests()  PO 현황 대시보드용 (조회 범위 적용)
 --   dismiss_changes() / restore_changes()  "변경 아님(정정)" 처리·해제 (영업관리팀)
+--   set_order_destination()  경유 고객처 주문의 실제 고객처 건별 지정 (영업관리팀)
 --   fail_po_upload()         처리 실패 시 업로드 기록을 실패로 표시
 --
 -- PO 변경 판단 단위는 판매주문 라인(주문번호+라인번호)이며 DO는 합산해서 본다.
@@ -95,7 +96,7 @@ COMMENT ON COLUMN public.po_source_uploads.summary IS '처리 결과 요약(유�
 
 -- ---------------------------------------------------------------------
 -- 2. 관리자 설정: 품목군 / 세부분류 → 구분 / 추적 제외 고객처 / 품목 구분 예외 / 변경 유형 / 고객처 담당자
---    / 요청 부서 / 변경 사유 / 고객처 계정 / 추가 조회 권한
+--    / 요청 부서 / 변경 사유 / 고객처 계정 / 추가 조회 권한 / 경유 고객처·도착지
 -- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.product_groups (
   code TEXT PRIMARY KEY,
@@ -348,6 +349,54 @@ COMMENT ON COLUMN public.so_lines.ordered_qty IS '입고예정(주문 수량)';
 COMMENT ON COLUMN public.so_lines.remaining_qty IS '잔여 배송';
 
 
+CREATE TABLE IF NOT EXISTS public.po_via_customers (
+  customer_name TEXT PRIMARY KEY,
+  note TEXT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_by UUID REFERENCES public.user_profiles(id) ON DELETE SET NULL
+);
+
+COMMENT ON TABLE public.po_via_customers IS '경유 고객처 — 판매주문 고객처만으로는 실제 도착지를 알 수 없어 표시명 뒤에 실제 고객처·국가를 붙이는 곳 (인바디헬스케어·코르트)';
+
+CREATE TABLE IF NOT EXISTS public.po_country_names (
+  country_code TEXT PRIMARY KEY,
+  name_ko TEXT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_by UUID REFERENCES public.user_profiles(id) ON DELETE SET NULL
+);
+
+COMMENT ON TABLE public.po_country_names IS '판매주문조회 국가/지역 코드(ISO 3자리) → 한글 국가명';
+
+CREATE TABLE IF NOT EXISTS public.po_destination_map (
+  match_key TEXT PRIMARY KEY,
+  target_customer TEXT,
+  choice_candidates TEXT[],
+  note TEXT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_by UUID REFERENCES public.user_profiles(id) ON DELETE SET NULL,
+  CHECK (target_customer IS NOT NULL OR COALESCE(array_length(choice_candidates, 1), 0) > 0)
+);
+
+COMMENT ON TABLE public.po_destination_map IS '경유 고객처 주문의 도착지 → 실제 고객처. match_key는 도착항 코드(예: O_LGB, 우선) 또는 국가 코드(예: JPN). target_customer가 없고 choice_candidates가 있으면 건별 선택';
+
+CREATE TABLE IF NOT EXISTS public.po_order_destinations (
+  order_no TEXT PRIMARY KEY,
+  target_customer TEXT NOT NULL,
+  set_by UUID REFERENCES public.user_profiles(id) ON DELETE SET NULL,
+  set_by_name TEXT,
+  set_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.po_order_destinations IS '경유 고객처 주문의 실제 고객처를 건별로 고른 값 (PO 변경 화면, 영업관리팀) — 도착지 연결표보다 우선';
+
+ALTER TABLE public.customer_so_map ADD COLUMN IF NOT EXISTS dest_port TEXT;
+ALTER TABLE public.customer_so_map ADD COLUMN IF NOT EXISTS dest_country TEXT;
+ALTER TABLE public.customer_so_map ADD COLUMN IF NOT EXISTS customer_name2 TEXT;
+COMMENT ON COLUMN public.customer_so_map.dest_port IS '판매주문조회 도착항 (O_=Ocean, A_=Air, 빈칸이면 국내)';
+COMMENT ON COLUMN public.customer_so_map.dest_country IS '판매주문조회 국가/지역 (ISO 3자리)';
+COMMENT ON COLUMN public.customer_so_map.customer_name2 IS '판매주문조회 이름2 (경유 고객처는 "_대만(KOLY)"처럼 실제 고객처를 적기도 함)';
+
+
 -- ---------------------------------------------------------------------
 -- 4. DO 라인 현재 상태 (DO 파일 행 단위)
 -- ---------------------------------------------------------------------
@@ -547,6 +596,67 @@ END $$;
 -- 7. 조회용 뷰: 고객처·구분(품목 예외 우선)·변경 유형·제외 여부를 조회 시점 설정으로 붙인다
 --    (설정을 바꾸면 과거 이벤트에도 바로 반영)
 -- ---------------------------------------------------------------------
+-- 주문별 도착지·실제 고객처·표시명
+-- 판단 순서: 건별 선택 → 이름2 메모가 후보 고객처와 맞음 → 도착지 연결표(도착항 우선, 국가) → 국가명 → 도착항 빈칸이면 국내
+-- (도착 정보를 아직 받지 못한 주문은 고객처명 그대로)
+CREATE OR REPLACE VIEW public.v_order_destinations
+WITH (security_invoker = true)
+AS
+SELECT
+  c.order_no,
+  c.customer_name,
+  c.dest_port,
+  c.dest_country,
+  COALESCE(cn.name_ko, c.dest_country) AS dest_country_name,
+  (vc.customer_name IS NOT NULL) AS is_via_customer,
+  rule.choice_candidates,
+  od.target_customer AS chosen_customer,
+  od.set_by_name AS chosen_by_name,
+  od.set_at AS chosen_at,
+  t.actual_customer,
+  (vc.customer_name IS NOT NULL AND t.actual_customer IS NULL
+    AND COALESCE(array_length(rule.choice_candidates, 1), 0) > 0 AND c.dest_port IS NOT NULL) AS needs_destination_choice,
+  CASE
+    WHEN vc.customer_name IS NULL THEN c.customer_name
+    -- 도착 정보가 아직 안 들어온 주문(이 기능 이전 업로드, 이름2도 비어 있음)은 고객처명 그대로
+    WHEN c.customer_name2 IS NULL AND c.dest_port IS NULL AND c.dest_country IS NULL THEN c.customer_name
+    ELSE c.customer_name || '_' || COALESCE(
+      t.actual_customer,
+      CASE WHEN c.dest_port IS NULL THEN '국내' END,
+      cn.name_ko,
+      c.dest_country,
+      '국내'
+    )
+  END AS display_customer_name
+FROM public.customer_so_map c
+LEFT JOIN public.po_via_customers vc ON vc.customer_name = c.customer_name
+LEFT JOIN public.po_country_names cn ON cn.country_code = c.dest_country
+LEFT JOIN public.po_order_destinations od ON od.order_no = c.order_no
+LEFT JOIN LATERAL (
+  SELECT m.target_customer, m.choice_candidates
+  FROM public.po_destination_map m
+  WHERE m.match_key IN (c.dest_port, c.dest_country)
+  ORDER BY (m.match_key = c.dest_port) DESC
+  LIMIT 1
+) rule ON vc.customer_name IS NOT NULL AND c.dest_port IS NOT NULL
+CROSS JOIN LATERAL (
+  SELECT COALESCE(
+    od.target_customer,
+    -- 이름2 "고객처_대만(KOLY)" → 후보 중 이름이 그렇게 시작하는 고객처 (공백·대소문자·닫는 괄호 무시)
+    (SELECT cand FROM unnest(COALESCE(rule.choice_candidates, ARRAY[]::TEXT[]) || ARRAY[rule.target_customer]) cand
+      WHERE cand IS NOT NULL
+        AND position('_' IN COALESCE(c.customer_name2, '')) > 0
+        AND lower(replace(cand, ' ', '')) LIKE
+            lower(replace(replace(split_part(c.customer_name2, '_', 2), ' ', ''), ')', '')) || '%'
+        AND length(split_part(c.customer_name2, '_', 2)) >= 2
+      LIMIT 1),
+    rule.target_customer
+  ) AS actual_customer
+) t;
+
+COMMENT ON VIEW public.v_order_destinations IS '주문별 도착항·국가·실제 고객처·표시명 (경유 고객처는 "고객처_실제 고객처/국가/국내")';
+
+
 CREATE OR REPLACE VIEW public.v_do_change_events
 WITH (security_invoker = true)
 AS
@@ -609,9 +719,19 @@ SELECT
   (dm.stat_unit_key IS NOT NULL) AS is_dismissed,
   dm.note AS dismiss_note,
   dm.dismissed_by_name,
-  dm.dismissed_at
+  dm.dismissed_at,
+  -- 경유 고객처(인바디헬스케어·코르트)는 "고객처_실제 고객처/국가/국내" — 조회 범위·담당자는 customer_name 기준
+  COALESCE(od.display_customer_name, COALESCE(c.customer_name, CASE WHEN e.is_transfer THEN '이전(Transfer)' END)) AS display_customer_name,
+  od.dest_port,
+  od.dest_country,
+  od.dest_country_name,
+  od.actual_customer,
+  COALESCE(od.needs_destination_choice, FALSE) AS needs_destination_choice,
+  od.choice_candidates AS destination_candidates,
+  od.chosen_by_name AS destination_chosen_by_name
 FROM public.do_change_events e
 LEFT JOIN public.customer_so_map c ON c.order_no = e.order_no
+LEFT JOIN public.v_order_destinations od ON od.order_no = e.order_no
 LEFT JOIN public.customer_managers cm ON cm.account_no = c.account_no
 LEFT JOIN public.item_category_map i ON i.item_no = COALESCE(e.item_after, e.item_no)
 LEFT JOIN public.category_class_settings cs ON cs.category_model = i.category_model
@@ -781,6 +901,10 @@ ALTER TABLE public.po_request_origins ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.po_customer_accounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.po_view_grants ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.po_change_dismissals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.po_via_customers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.po_country_names ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.po_destination_map ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.po_order_destinations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.po_change_dismissal_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.po_change_reasons ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.po_change_reason_history ENABLE ROW LEVEL SECURITY;
@@ -794,7 +918,8 @@ BEGIN
   -- 설정 테이블: 로그인 사용자 전체 (요청서·회원가입·화면 표시용)
   FOREACH t IN ARRAY ARRAY[
     'product_groups', 'category_class_settings', 'excluded_customers', 'item_class_overrides', 'po_change_type_settings',
-    'po_change_type_rules', 'po_request_origins', 'po_customer_accounts'
+    'po_change_type_rules', 'po_request_origins', 'po_customer_accounts', 'po_via_customers', 'po_country_names',
+    'po_destination_map'
   ] LOOP
     EXECUTE format('DROP POLICY IF EXISTS "Authenticated users can view %1$s" ON public.%1$I', t);
     EXECUTE format(
@@ -807,7 +932,8 @@ BEGIN
   FOREACH t IN ARRAY ARRAY[
     'po_source_uploads', 'customer_so_map', 'item_category_map', 'so_lines', 'do_lines',
     'do_order_lines', 'do_change_events', 'do_change_groups', 'do_change_group_reviews', 'po_change_reasons',
-    'po_change_reason_history', 'customer_managers', 'po_view_grants', 'po_change_dismissals', 'po_change_dismissal_history'
+    'po_change_reason_history', 'customer_managers', 'po_view_grants', 'po_change_dismissals', 'po_change_dismissal_history',
+    'po_order_destinations'
   ] LOOP
     EXECUTE format('DROP POLICY IF EXISTS "Authenticated users can view %1$s" ON public.%1$I', t);
     EXECUTE format('DROP POLICY IF EXISTS "Sales team can view %1$s" ON public.%1$I', t);
@@ -821,7 +947,8 @@ BEGIN
   FOREACH t IN ARRAY ARRAY[
     'product_groups', 'category_class_settings', 'excluded_customers',
     'item_class_overrides', 'po_change_type_settings', 'po_change_type_rules', 'customer_managers',
-    'po_request_origins', 'po_customer_accounts', 'po_view_grants'
+    'po_request_origins', 'po_customer_accounts', 'po_view_grants', 'po_via_customers', 'po_country_names',
+    'po_destination_map'
   ] LOOP
     EXECUTE format('DROP POLICY IF EXISTS "Admins can insert %1$s" ON public.%1$I', t);
     EXECUTE format('DROP POLICY IF EXISTS "Admins can update %1$s" ON public.%1$I', t);
@@ -992,7 +1119,7 @@ $$;
 /**
  * 판매주문조회 반영
  *
- * p_orders: [{ord, acct, name}]                              판매주문 → 고객처 (전체 주문)
+ * p_orders: [{ord, acct, name, port, cty, name2}] (port=도착항, cty=국가/지역, name2=이름2)                              판매주문 → 고객처 (전체 주문)
  * p_items:  [{item, nm, cat, typ}]                           품목 → 카테고리 모델·품목유형 (전체 품목)
  * p_lines:  [{ord, ln, item, nm, q_ord, q_shp, q_rem, ls, hs}] 미출고 SO 라인 (상태_라인이 INVOICED가 아니거나 잔여 배송 > 0)
  */
@@ -1023,14 +1150,19 @@ BEGIN
 
   -- 판매주문 → 고객처
   INSERT INTO public.customer_so_map AS m
-    (order_no, account_no, customer_name, first_seen_upload_id, last_seen_upload_id, last_seen_date)
-  SELECT DISTINCT ON (o.ord) o.ord, o.acct, o.name, p_upload_id, p_upload_id, v_up.snapshot_date
-  FROM jsonb_to_recordset(p_orders) AS o(ord TEXT, acct TEXT, name TEXT)
+    (order_no, account_no, customer_name, dest_port, dest_country, customer_name2,
+     first_seen_upload_id, last_seen_upload_id, last_seen_date)
+  SELECT DISTINCT ON (o.ord) o.ord, o.acct, o.name, NULLIF(btrim(o.port), ''), NULLIF(btrim(o.cty), ''), NULLIF(btrim(o.name2), ''),
+         p_upload_id, p_upload_id, v_up.snapshot_date
+  FROM jsonb_to_recordset(p_orders) AS o(ord TEXT, acct TEXT, name TEXT, port TEXT, cty TEXT, name2 TEXT)
   WHERE o.ord IS NOT NULL
   ORDER BY o.ord
   ON CONFLICT (order_no) DO UPDATE SET
     account_no = EXCLUDED.account_no,
     customer_name = EXCLUDED.customer_name,
+    dest_port = EXCLUDED.dest_port,
+    dest_country = EXCLUDED.dest_country,
+    customer_name2 = EXCLUDED.customer_name2,
     last_seen_upload_id = EXCLUDED.last_seen_upload_id,
     last_seen_date = EXCLUDED.last_seen_date,
     updated_at = NOW();
@@ -1876,6 +2008,50 @@ END;
 $$;
 
 /**
+ * 경유 고객처 주문의 실제 고객처를 건별로 지정·해제 (영업관리팀)
+ * @param p_order_no 판매주문 번호
+ * @param p_target 실제 고객처 (NULL이면 지정 해제 → 연결표·국가 기준으로 돌아감)
+ */
+CREATE OR REPLACE FUNCTION public.set_order_destination(p_order_no TEXT, p_target TEXT)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_dest RECORD;
+  v_name TEXT;
+BEGIN
+  IF NOT public.po_is_sales_team() THEN
+    RAISE EXCEPTION '처리 권한이 없습니다.' USING ERRCODE = '42501';
+  END IF;
+
+  SELECT * INTO v_dest FROM public.v_order_destinations WHERE order_no = p_order_no;
+  IF v_dest.order_no IS NULL OR NOT v_dest.is_via_customer THEN
+    RAISE EXCEPTION '경유 고객처 주문이 아닙니다: %', p_order_no USING ERRCODE = '22023';
+  END IF;
+
+  IF NULLIF(btrim(p_target), '') IS NULL THEN
+    DELETE FROM public.po_order_destinations WHERE order_no = p_order_no;
+    RETURN;
+  END IF;
+
+  IF NOT (p_target = ANY (COALESCE(v_dest.choice_candidates, ARRAY[]::TEXT[]))) THEN
+    RAISE EXCEPTION '이 주문의 후보 고객처가 아닙니다: %', p_target USING ERRCODE = '22023';
+  END IF;
+
+  SELECT full_name INTO v_name FROM public.user_profiles WHERE id = auth.uid();
+  INSERT INTO public.po_order_destinations (order_no, target_customer, set_by, set_by_name, set_at)
+  VALUES (p_order_no, p_target, auth.uid(), v_name, NOW())
+  ON CONFLICT (order_no) DO UPDATE SET
+    target_customer = EXCLUDED.target_customer,
+    set_by = EXCLUDED.set_by,
+    set_by_name = EXCLUDED.set_by_name,
+    set_at = EXCLUDED.set_at;
+END;
+$$;
+
+/**
  * 로그인 사용자의 PO 현황 조회 범위
  * @returns scope('all' 영업관리팀·관리자 / 'customer' 고객처 계정 / 'department' 본사·국내법인 / 'none'),
  *          customer_name(고객처 계정의 고객처), origin_code(부서), granted_customers(추가 조회 권한으로 열린 고객처)
@@ -1917,6 +2093,7 @@ $$;
  *   - 고객처 계정: 자기 고객처 주문의 변경
  *   - 본사·국내법인 부서: 요청 출처가 자기 부서인 변경 + 추가 조회 권한으로 열린 고객처의 변경
  */
+DROP FUNCTION IF EXISTS public.po_dashboard_changes(DATE, DATE);
 CREATE OR REPLACE FUNCTION public.po_dashboard_changes(p_from DATE, p_to DATE)
 RETURNS TABLE (
   stat_unit_key TEXT,
@@ -1924,6 +2101,8 @@ RETURNS TABLE (
   change_type_code TEXT,
   change_type_label TEXT,
   customer_name TEXT,
+  display_customer_name TEXT,
+  dest_country_name TEXT,
   product_class TEXT,
   reason TEXT,
   reason_origin_type TEXT,
@@ -1954,6 +2133,8 @@ BEGIN
     MIN(v.change_type_code),
     MIN(v.change_type_label),
     MIN(v.customer_name),
+    MIN(v.display_customer_name),
+    MIN(v.dest_country_name),
     MIN(v.product_class),
     MIN(v.reason),
     MIN(v.reason_origin_type),
@@ -2590,3 +2771,7 @@ REVOKE ALL ON FUNCTION public.dismiss_changes(TEXT[], TEXT) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.restore_changes(TEXT[]) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.dismiss_changes(TEXT[], TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.restore_changes(TEXT[]) TO authenticated;
+REVOKE ALL ON FUNCTION public.set_order_destination(TEXT, TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.set_order_destination(TEXT, TEXT) TO authenticated;
+REVOKE ALL ON FUNCTION public.po_dashboard_changes(DATE, DATE) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.po_dashboard_changes(DATE, DATE) TO authenticated;

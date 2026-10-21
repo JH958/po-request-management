@@ -144,7 +144,14 @@ export const parseSalesOrderRows = (rows: SheetRow[]): ParsedSalesOrderFile => {
     const item = toText(row['품목번호']);
     if (!ord) continue;
 
-    orders.set(ord, { ord, acct: toText(row['계정 번호']), name: toText(row['이름']) });
+    orders.set(ord, {
+      ord,
+      acct: toText(row['계정 번호']),
+      name: toText(row['이름']),
+      port: toText(row['도착항']),
+      cty: toText(row['국가/지역']),
+      name2: toText(row['이름2']),
+    });
 
     if (item) {
       const category = toText(row['카테고리 모델']);

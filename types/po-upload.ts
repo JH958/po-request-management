@@ -67,6 +67,12 @@ export interface SoOrderPayload {
   ord: string;
   acct: string | null;
   name: string | null;
+  /** 도착항 (O_=Ocean, A_=Air, 빈칸이면 국내) */
+  port: string | null;
+  /** 국가/지역 (ISO 3자리) */
+  cty: string | null;
+  /** 이름2 (경유 고객처의 실제 고객처 메모) */
+  name2: string | null;
 }
 
 /** 품목 → 카테고리 모델 */

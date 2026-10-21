@@ -5,7 +5,10 @@ import { createClient } from '@/lib/supabase/client';
 import { formatPoTrackerError } from '@/lib/po-changes-api';
 import { translateNow as tn } from '@/lib/i18n';
 import type {
+  CountryName,
   CustomerAccount,
+  DestinationRule,
+  ViaCustomer,
   ViewGrant,
   CustomerManager,
   ItemClassOverride,
@@ -358,5 +361,85 @@ export const addViewGrants = async (originCode: string, customerNames: string[],
 export const deleteViewGrant = async (id: string): Promise<void> => {
   const supabase = createClient();
   const { error } = await supabase.from('po_view_grants').delete().eq('id', id);
+  if (error) throw new Error(formatPoTrackerError(error));
+};
+
+/**
+ * 경유 고객처 목록
+ */
+export const fetchViaCustomers = async (): Promise<ViaCustomer[]> => {
+  const supabase = createClient();
+  const { data, error } = await supabase.from('po_via_customers').select('customer_name, note').order('customer_name');
+  if (error) throw new Error(formatPoTrackerError(error));
+  return (data ?? []) as ViaCustomer[];
+};
+
+/**
+ * 경유 고객처 추가·수정
+ */
+export const saveViaCustomer = async (row: ViaCustomer, userId: string): Promise<void> => {
+  const supabase = createClient();
+  const { error } = await supabase.from('po_via_customers').upsert({ ...row, updated_by: userId }, { onConflict: 'customer_name' });
+  if (error) throw new Error(formatPoTrackerError(error));
+};
+
+/**
+ * 경유 고객처 삭제 — 그 고객처는 표시명에 도착지를 붙이지 않음
+ */
+export const deleteViaCustomer = async (customerName: string): Promise<void> => {
+  const supabase = createClient();
+  const { error } = await supabase.from('po_via_customers').delete().eq('customer_name', customerName);
+  if (error) throw new Error(formatPoTrackerError(error));
+};
+
+/**
+ * 도착지 연결표 (도착항 → 국가 순)
+ */
+export const fetchDestinationRules = async (): Promise<DestinationRule[]> => {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('po_destination_map')
+    .select('match_key, target_customer, choice_candidates, note')
+    .order('match_key');
+  if (error) throw new Error(formatPoTrackerError(error));
+  return ((data ?? []) as DestinationRule[]).sort(
+    (a, b) => Number(!a.match_key.includes('_')) - Number(!b.match_key.includes('_')) || a.match_key.localeCompare(b.match_key)
+  );
+};
+
+/**
+ * 도착지 연결 추가·수정
+ */
+export const saveDestinationRule = async (rule: DestinationRule, userId: string): Promise<void> => {
+  const supabase = createClient();
+  const { error } = await supabase.from('po_destination_map').upsert({ ...rule, updated_by: userId }, { onConflict: 'match_key' });
+  if (error) throw new Error(formatPoTrackerError(error));
+};
+
+/**
+ * 도착지 연결 삭제 — 그 도착지는 국가명만 표시
+ */
+export const deleteDestinationRule = async (matchKey: string): Promise<void> => {
+  const supabase = createClient();
+  const { error } = await supabase.from('po_destination_map').delete().eq('match_key', matchKey);
+  if (error) throw new Error(formatPoTrackerError(error));
+};
+
+/**
+ * 국가 한글명 목록
+ */
+export const fetchCountryNames = async (): Promise<CountryName[]> => {
+  const supabase = createClient();
+  const { data, error } = await supabase.from('po_country_names').select('country_code, name_ko').order('country_code');
+  if (error) throw new Error(formatPoTrackerError(error));
+  return (data ?? []) as CountryName[];
+};
+
+/**
+ * 국가 한글명 추가·수정
+ */
+export const saveCountryName = async (row: CountryName, userId: string): Promise<void> => {
+  const supabase = createClient();
+  const { error } = await supabase.from('po_country_names').upsert({ ...row, updated_by: userId }, { onConflict: 'country_code' });
   if (error) throw new Error(formatPoTrackerError(error));
 };

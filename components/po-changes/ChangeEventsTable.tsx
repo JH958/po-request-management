@@ -26,6 +26,7 @@ import {
   getProductClassLabels,
 } from '@/lib/po-tracker-labels';
 import { groupByStatUnit, type PoStatUnit } from '@/lib/po-changes-utils';
+import { DestinationChoice } from '@/components/po-changes/DestinationChoice';
 import type { Translate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PoChangeEvent, PoChangeTypeSetting } from '@/types/po-changes';
@@ -38,6 +39,8 @@ interface ChangeEventsTableProps {
   to: string;
   /** 사유 입력 창 열기 (고른 변경들) */
   onEditReasons: (units: PoStatUnit[]) => void;
+  /** 경유 고객처 주문의 실제 고객처 지정 */
+  onSetDestination: (orderNo: string, target: string | null) => Promise<void>;
 }
 
 const numberFormat = new Intl.NumberFormat('ko-KR');
@@ -76,7 +79,15 @@ const qtySummary = (events: PoChangeEvent[]): string => {
   return numberFormat.format(events.reduce((s, e) => s + e.qty, 0));
 };
 
-export const ChangeEventsTable = ({ events, changeTypes, statCount, from, to, onEditReasons }: ChangeEventsTableProps) => {
+export const ChangeEventsTable = ({
+  events,
+  changeTypes,
+  statCount,
+  from,
+  to,
+  onEditReasons,
+  onSetDestination,
+}: ChangeEventsTableProps) => {
   const { t, lang } = useLanguage();
   const classLabels = getProductClassLabels(t);
   const typeLabels = getDoChangeTypeLabels(t);
@@ -114,7 +125,9 @@ export const ChangeEventsTable = ({ events, changeTypes, statCount, from, to, on
         unit.events.map((e) => ({
           [t('통계 묶음 번호', 'Unit No.')]: index + 1,
           [t('기준일', 'Date')]: e.detected_on,
-          [t('고객처', 'Customer')]: e.customer_name ?? '',
+          [t('고객처', 'Customer')]: e.display_customer_name ?? e.customer_name ?? '',
+          [t('판매주문 고객처', 'Sales order customer')]: e.customer_name ?? '',
+          [t('도착국', 'Destination country')]: e.dest_country_name ?? '',
           [t('담당자', 'Manager')]: e.manager_name ?? '',
           [t('주문번호', 'Order No.')]: e.order_no,
           [t('라인', 'Line')]: e.line_no,
@@ -158,8 +171,15 @@ export const ChangeEventsTable = ({ events, changeTypes, statCount, from, to, on
   const renderEventCells = (e: PoChangeEvent, nested = false) => (
     <>
       <TableCell className="whitespace-nowrap">{nested ? '' : e.detected_on}</TableCell>
-      <TableCell className="max-w-44 truncate" title={e.customer_name ?? ''}>
-        {nested ? '' : e.customer_name ?? <span className="text-[#8E98A8]">{t('미확인', 'Unknown')}</span>}
+      <TableCell className="max-w-56" title={e.display_customer_name ?? e.customer_name ?? ''}>
+        {nested ? '' : (
+          <>
+            <span className="block truncate">
+              {e.display_customer_name ?? e.customer_name ?? <span className="text-[#8E98A8]">{t('미확인', 'Unknown')}</span>}
+            </span>
+            <DestinationChoice event={e} onChange={onSetDestination} />
+          </>
+        )}
       </TableCell>
       <TableCell className="whitespace-nowrap text-[#5A6778]">{nested ? '' : e.manager_name ?? '-'}</TableCell>
       <TableCell className="whitespace-nowrap font-medium">
@@ -393,8 +413,13 @@ export const ChangeEventsTable = ({ events, changeTypes, statCount, from, to, on
                         {open ? <ChevronDown className="h-4 w-4 text-[#5A6778]" /> : <ChevronRight className="h-4 w-4 text-[#5A6778]" />}
                       </TableCell>
                       <TableCell className="whitespace-nowrap">{first.detected_on}</TableCell>
-                      <TableCell className="max-w-44 truncate" title={uniq(unit.events.map((e) => e.customer_name)).join(', ')}>
-                        {summarize(uniq(unit.events.map((e) => e.customer_name)), t)}
+                      <TableCell className="max-w-56" title={uniq(unit.events.map((e) => e.display_customer_name ?? e.customer_name)).join(', ')}>
+                        <span className="block truncate">
+                          {summarize(uniq(unit.events.map((e) => e.display_customer_name ?? e.customer_name)), t)}
+                        </span>
+                        {uniq(unit.events.map((e) => e.order_no)).length === 1 ? (
+                          <DestinationChoice event={first} onChange={onSetDestination} />
+                        ) : null}
                       </TableCell>
                       <TableCell className="whitespace-nowrap text-[#5A6778]">
                         {summarize(uniq(unit.events.map((e) => e.manager_name)), t)}

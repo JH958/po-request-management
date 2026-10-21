@@ -20,7 +20,14 @@ import { usePoChanges } from '@/hooks/use-po-changes';
 import { useLanguage } from '@/context/LanguageContext';
 import { useRequestConfig } from '@/context/RequestConfigContext';
 import { isSalesTeam } from '@/lib/dashboard-scope';
-import { clearChangeReasons, dismissChanges, restoreChanges, reviewChangeGroup, setChangeReasons } from '@/lib/po-changes-api';
+import {
+  clearChangeReasons,
+  dismissChanges,
+  restoreChanges,
+  reviewChangeGroup,
+  setChangeReasons,
+  setOrderDestination,
+} from '@/lib/po-changes-api';
 import {
   REASON_FILTER_MISSING,
   countMissingReasons,
@@ -190,6 +197,22 @@ const PoChangesContent = ({ userId, userEmail }: { userId: string; userEmail: st
     }
   };
 
+  /**
+   * 경유 고객처 주문의 실제 고객처 지정·해제
+   */
+  const handleSetDestination = async (orderNo: string, target: string | null) => {
+    try {
+      await setOrderDestination(orderNo, target);
+      toast.success(target ? t(`${orderNo} 실제 고객처: ${target}`, `${orderNo} actual customer: ${target}`) : t('실제 고객처 선택을 해제했습니다.', 'Cleared the actual customer.'));
+      await refresh();
+    } catch (err) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('실제 고객처 지정 실패:', err);
+      }
+      toast.error(t('지정하지 못했습니다.', 'Could not update.'), { description: getReadableErrorMessage(err) });
+    }
+  };
+
   const tabs: { id: PoChangesTab; label: string }[] = [
     { id: 'review', label: t(`확인 필요 ${reviewCount}`, `To review ${reviewCount}`) },
     { id: 'events', label: t(`변경 이벤트 ${statCount}`, `Change events ${statCount}`) },
@@ -270,7 +293,7 @@ const PoChangesContent = ({ userId, userEmail }: { userId: string; userEmail: st
           onReview={handleReview}
         />
       ) : tab === 'events' ? (
-        <ChangeEventsTable onEditReasons={setReasonUnits} events={visibleEvents} changeTypes={changeTypes} statCount={statCount} from={filters.from} to={filters.to} />
+        <ChangeEventsTable onEditReasons={setReasonUnits} onSetDestination={handleSetDestination} events={visibleEvents} changeTypes={changeTypes} statCount={statCount} from={filters.from} to={filters.to} />
       ) : (
         <PendingLinesTable lines={pendingLines} />
       )}

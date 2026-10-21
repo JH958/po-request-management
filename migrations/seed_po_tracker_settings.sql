@@ -337,3 +337,58 @@ FROM (VALUES
   ('인도네시아(PT. InBody Global Healthcare)', 29)
 ) AS v(name, ord)
 ON CONFLICT (customer_name) DO NOTHING;
+
+-- 경유 고객처
+INSERT INTO public.po_via_customers (customer_name, note) VALUES
+  ('주식회사 인바디헬스케어', '국내·해외 법인·대리점 물량을 함께 주문'),
+  ('주식회사 코르트', '해외 수출은 해외법인 물량만')
+ON CONFLICT (customer_name) DO NOTHING;
+
+-- 국가 한글명 (판매주문조회 국가/지역 코드)
+INSERT INTO public.po_country_names (country_code, name_ko) VALUES
+  ('ARE', 'UAE'), ('ARG', '아르헨티나'), ('ARM', '아르메니아'), ('AUS', '호주'), ('AZE', '아제르바이잔'),
+  ('BHR', '바레인'), ('BOL', '볼리비아'), ('BRA', '브라질'), ('CAN', '캐나다'), ('CHL', '칠레'),
+  ('CHN', '중국'), ('COL', '콜롬비아'), ('CRI', '코스타리카'), ('DEU', '독일'), ('DOM', '도미니카공화국'),
+  ('ECU', '에콰도르'), ('ESP', '스페인'), ('GEO', '조지아'), ('GTM', '과테말라'), ('HKG', '홍콩'),
+  ('IDN', '인도네시아'), ('IND', '인도'), ('IRQ', '이라크'), ('ISR', '이스라엘'), ('JOR', '요르단'),
+  ('JPN', '일본'), ('KAZ', '카자흐스탄'), ('KHM', '캄보디아'), ('KOR', '한국'), ('KWT', '쿠웨이트'),
+  ('LAO', '라오스'), ('LBN', '레바논'), ('LBY', '리비아'), ('MEX', '멕시코'), ('MMR', '미얀마'),
+  ('MNG', '몽골'), ('MYS', '말레이시아'), ('NLD', '네덜란드'), ('OMN', '오만'), ('PAK', '파키스탄'),
+  ('PAN', '파나마'), ('PER', '페루'), ('PHL', '필리핀'), ('POL', '폴란드'), ('PRY', '파라과이'),
+  ('QAT', '카타르'), ('RUS', '러시아'), ('SAU', '사우디아라비아'), ('SGP', '싱가포르'), ('THA', '태국'),
+  ('TUR', '튀르키예'), ('TWN', '대만'), ('UGA', '우간다'), ('UKR', '우크라이나'), ('USA', '미국'),
+  ('UZB', '우즈베키스탄'), ('VNM', '베트남'), ('GBR', '영국'), ('FRA', '프랑스'), ('ITA', '이탈리아')
+ON CONFLICT (country_code) DO NOTHING;
+
+-- 도착지 → 실제 고객처 (도착항 코드가 국가 코드보다 우선)
+INSERT INTO public.po_destination_map (match_key, target_customer, choice_candidates, note) VALUES
+  ('O_LGB', '미국(미국법인)', NULL, '롱비치항 — 미국 서부'),
+  ('O_USMNH', '미국(미국동부법인)', NULL, '뉴욕항 — 미국 동부'),
+  ('O_USMIA', '베네수엘라(Comercializado)', NULL, '마이애미항 — 베네수엘라 대리점 경유'),
+  ('JPN', '일본(일본법인)', NULL, NULL),
+  ('CHN', '중국(중국법인)', NULL, NULL),
+  ('THA', '태국(InBody Thailand Co., Ltd.)', NULL, NULL),
+  ('HKG', '홍콩(Pro-Med)', NULL, NULL),
+  ('SGP', '말레이시아(아시아법인)', NULL, '싱가포르 물량은 아시아법인'),
+  ('MYS', '말레이시아(아시아법인)', NULL, NULL),
+  ('NLD', '네덜란드(유럽법인)', NULL, NULL),
+  ('MEX', '멕시코(멕시코법인)', NULL, NULL),
+  ('AUS', '호주(호주법인)', NULL, NULL),
+  ('IND', '인도(인도법인)', NULL, NULL),
+  ('IDN', '인도네시아(PT. InBody Global Healthcare)', NULL, NULL),
+  ('SAU', '사우디아라비아(Delta Marketing)', NULL, NULL),
+  ('ARE', 'UAE(SPEC BRITE GENERAL TRADING LLC)', NULL, NULL),
+  ('KWT', 'UAE(SPEC BRITE GENERAL TRADING LLC)', NULL, '쿠웨이트 물량은 UAE 대리점'),
+  ('ARG', '아르헨티나(Cala Med Argentina SRL)', NULL, NULL),
+  ('CHL', '칠레(CDM MEDICAL SPA)', NULL, NULL),
+  ('CRI', '코스타리카(INSUMED)', NULL, NULL),
+  ('DOM', '도미니카공화국(Out Fitness)', NULL, NULL),
+  ('JOR', '요르단(Arab Engineers)', NULL, NULL),
+  ('PAK', '파키스탄(Aair Medicals)', NULL, NULL),
+  ('BRA', '브라질(Ottoboni Ltda.)', NULL, NULL),
+  ('COL', '콜롬비아(SPECIALIZED WORLWIDE LOGISTICS SAS)', NULL, NULL),
+  ('TWN', NULL, ARRAY['말레이시아(아시아법인)', '대만(KOLY Group)'], '건별 선택'),
+  ('ISR', NULL, ARRAY['이스라엘(Energym BashGal)', '팔레스타인(Curatek)'], '건별 선택'),
+  ('PAN', NULL, ARRAY['파나마(Innomed)', '파나마(Insumed Comercial Panama)'], '건별 선택'),
+  ('PHL', NULL, ARRAY['주식회사 아이비홀딩스', '필리핀(Sportfit)'], '건별 선택')
+ON CONFLICT (match_key) DO NOTHING;

@@ -109,6 +109,17 @@ export interface PoChangeEvent {
   dismiss_note: string | null;
   dismissed_by_name: string | null;
   dismissed_at: string | null;
+  /** 표시용 고객처명 — 경유 고객처는 "주식회사 인바디헬스케어_미국(미국법인)"처럼 실제 도착지를 붙임 */
+  display_customer_name: string | null;
+  dest_port: string | null;
+  dest_country: string | null;
+  dest_country_name: string | null;
+  /** 경유 고객처 주문의 실제 고객처 (모르면 null) */
+  actual_customer: string | null;
+  /** 실제 고객처를 건별로 골라야 함 (대만·이스라엘 등 후보가 여럿인 국가) */
+  needs_destination_choice: boolean;
+  destination_candidates: string[] | null;
+  destination_chosen_by_name: string | null;
 }
 
 /** 요청 출처 종류 */
@@ -228,4 +239,24 @@ export interface ViewGrant {
   note: string | null;
   granted_by_name: string | null;
   created_at: string;
+}
+
+/** 경유 고객처 (po_via_customers) */
+export interface ViaCustomer {
+  customer_name: string;
+  note: string | null;
+}
+
+/** 도착지 → 실제 고객처 (po_destination_map) — match_key는 도착항(예: O_LGB) 또는 국가 코드(예: JPN) */
+export interface DestinationRule {
+  match_key: string;
+  target_customer: string | null;
+  choice_candidates: string[] | null;
+  note: string | null;
+}
+
+/** 국가 코드 → 한글명 (po_country_names) */
+export interface CountryName {
+  country_code: string;
+  name_ko: string;
 }

@@ -28,6 +28,8 @@ const EVENT_COLUMNS = [
   'reason', 'reason_note', 'reason_origin_type', 'reason_origin_code', 'reason_origin_name',
   'reason_origin_category', 'reason_origin_function', 'reason_set_by_name', 'reason_set_at',
   'is_dismissed', 'dismiss_note', 'dismissed_by_name', 'dismissed_at',
+  'display_customer_name', 'dest_port', 'dest_country', 'dest_country_name', 'actual_customer',
+  'needs_destination_choice', 'destination_candidates', 'destination_chosen_by_name',
 ].join(',');
 
 /**
@@ -37,8 +39,8 @@ export const formatPoTrackerError = (error: unknown): string => {
   const err = asApiError(error);
   if (err.code === '42P01' || err.code === '42703' || err.code === 'PGRST205' || err.code === 'PGRST202' || err.code === 'PGRST200') {
     return tn(
-      'PO 변경 테이블이 없습니다. Supabase에서 migrations/update_po_tracker_rule_refinements_2.sql을 실행해주세요.',
-      'PO change tables are missing. Run migrations/update_po_tracker_rule_refinements_2.sql in Supabase.'
+      'PO 변경 테이블이 없습니다. Supabase에서 migrations/update_po_tracker_destinations.sql을 실행해주세요.',
+      'PO change tables are missing. Run migrations/update_po_tracker_destinations.sql in Supabase.'
     );
   }
   if (err.code === '42501') {
@@ -273,4 +275,13 @@ export const restoreChanges = async (keys: string[]): Promise<number> => {
   const { data, error } = await supabase.rpc('restore_changes', { p_keys: keys });
   if (error) throw new Error(formatPoTrackerError(error));
   return Number(data ?? 0);
+};
+
+/**
+ * 경유 고객처 주문의 실제 고객처 건별 지정 (null이면 지정 해제)
+ */
+export const setOrderDestination = async (orderNo: string, target: string | null): Promise<void> => {
+  const supabase = createClient();
+  const { error } = await supabase.rpc('set_order_destination', { p_order_no: orderNo, p_target: target });
+  if (error) throw new Error(formatPoTrackerError(error));
 };

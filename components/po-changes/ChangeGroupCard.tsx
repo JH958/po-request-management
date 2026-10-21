@@ -74,7 +74,7 @@ const EventLine = ({ event, sign }: { event: PoChangeEvent; sign: '-' | '+' }) =
         {event.qty_before !== null && event.qty_after !== null
           ? ` · ${t('수량', 'Qty')} ${numberFormat.format(event.qty_before)} → ${numberFormat.format(event.qty_after)}`
           : ''}
-        {event.customer_name ? ` · ${event.customer_name}` : ''}
+        {event.display_customer_name ?? event.customer_name ? ` · ${event.display_customer_name ?? event.customer_name}` : ''}
       </p>
     </div>
   );
@@ -138,7 +138,7 @@ export const ChangeGroupCard = ({ group, currentUserId, busy, reasons, origins, 
   const removed = group.events.filter((e) => e.direction === 'delete');
   const added = group.events.filter((e) => e.direction === 'add');
   const first = group.events[0];
-  const customers = [...new Set(group.events.map((e) => e.customer_name).filter(Boolean))];
+  const customers = [...new Set(group.events.map((e) => e.display_customer_name ?? e.customer_name).filter(Boolean))];
   const managers = [...new Set(group.events.map((e) => e.manager_name).filter(Boolean))];
   const isSplit = group.group_type === 'split';
   const noteMissing = note.trim() === '';

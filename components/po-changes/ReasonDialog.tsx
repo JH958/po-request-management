@@ -81,7 +81,7 @@ const ReasonDialogBody = ({
   const { t, lang } = useLanguage();
   const [value, setValue] = useState(() => initialValue(units));
   const [saving, setSaving] = useState(false);
-  const customers = [...new Set(units.flatMap((u) => u.events.map((e) => e.customer_name)).filter((v): v is string => Boolean(v)))];
+  const customers = [...new Set(units.flatMap((u) => u.events.map((e) => e.display_customer_name ?? e.customer_name)).filter((v): v is string => Boolean(v)))];
   const complete = isReasonOriginComplete(value) && value.note.trim() !== '';
   const single = units.length === 1 ? units[0].events[0] : null;
   const withReason = units.filter((u) => u.events[0]?.reason);
@@ -154,7 +154,7 @@ const ReasonDialogBody = ({
               <span className="text-[#5A6778]">
                 {' · '}{getEventTypeName(e, changeTypes, lang)}
                 {u.events.length > 1 ? t(` · 라인 ${u.events.length}개`, ` · ${u.events.length} lines`) : ` · ${e.item_no ?? ''}`}
-                {e.customer_name ? ` · ${e.customer_name}` : ''}
+                {e.display_customer_name ?? e.customer_name ? ` · ${e.display_customer_name ?? e.customer_name}` : ''}
               </span>
             </li>
           );

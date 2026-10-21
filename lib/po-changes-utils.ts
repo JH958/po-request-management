@@ -18,7 +18,7 @@ export const isIsoDate = (value: string | null | undefined): value is string =>
  * 검색어가 고객처·주문번호·DO·품목번호·품목명 중 하나에 들어 있는지
  */
 const matchesSearch = (event: PoChangeEvent, term: string): boolean =>
-  [event.customer_name, event.order_no, event.do_no, event.item_no, event.item_name, event.item_before, event.item_after]
+  [event.customer_name, event.display_customer_name, event.order_no, event.do_no, event.item_no, event.item_name, event.item_before, event.item_after]
     .some((v) => (v ?? '').toLowerCase().includes(term));
 
 /**
