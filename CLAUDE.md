@@ -27,7 +27,7 @@ npm run lint     # ESLint — 커밋 전 반드시 통과해야 함
 ## Architecture
 
 ### 라우팅과 셸
-- `app/(shell)/` 하위 페이지(`/` 대시보드, `/request` 요청접수, `/review` 검토대기, `/po-upload` 데이터 업로드, `/po-changes` PO 변경, `/admin-settings`)는 `components/common/AppShell.tsx`로 감싸짐. AppShell이 `useAuth`로 인증 확인(미로그인 시 `/login` 리다이렉트), 헤더·사이드바·알림 팝오버·제품 투어(driver.js, `lib/tours/`)·`RequestConfigProvider`를 제공.
+- `app/(shell)/` 하위 페이지(`/` PO 현황 대시보드 — 영업관리팀·관리자만, 그 밖의 계정은 `/request`로 보내고 사이드바에서도 숨김, `/request` 요청접수, `/review` 검토대기, `/po-upload` 데이터 업로드, `/po-changes` PO 변경, `/admin-settings`)는 `components/common/AppShell.tsx`로 감싸짐. AppShell이 `useAuth`로 인증 확인(미로그인 시 `/login` 리다이렉트), 헤더·사이드바·알림 팝오버·제품 투어(driver.js, `lib/tours/`)·`RequestConfigProvider`를 제공.
 - `app/login`, `app/signup`은 셸 밖.
 
 ### 데이터 계층 (Supabase)
@@ -68,7 +68,8 @@ npm run lint     # ESLint — 커밋 전 반드시 통과해야 함
 - **관리자** = role에 `admin`(우선 jhee105@inbody.com만): 데이터 업로드, 관리자 설정 전체, 조회 권한 부여 — 화면 `canAccessAdminSettings`, DB `is_po_tracker_admin()`.
 - **영업관리팀** = 부서에 `영업관리` 또는 관리자: PO 변경 페이지, 후보 승인/반려, 사유 입력, 전체 조회 — 화면 `isSalesTeam`, DB `po_is_sales_team()`. `getDashboardScope`의 전체 범위도 영업관리팀.
 - **PO 현황 조회 범위(C-2)**: 업로드·변경 원본 테이블(`do_change_events`, `v_do_change_events`, 사유, 고객처 담당자 등)은 RLS로 영업관리팀·관리자만 조회. 다른 사용자는 `po_dashboard_changes` / `po_dashboard_requests`(SECURITY DEFINER, `po_my_view_scope` 적용)로만 범위 안의 집계용 행을 받음 — 고객처 계정 = 자기 고객처, 본사/국내법인 부서 = 요청 출처·요청 부서가 자기 부서 + 추가 조회 권한(`po_view_grants`, 부서 단위, 관리자 설정 '조회 권한')으로 열린 고객처.
-- 목록 조회 필터는 `applyRequestListFilter`(모드: `request-intake` = 본인 부서가 요청한 건 / `review-history` = 관리자 전체, 고객처는 자기 customer + 본사 요청, 본사는 타 본사 부서 요청). 대시보드는 `applyDashboardScope`로 클라이언트 측 필터링.
+- 목록 조회 필터는 `applyRequestListFilter`(모드: `request-intake` = 본인 부서가 요청한 건 / `review-history` = 관리자 전체, 고객처는 자기 customer + 본사 요청, 본사는 타 본사 부서 요청).
+- **PO 현황 대시보드**(2026-10-22, `components/dashboard/PoDashboard.tsx`): 탭 'PO 변경 현황'·'요청 현황', 보기 전용(편집 없음). 데이터 `lib/po-dashboard-api.ts`(`po_dashboard_changes`/`po_dashboard_requests`, 직전 같은 길이 기간도 받아 건수 비교), 집계 `lib/po-dashboard-utils.ts`. 추이는 일(영업일)·주·월·분기·연 버튼(기본은 기간 길이로: 31일·120일·1년·3년 기준), 막대는 `RankedBars`(마우스를 올리면 나눠 보기: 유형·사유 = 고객처/생산부/기타 부서/미입력, 고객처 = 경유 고객처 꼬리표별 — 경유 고객처는 꼬리표 없이 하나로), 누르면 `/po-changes?from&to&type|customer|reason|origin`. 색: 추가 #1E40AF·삭제 #8B1538(PO 변경 표와 같음), 출처 고객처 크림슨·생산부 파랑·기타 부서 회색.
 - 관리자 설정 화면 진입은 Supabase 인증과 별개로 비밀번호 기반 HttpOnly 쿠키(`po_admin_session`, HMAC 서명, 8시간; `lib/admin-session-cookie.ts`)를 `/api/admin/{verify,session,logout}`로 관리.
 
 ### 프로즌 데이트
@@ -91,7 +92,9 @@ PO Tracker 전환은 4단계로 진행 중: 1) 표시명 변경 2) DO 업로드�
 - 운영 DB: `update_po_tracker_change_type_edit.sql`까지 실행됨(`update_po_tracker_po_move.sql`은 운영에 실행됐다가 이 파일로 원복, 레포에는 없음). 업로드 10/12(기준선)~10/21. 10/13 묶음 1건만 승인, 나머지 변경·후보는 대부분 사유·검토 전(PO781→788 미국법인 건도 확인 전 — 사용자가 유형을 골라 승인 예정)
 
 **다음 할 일**
-- C-3. PO 현황 대시보드 개편 — 10/21에 실제 데이터(10/13~10/21 변경 70건) 시안을 보여 줌. **사용자가 나중에 다시 확인하기로 함 → 확인·수정 의견을 받은 뒤 개발**
+- C-3. PO 현황 대시보드 — 10/22 사용자 의견 반영해 1차 개발 완료(아직 커밋 전이면 커밋 필요). 사용자가 쓰면서 추가 수정 요청 예정. 구분(제품/상품/자재) 막대는 넣지 않기로 함(필터만)
+  - 확정 사항(10/22): 4번째 지표 = 고객처·생산부 요청 비중 둘 다, 추이 일·주·월·분기·연 전환, 고객처 계정·본사 부서(영업관리팀 제외) = 메뉴 숨김, 영업관리팀·관리자 = 전체 보기(편집 기능 없음), 경유 고객처는 꼬리표 없이 묶고 툴팁에 꼬리표별, 유형·사유 툴팁에 고객처 vs 생산부, 출처 색 고객처 진하게·생산부 별도 색, 사이트 디자인 색
+  - (이하 10/21 시안 기록)
   - 시안 구성: 탭 "PO 변경 현황"(기본) / "요청 현황". 필터(기간 이번 주/최근 4주/이번 달/분기/직접, 고객처(영업관리팀만), 구분, 요청 출처) → 핵심 지표 4개(변경 건수 직전 대비 ±, 사유 입력률, 확인 대기 후보, 생산부 요청 비중) → 일별(4주 넘으면 주별) 유형 누적 막대(추가·삭제·일정/운송방법·분할/품목코드 4색) → 유형·고객처 상위 10(표시명)·사유·출처 가로 막대 → 막대 클릭 시 PO 변경 페이지로(영업관리팀만). 요청 현황 탭: 상태 비율 막대·요청구분·사유·프로즌 이후 미터(원형 차트 없음)
   - 사용자에게 물어본 것(답 대기): 생산부 비중 지표 유지 여부(사유 입력 전엔 빈칸), 일별/주별 기준, 구분(제품/상품/자재) 막대 추가 여부, 계정별 화면 차이
   - 데이터는 `po_dashboard_changes(시작, 끝)` / `po_dashboard_requests(시작, 끝)` rpc(조회 범위는 DB가 적용, 변경 유형은 고친 유형 반영). 지금 `components/dashboard/*`는 `useRequests` + `applyDashboardScope` — 교체 대상. 요청 접수 내역 표는 요청접수 페이지에만. 디자인: 슬레이트 + 크림슨 강조, 차트 작업 전 dataviz 스킬 참고. 완료 후 계정별(관리자·영업관리팀·제조관리팀·고객처) 숫자 확인

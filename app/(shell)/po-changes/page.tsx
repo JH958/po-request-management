@@ -77,13 +77,38 @@ const PoChangesContent = ({ userId, userEmail }: { userId: string; userEmail: st
   const { t } = useLanguage();
   const searchParams = useSearchParams();
   const dateParam = searchParams.get('date');
+  // PO 현황 막대에서 들어오면 기간·조건(유형·고객처·사유·출처)을 그대로
+  const drill = {
+    from: searchParams.get('from'),
+    to: searchParams.get('to'),
+    type: searchParams.get('type'),
+    customer: searchParams.get('customer'),
+    reason: searchParams.get('reason'),
+    origin: searchParams.get('origin'),
+  };
+  const fromDashboard = isIsoDate(drill.from) && isIsoDate(drill.to);
 
-  // 업로드 이력에서 들어오면 그 기준일 하루, 아니면 최근 7일
+  // 업로드 이력에서 들어오면 그 기준일 하루, PO 현황에서 들어오면 그 기간, 아니면 최근 7일
   const [filters, setFilters] = useState<PoChangeFilters>(() => {
-    const range = isIsoDate(dateParam) ? { from: dateParam, to: dateParam } : getDefaultRange();
-    return { ...range, changeType: 'all', productClass: 'all', search: '', includeExcluded: false, myEmail: readMineOnly() ? userEmail : null, reasonFilter: 'all', originFilter: 'all', includeDismissed: false };
+    const range = fromDashboard
+      ? { from: drill.from as string, to: drill.to as string }
+      : isIsoDate(dateParam)
+        ? { from: dateParam, to: dateParam }
+        : getDefaultRange();
+    return {
+      ...range,
+      changeType: fromDashboard && drill.type ? drill.type : 'all',
+      productClass: 'all',
+      search: fromDashboard && drill.customer ? drill.customer : '',
+      includeExcluded: false,
+      // PO 현황에서 들어오면 전체 고객처 기준으로 보여 줌
+      myEmail: !fromDashboard && readMineOnly() ? userEmail : null,
+      reasonFilter: fromDashboard && drill.reason ? drill.reason : 'all',
+      originFilter: fromDashboard && drill.origin ? drill.origin : 'all',
+      includeDismissed: false,
+    };
   });
-  const [tab, setTab] = useState<PoChangesTab>('review');
+  const [tab, setTab] = useState<PoChangesTab>(fromDashboard ? 'events' : 'review');
   const [reasonUnits, setReasonUnits] = useState<PoStatUnit[] | null>(null);
   const { requestReasons } = useRequestConfig();
 

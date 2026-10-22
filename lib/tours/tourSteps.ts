@@ -14,58 +14,47 @@ export interface TourStepConfig {
 export const poStatusTourSteps: TourStepConfig[] = [
   {
     target: '[data-tour="po-status-header"]',
-    title: 'PO 현황 요약',
-    titleEn: 'PO status summary',
+    title: '핵심 지표',
+    titleEn: 'Key figures',
     description:
-      '소속하신 고객처 또는 부서의 요청 현황을 한눈에 확인할 수 있습니다. 전체 요청, 검토 대기, 승인, 반려 건수가 표시됩니다.',
+      '기간 안의 PO 변경 건수(직전 같은 기간 대비), 사유 입력률, 확인 대기 후보, 고객처·생산부 요청 비중을 한눈에 봅니다.',
     descriptionEn:
-      'See the requests from your customer account or department at a glance: total, pending, approved and rejected.',
+      'PO changes in the period (vs the previous period), reason entry rate, candidates to review and the customer/production share.',
   },
   {
     target: '[data-tour="po-status-period-filter"]',
-    title: '기간 필터',
-    titleEn: 'Period filter',
-    description: '전체/일별/주별/월별 중 선택하여 원하는 기간의 데이터만 조회할 수 있습니다.',
-    descriptionEn: 'Choose All, Daily, Weekly or Monthly to see data for that period only.',
-  },
-  {
-    target: '[data-tour="po-status-approval-chart"]',
-    title: '승인/반려 비율',
-    titleEn: 'Approval / rejection ratio',
-    description:
-      '전체 요청 중 승인, 반려, 대기 중인 건의 비율을 도넛 차트로 확인할 수 있습니다.',
-    descriptionEn: 'A donut chart of approved, rejected and pending requests.',
+    title: '기간·조건 필터',
+    titleEn: 'Period and filters',
+    description: '이번 주·최근 4주·이번 달·이번 분기를 고르거나 날짜를 직접 넣고, 고객처·품목 구분·요청 출처로 좁혀 봅니다.',
+    descriptionEn: 'Pick a period or enter dates, then narrow down by customer, item category or requester.',
   },
   {
     target: '[data-tour="po-status-monthly-trend-chart"]',
-    title: '월별 추이',
-    titleEn: 'Monthly trend',
-    description: '최근 몇 달간 요청 건수가 어떻게 변화했는지 확인할 수 있습니다.',
-    descriptionEn: 'How the number of requests has changed over recent months.',
+    title: '변경 추이',
+    titleEn: 'Change trend',
+    description: '일·주·월·분기·연 버튼으로 단위를 바꿔 가며 유형별 변경이 어떻게 늘고 줄었는지 봅니다.',
+    descriptionEn: 'Switch between day, week, month, quarter and year to see how changes by type move over time.',
   },
   {
     target: '[data-tour="po-status-request-type-chart"]',
-    title: '요청 구분별 분석',
-    titleEn: 'By request type',
-    description: '품목 추가, 출하일정 변경 등 어떤 유형의 요청이 많은지 확인할 수 있습니다.',
-    descriptionEn: 'Which request types (item additions, ship date changes, etc.) are most common.',
+    title: '변경 유형',
+    titleEn: 'Change type',
+    description: '어떤 유형의 변경이 많은지 봅니다. 막대에 마우스를 올리면 고객처·생산부 요청 비중, 누르면 PO 변경 화면이 열립니다.',
+    descriptionEn: 'Which change types are most common. Hover a bar for who requested it, click to open PO Changes.',
   },
   {
     target: '[data-tour="po-status-item-category-trend-chart"]',
-    title: '품목구분별 추이',
-    titleEn: 'By product category',
-    description:
-      'InBody, BSM 등 품목 구분별로 요청이 어떻게 분포되어 있는지 확인할 수 있습니다.',
-    descriptionEn: 'How requests are distributed across product categories such as InBody and BSM.',
+    title: '변경 사유',
+    titleEn: 'Change reason',
+    description: '입력된 사유별 건수입니다. 같은 사유가 고객처와 생산부 중 어디서 자주 생기는지 마우스를 올려 확인하세요.',
+    descriptionEn: 'Counts by entered reason. Hover to see whether a reason comes more from customers or production.',
   },
   {
     target: '[data-tour="po-status-frozen-chart"]',
-    title: '프로즌 여부 분석',
-    titleEn: 'Before / after frozen date',
-    description:
-      '프로즌 이전/이후/미설정 건의 비율을 확인할 수 있습니다. 프로즌 이후 건은 원칙적으로 변경이 어려우니 참고해주세요.',
-    descriptionEn:
-      'The share of requests made before or after the frozen date, or with no rule. Orders past the frozen date are generally hard to change.',
+    title: '요청 출처',
+    titleEn: 'Requested by',
+    description: '고객처, 생산부, 그 밖의 본사·국내법인 부서 중 누가 변경을 요청했는지 봅니다.',
+    descriptionEn: 'Whether changes were requested by customers, production or other HQ/affiliate departments.',
   },
 ];
 

@@ -1,17 +1,26 @@
 /**
- * PO 현황 페이지 (로그인 후 기본 홈)
+ * PO 현황 페이지 (로그인 후 기본 홈) — 영업관리팀·관리자만, 그 밖의 계정은 요청접수로
  */
 'use client';
 
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
-import { getDashboardScope, isAdminDashboard } from '@/lib/dashboard-scope';
-import { AdminDashboard } from '@/components/dashboard/AdminDashboard';
-import { UserDashboard } from '@/components/dashboard/UserDashboard';
+import { isSalesTeam } from '@/lib/dashboard-scope';
+import { PoDashboard } from '@/components/dashboard/PoDashboard';
 
 export default function HomePage() {
+  const router = useRouter();
   const { profile, loading } = useAuth();
+  const hasAccess = Boolean(profile && isSalesTeam(profile.department ?? '', profile.role ?? ''));
 
-  if (loading || !profile) {
+  useEffect(() => {
+    if (!loading && profile && !hasAccess) {
+      router.replace('/request');
+    }
+  }, [loading, profile, hasAccess, router]);
+
+  if (loading || !profile || !hasAccess) {
     return (
       <div className="flex items-center justify-center py-20">
         <div className="h-10 w-10 animate-spin rounded-full border-b-2 border-[#8B1538]" />
@@ -19,11 +28,5 @@ export default function HomePage() {
     );
   }
 
-  const scope = getDashboardScope(profile.department ?? '', profile.role ?? '');
-
-  if (scope.scope === 'all' || isAdminDashboard(scope)) {
-    return <AdminDashboard department={profile.department} role={profile.role} />;
-  }
-
-  return <UserDashboard department={scope.department} />;
+  return <PoDashboard />;
 }

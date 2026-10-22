@@ -97,7 +97,10 @@ export const Sidebar = ({
   };
 
   const sections: MenuSection[] = [
-    { title: t('현황', 'Overview'), items: [{ href: '/', label: t('PO 현황', 'PO Status'), icon: LayoutDashboard }] },
+    // PO 현황은 영업관리팀(관리자 포함)만
+    ...(showSalesTeamMenus
+      ? [{ title: t('현황', 'Overview'), items: [{ href: '/', label: t('PO 현황', 'PO Status'), icon: LayoutDashboard }] }]
+      : []),
     {
       title: t('요청', 'Requests'),
       items: [
