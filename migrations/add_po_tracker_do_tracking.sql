@@ -752,11 +752,11 @@ SELECT
   COALESCE(od.needs_destination_choice, FALSE) AS needs_destination_choice,
   od.choice_candidates AS destination_candidates,
   od.chosen_by_name AS destination_chosen_by_name,
-  -- 변경 유형을 영업관리팀이 고쳤는지, 자동 판정 유형, 고친 사람
-  (tos.code IS NOT NULL) AS is_type_overridden,
+  -- 변경 유형을 영업관리팀이 고쳤는지(고친 유형이 자동 판정과 다를 때만), 자동 판정 유형, 고친 사람
+  (tos.code IS NOT NULL AND tos.code <> COALESCE(ts.code, 'other')) AS is_type_overridden,
   COALESCE(ts.code, 'other') AS rule_type_code,
-  CASE WHEN tos.code IS NOT NULL THEN tov.set_by_name END AS type_set_by_name,
-  CASE WHEN tos.code IS NOT NULL THEN tov.set_at END AS type_set_at
+  CASE WHEN tos.code IS NOT NULL AND tos.code <> COALESCE(ts.code, 'other') THEN tov.set_by_name END AS type_set_by_name,
+  CASE WHEN tos.code IS NOT NULL AND tos.code <> COALESCE(ts.code, 'other') THEN tov.set_at END AS type_set_at
 FROM public.do_change_events e
 LEFT JOIN public.customer_so_map c ON c.order_no = e.order_no
 LEFT JOIN public.v_order_destinations od ON od.order_no = e.order_no
