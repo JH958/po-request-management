@@ -17,6 +17,7 @@ import { RequestOriginSettings } from '@/components/admin/RequestOriginSettings'
 import { CustomerAccountSettings } from '@/components/admin/CustomerAccountSettings';
 import { ViewGrantSettings } from '@/components/admin/ViewGrantSettings';
 import { DestinationSettings } from '@/components/admin/DestinationSettings';
+import { MatchSettings } from '@/components/admin/MatchSettings';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { PageHeader } from '@/components/common/PageHeader';
@@ -30,7 +31,8 @@ type AdminTab =
   | 'view-grants'
   | 'item-class'
   | 'customer-managers'
-  | 'destinations';
+  | 'destinations'
+  | 'matching';
 
 export default function AdminSettingsPage() {
   const router = useRouter();
@@ -67,6 +69,7 @@ export default function AdminSettingsPage() {
     { id: 'item-class', label: t('품목 구분 예외', 'Item Category Exceptions') },
     { id: 'customer-managers', label: t('고객처 담당자', 'Customer Owners') },
     { id: 'destinations', label: t('경유 고객처·도착지', 'Via Customers & Destinations') },
+    { id: 'matching', label: t('요청 연결 기준', 'Request Matching') },
   ];
 
   return (
@@ -100,6 +103,7 @@ export default function AdminSettingsPage() {
       {tab === 'item-class' && <ItemClassOverrideSettings userId={user.id} />}
       {tab === 'customer-managers' && <CustomerManagerSettings userId={user.id} />}
       {tab === 'destinations' && <DestinationSettings userId={user.id} />}
+      {tab === 'matching' && <MatchSettings userId={user.id} />}
     </div>
   );
 }

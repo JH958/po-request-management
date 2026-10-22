@@ -82,12 +82,6 @@ export const isItemAdditionCategory = (category: string | null | undefined): boo
   category === '자재 추가';
 
 /**
- * 품목 구분 선택이 필요한 요청 구분인지 확인 (제품/상품 추가·삭제만)
- */
-export const needsProductCategory = (categoryOfRequest: string): boolean =>
-  categoryOfRequest === '제품/상품 추가' || categoryOfRequest === '제품/상품 삭제';
-
-/**
  * 품목 목록 입력 영역 표시 여부
  */
 export const isItemListVisible = (categoryOfRequest: string): boolean =>
@@ -106,9 +100,9 @@ export const isAddTypeValue = (value: string): boolean =>
   (ADD_TYPE_VALUES as readonly string[]).includes(value);
 
 /**
- * SO 번호 형식 검증 (SO + 9자리 숫자)
+ * 주문 번호 형식 검증 — 영문 접두어 + 9자리 숫자 (SO000101810, PO000000788, ihcPO000000420, TRO000003831 등 DO의 주문 번호 형식)
  */
-export const validateSONumber = (soNumber: string): boolean => /^SO\d{9}$/.test(soNumber);
+export const validateSONumber = (soNumber: string): boolean => /^[A-Za-z]{2,8}\d{9}$/.test(soNumber.trim());
 
 /**
  * ERP 품목 코드 형식 검증

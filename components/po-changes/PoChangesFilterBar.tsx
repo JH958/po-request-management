@@ -16,13 +16,14 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useLanguage } from '@/context/LanguageContext';
-import { getChangeTypeName, getProductClassLabels } from '@/lib/po-tracker-labels';
+import { REGISTRATION_STATUSES, getChangeTypeName, getProductClassLabels, getRegistrationLabels } from '@/lib/po-tracker-labels';
 import {
   ORIGIN_FILTER_CUSTOMER,
   ORIGIN_FILTER_DEPARTMENT,
   ORIGIN_FILTER_PRODUCTION,
   REASON_FILTER_MISSING,
   REASON_FILTER_SET,
+  REGISTRATION_FILTER_REGISTERED,
   getDefaultRange,
 } from '@/lib/po-changes-utils';
 import type { ReasonOption } from '@/lib/request-constants';
@@ -54,6 +55,7 @@ export const PoChangesFilterBar = ({
   const { t, lang } = useLanguage();
   const activeTypes = changeTypes.filter((type) => type.is_active);
   const classLabels = getProductClassLabels(t);
+  const registrationLabels = getRegistrationLabels(t);
   const set = (patch: Partial<PoChangeFilters>) => onChange({ ...filters, ...patch });
   const singleDay = filters.from === filters.to ? filters.from : '';
 
@@ -165,6 +167,20 @@ export const PoChangesFilterBar = ({
               <SelectItem value={ORIGIN_FILTER_PRODUCTION}>{t('생산부', 'Production')}</SelectItem>
               {origins.map((o) => (
                 <SelectItem key={o.code} value={o.code}>{o.display_name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label className="text-xs text-[#5A6778]">{t('요청 등록', 'Request registration')}</Label>
+          <Select value={filters.registrationFilter} onValueChange={(v) => set({ registrationFilter: v })}>
+            <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t('전체 등록 상태', 'All')}</SelectItem>
+              <SelectItem value={REGISTRATION_FILTER_REGISTERED}>{t('등록됨 (사전+사후)', 'Registered (before+after)')}</SelectItem>
+              {REGISTRATION_STATUSES.map((s) => (
+                <SelectItem key={s} value={s}>{registrationLabels[s]}</SelectItem>
               ))}
             </SelectContent>
           </Select>

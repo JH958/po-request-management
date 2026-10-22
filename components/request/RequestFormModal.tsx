@@ -19,7 +19,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select,
   SelectContent,
@@ -27,19 +26,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Package } from 'lucide-react';
 import { RequestReasonSelect } from '@/components/request/RequestReasonSelect';
 import {
   DOMESTIC_BRANCH_SHIPPING_METHODS,
   OVERSEAS_CUSTOMER_SHIPPING_METHODS,
   ALL_SHIPPING_METHODS,
-  FORM_PRODUCT_CATEGORIES,
 } from '@/lib/request-constants';
 import type { RequestTypeCard } from '@/lib/request-constants';
 import {
   isAddTypeValue,
   isItemListVisible,
-  needsProductCategory,
   validateSONumber,
   validateERPCode,
   asApiError,
@@ -113,7 +109,6 @@ export const RequestFormModal = ({
   const { customerAccounts } = useRequestConfig();
   const [form, setForm] = useState<FormState>(getInitialForm);
   const [currentItem, setCurrentItem] = useState({ erp_code: '', item_name: '', quantity: 0 });
-  const [productCategory, setProductCategory] = useState<string[]>([]);
   const [soNumberError, setSONumberError] = useState('');
   const [erpCodeError, setERPCodeError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -150,7 +145,6 @@ export const RequestFormModal = ({
   const resetForm = useCallback(() => {
     setForm(getInitialForm());
     setCurrentItem({ erp_code: '', item_name: '', quantity: 0 });
-    setProductCategory([]);
     setSONumberError('');
     setERPCodeError('');
     setFrozenStatus('unset');
@@ -225,8 +219,8 @@ export const RequestFormModal = ({
     if (isSoRequired && value && !validateSONumber(value)) {
       setSONumberError(
         t(
-          'SO 번호를 다시 확인해주세요. (형식: SO + 9자리 숫자, 예: SO123456789)',
-          'Check the SO number. (Format: SO + 9 digits, e.g. SO123456789)'
+          'SO 번호를 다시 확인해주세요. (형식: 영문 + 9자리 숫자, 예: SO000101810, PO000000788)',
+          'Check the SO number. (Format: letters + 9 digits, e.g. SO000101810, PO000000788)'
         )
       );
     } else {
@@ -327,10 +321,6 @@ export const RequestFormModal = ({
       toast.error(t('ERP 코드를 확인해주세요.', 'Check the ERP code.'));
       return;
     }
-    if (needsProductCategory(categoryLabel) && productCategory.length === 0) {
-      toast.error(t('품목 구분을 선택해주세요.', 'Select a product category.'));
-      return;
-    }
     if (showShippingMethod && !form.shipping_method) {
       toast.error(t('운송방법을 선택해주세요.', 'Select a shipping method.'));
       return;
@@ -377,7 +367,7 @@ export const RequestFormModal = ({
         completed: false,
         frozen_status,
         request_type: dbRequestType,
-        so_number: isAddType ? form.so_number || null : form.so_number,
+        so_number: isAddType ? form.so_number.trim() || null : form.so_number.trim(),
         factory_shipment_date: form.factory_shipment_date,
         erp_code: firstItem?.erp_code || '',
         item_name: firstItem?.item_name || '',
@@ -389,9 +379,6 @@ export const RequestFormModal = ({
       }
       if (showShippingMethod && form.shipping_method) {
         requestData.shipping_method = form.shipping_method;
-      }
-      if (needsProductCategory(categoryLabel) && productCategory.length > 0) {
-        requestData.product_category = productCategory.join(', ');
       }
       if (form.items.length > 0) {
         requestData.items = form.items;
@@ -485,7 +472,7 @@ export const RequestFormModal = ({
               <Input
                 value={form.so_number}
                 onChange={(e) => handleSONumberChange(e.target.value)}
-                placeholder={t('예: SO123456789', 'e.g. SO123456789')}
+                placeholder={t('예: SO000101810, PO000000788', 'e.g. SO000101810, PO000000788')}
                 className={cn(isSoRequired && soNumberError && 'border-red-500')}
               />
               {soNumberError && <p className="text-xs text-red-500">{soNumberError}</p>}
@@ -556,39 +543,6 @@ export const RequestFormModal = ({
                 </Button>
                 <input id="excel-upload-modal" type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={handleExcelUpload} />
               </div>
-
-              {needsProductCategory(categoryLabel) && (
-                <div className="rounded-lg border-2 border-[#8B1538]/20 bg-[#8B1538]/5 p-4">
-                  <div className="mb-2 flex items-center justify-between">
-                    <Label className="font-semibold">{t('품목 구분', 'Product category')} <span className="text-[#8B1538]">*</span></Label>
-                    <Package className="h-4 w-4 text-[#8B1538]" />
-                  </div>
-                  <div className="grid grid-cols-3 gap-3">
-                    {FORM_PRODUCT_CATEGORIES.map((cat) => {
-                      const checked = productCategory.includes(cat.value);
-                      return (
-                        <div
-                          key={cat.value}
-                          className={cn(
-                            'flex cursor-pointer items-center space-x-2 rounded-md border px-3 py-2',
-                            checked ? 'border-[#8B1538] bg-[#8B1538]/10' : 'border-gray-200 bg-white'
-                          )}
-                          onClick={() =>
-                            setProductCategory((prev) =>
-                              prev.includes(cat.value)
-                                ? prev.filter((v) => v !== cat.value)
-                                : [...prev, cat.value]
-                            )
-                          }
-                        >
-                          <Checkbox checked={checked} className="border-[#8B1538]" />
-                          <span className="text-sm">{cat.label}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
 
               <div className="grid grid-cols-12 items-end gap-2">
                 <div className="col-span-4 space-y-1">

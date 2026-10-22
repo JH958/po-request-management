@@ -107,3 +107,16 @@ export interface PriorityRequest {
   daysLeft: number;
   status: RequestStatus;
 }
+
+/**
+ * 요청의 DO 반영 상태 (po_request_reflections)
+ * reflected 반영됨 / partial 부분 반영(연결 안 된 품목이 있거나 수량 다름) / none 연결된 변경 없음 / no_so SO 없음(매칭 대상 아님)
+ * / untracked 추적 전(DO 추적 시작 전에 연결 기간이 끝남)
+ */
+export interface DoReflection {
+  request_id: string;
+  reflection: 'reflected' | 'partial' | 'none' | 'no_so' | 'untracked';
+  linked_unit_count: number;
+  /** 연결된 변경 중 가장 늦은 감지일 */
+  reflected_on: string | null;
+}

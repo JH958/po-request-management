@@ -1,7 +1,7 @@
 /**
  * PO 현황 대시보드 타입 정의 (po_dashboard_changes / po_dashboard_requests 결과와 화면 집계)
  */
-import type { ProductClass, ReasonOriginType } from '@/types/po-changes';
+import type { ProductClass, ReasonOriginType, RegistrationStatus } from '@/types/po-changes';
 
 /** 변경 1건(통계 단위) — po_dashboard_changes() 행 */
 export interface DashboardChangeRow {
@@ -21,6 +21,8 @@ export interface DashboardChangeRow {
   reason_origin_function: string | null;
   group_type: string | null;
   group_status: string | null;
+  /** 요청 등록 상태 (3단계 요청 ↔ DO 변경 연결) */
+  registration_status: RegistrationStatus | null;
   line_count: number;
 }
 

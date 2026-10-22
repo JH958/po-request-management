@@ -126,6 +126,88 @@ export interface PoChangeEvent {
   rule_type_code: string;
   type_set_by_name: string | null;
   type_set_at: string | null;
+  /** 사유를 어디서 넣었는지 — manual(영업관리팀 입력) / request(연결된 요청서에서 가져옴) */
+  reason_source: 'manual' | 'request' | null;
+  /** 연결된 요청 수 (묶음이 반려되면 묶음 연결을 물려받음) */
+  linked_request_count: number;
+  /** 연결된 요청 중 가장 이른 요청일 */
+  linked_request_date: string | null;
+  /** 예외 처리 (요청서가 필요 없었던 변경) */
+  is_exempt: boolean;
+  exempt_note: string | null;
+  exempted_by_name: string | null;
+  exempted_at: string | null;
+  /** 등록 상태 — 연결 여부·예외 처리·감지 후 지난 영업일로 판정 */
+  registration_status: RegistrationStatus;
+}
+
+/** 등록 상태: 사전 등록 / 사후 등록 / 예외 처리 / 확인 대기(유예 영업일 안) / 미등록 */
+export type RegistrationStatus = 'pre' | 'post' | 'exempt' | 'waiting' | 'unregistered';
+
+/** 요청 요약 (영업관리팀은 요청 원본을 못 읽을 수 있어 DB 함수가 함께 돌려줌) */
+export interface LinkedRequestSummary {
+  request_id: string;
+  item_key: string;
+  item_name: string | null;
+  unit_qty: number | null;
+  request_qty: number | null;
+  request_date: string;
+  requester_name: string;
+  requesting_dept: string;
+  customer: string;
+  so_number: string | null;
+  category_of_request: string;
+  reason_for_request: string;
+  request_status: string;
+}
+
+/** 변경에 연결된 요청 (po_change_links) */
+export interface ChangeRequestLink extends LinkedRequestSummary {
+  /** 화면의 변경 1건 키 */
+  unit_key: string;
+  link_id: string;
+  /** 연결이 저장된 키 (묶음이 반려되면 묶음 키) */
+  link_key: string;
+  link_type: 'auto' | 'manual';
+  note: string | null;
+  linked_by_name: string | null;
+  linked_at: string;
+}
+
+/** 연결 후보 (po_match_candidates) */
+export interface MatchCandidate extends LinkedRequestSummary {
+  stat_unit_key: string;
+  /** 요청구분 = 변경 유형 */
+  type_match: boolean;
+  /** 요청 수량 = 변경 수량 (일정·운송방법은 null) */
+  qty_match: boolean | null;
+  /** 유형·수량까지 모두 맞음 */
+  is_full: boolean;
+  score: number;
+  /** 한 번 연결했다가 해제한 짝 */
+  was_unlinked: boolean;
+}
+
+/** 미반영 요청 (po_unreflected_requests) — 승인됐는데 출하일이 지나도록 연결된 변경이 없음 */
+export interface UnreflectedRequest {
+  id: string;
+  request_date: string;
+  requester_name: string;
+  requesting_dept: string;
+  customer: string;
+  so_number: string;
+  category_of_request: string;
+  reason_for_request: string;
+  status: string;
+  due_date: string;
+  items: string | null;
+}
+
+/** 요청 연결 기준 (po_match_settings) */
+export interface MatchSettings {
+  days_before: number;
+  days_after: number;
+  grace_business_days: number;
 }
 
 /** 요청 출처 종류 */
@@ -217,6 +299,8 @@ export interface PoChangeFilters {
   originFilter: string;
   /** "변경 아님" 처리한 건도 표에 보이기 */
   includeDismissed: boolean;
+  /** 등록 상태: 전체 / 등록됨(사전+사후) / 상태 값 */
+  registrationFilter: string;
 }
 
 /** 고객처 담당자 (customer_managers) */

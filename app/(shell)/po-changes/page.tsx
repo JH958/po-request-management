@@ -1,5 +1,5 @@
 /**
- * PO 변경 페이지 — 기간별 변경 이벤트·사유 입력, 분할/합배송·품목코드 변경 후보 확인, 재등록 대기 (영업관리팀·관리자)
+ * PO 변경 페이지 — 기간별 변경 이벤트·사유 입력, 분할/합배송·품목코드 변경 후보 확인, 요청 연결·미등록 변경, 재등록 대기 (영업관리팀·관리자)
  */
 'use client';
 
@@ -15,6 +15,8 @@ import { ReviewQueue } from '@/components/po-changes/ReviewQueue';
 import { ChangeEventsTable } from '@/components/po-changes/ChangeEventsTable';
 import { PendingLinesTable } from '@/components/po-changes/PendingLinesTable';
 import { ReasonDialog } from '@/components/po-changes/ReasonDialog';
+import { RequestLinkDialog } from '@/components/po-changes/RequestLinkDialog';
+import { UnregisteredQueue } from '@/components/po-changes/UnregisteredQueue';
 import { useAuth } from '@/hooks/use-auth';
 import { usePoChanges } from '@/hooks/use-po-changes';
 import { useLanguage } from '@/context/LanguageContext';
@@ -30,8 +32,16 @@ import {
   setOrderDestination,
 } from '@/lib/po-changes-api';
 import {
+  clearChangeExemptions,
+  linkChangeRequest,
+  rematchChangeRequests,
+  setChangeExemptions,
+  unlinkChangeRequest,
+} from '@/lib/po-request-links-api';
+import {
   REASON_FILTER_MISSING,
   countMissingReasons,
+  countRegistration,
   countStatUnits,
   filterEvents,
   filterGroups,
@@ -41,9 +51,23 @@ import {
 } from '@/lib/po-changes-utils';
 import { getReadableErrorMessage } from '@/lib/request-helpers';
 import { cn } from '@/lib/utils';
-import type { ChangeGroupStatus, ChangeReasonInput, PoChangeFilters } from '@/types/po-changes';
+import type { ChangeGroupStatus, ChangeReasonInput, ChangeRequestLink, MatchCandidate, PoChangeFilters } from '@/types/po-changes';
 
-type PoChangesTab = 'review' | 'events' | 'pending';
+type PoChangesTab = 'review' | 'events' | 'unregistered' | 'pending';
+
+/**
+ * 변경 1건 키별로 묶기
+ */
+const groupByKey = <T,>(rows: T[], keyOf: (row: T) => string): Map<string, T[]> => {
+  const map = new Map<string, T[]>();
+  rows.forEach((row) => {
+    const key = keyOf(row);
+    const list = map.get(key);
+    if (list) list.push(row);
+    else map.set(key, [row]);
+  });
+  return map;
+};
 
 /** "내 담당 고객처만" 선택 기억 (브라우저별 편의 기능) */
 const MINE_ONLY_KEY = 'purchaseOnPoChangesMineOnly';
@@ -106,13 +130,18 @@ const PoChangesContent = ({ userId, userEmail }: { userId: string; userEmail: st
       reasonFilter: fromDashboard && drill.reason ? drill.reason : 'all',
       originFilter: fromDashboard && drill.origin ? drill.origin : 'all',
       includeDismissed: false,
+      registrationFilter: 'all',
     };
   });
   const [tab, setTab] = useState<PoChangesTab>(fromDashboard ? 'events' : 'review');
   const [reasonUnits, setReasonUnits] = useState<PoStatUnit[] | null>(null);
+  const [linkUnit, setLinkUnit] = useState<PoStatUnit | null>(null);
   const { requestReasons } = useRequestConfig();
 
-  const { events, groups, changeTypes, origins, pendingLines, uploadDays, loading, error, refresh } = usePoChanges(filters.from, filters.to);
+  const { events, groups, changeTypes, origins, pendingLines, uploadDays, links, candidates, unreflected, loading, error, refresh } =
+    usePoChanges(filters.from, filters.to);
+  const linksByUnit = useMemo(() => groupByKey<ChangeRequestLink>(links, (l) => l.unit_key), [links]);
+  const candidatesByUnit = useMemo(() => groupByKey<MatchCandidate>(candidates, (c) => c.stat_unit_key), [candidates]);
 
   const visibleEvents = useMemo(() => filterEvents(events, filters), [events, filters]);
   const visibleGroups = useMemo(() => filterGroups(groups, filters), [groups, filters]);
@@ -123,6 +152,9 @@ const PoChangesContent = ({ userId, userEmail }: { userId: string; userEmail: st
     [events, filters]
   );
   const reviewCount = visibleGroups.filter((g) => g.status === 'pending').length;
+  // 등록률·미등록 변경은 등록 상태 필터와 관계없이 (다른 필터는 적용)
+  const eventsAnyRegistration = useMemo(() => filterEvents(events, { ...filters, registrationFilter: 'all' }), [events, filters]);
+  const registration = useMemo(() => countRegistration(eventsAnyRegistration), [eventsAnyRegistration]);
   const newOrders = uploadDays
     .filter((d) => d.snapshot_date >= filters.from && d.snapshot_date <= filters.to)
     .reduce((sum, d) => sum + d.new_orders, 0);
@@ -243,6 +275,98 @@ const PoChangesContent = ({ userId, userEmail }: { userId: string; userEmail: st
   };
 
   /**
+   * 요청과 변경 연결 — 성공하면 true
+   */
+  const handleLink = async (key: string, candidate: MatchCandidate, note: string): Promise<boolean> => {
+    try {
+      await linkChangeRequest(key, candidate.request_id, candidate.item_key, note);
+      toast.success(t('요청과 연결했습니다.', 'Linked to the request.'));
+      await refresh();
+      return true;
+    } catch (err) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('요청 연결 실패:', err);
+      }
+      toast.error(t('연결하지 못했습니다.', 'Could not link.'), { description: getReadableErrorMessage(err) });
+      return false;
+    }
+  };
+
+  /**
+   * 연결 해제 — 성공하면 true
+   */
+  const handleUnlink = async (linkId: string, note: string): Promise<boolean> => {
+    try {
+      await unlinkChangeRequest(linkId, note);
+      toast.success(t('연결을 해제했습니다.', 'Unlinked.'));
+      await refresh();
+      return true;
+    } catch (err) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('요청 연결 해제 실패:', err);
+      }
+      toast.error(t('해제하지 못했습니다.', 'Could not unlink.'), { description: getReadableErrorMessage(err) });
+      return false;
+    }
+  };
+
+  /**
+   * 예외 처리 — 성공하면 true
+   */
+  const handleExempt = async (keys: string[], note: string): Promise<boolean> => {
+    try {
+      const count = await setChangeExemptions(keys, note);
+      toast.success(t(`변경 ${count}건을 예외 처리했습니다.`, `Exempted ${count} changes.`));
+      await refresh();
+      return true;
+    } catch (err) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('예외 처리 실패:', err);
+      }
+      toast.error(t('처리하지 못했습니다.', 'Could not update.'), { description: getReadableErrorMessage(err) });
+      return false;
+    }
+  };
+
+  /**
+   * 예외 처리 해제 — 성공하면 true
+   */
+  const handleClearExempt = async (keys: string[]): Promise<boolean> => {
+    try {
+      await clearChangeExemptions(keys);
+      toast.success(t('예외 처리를 해제했습니다.', 'Exemption removed.'));
+      await refresh();
+      return true;
+    } catch (err) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('예외 처리 해제 실패:', err);
+      }
+      toast.error(t('처리하지 못했습니다.', 'Could not update.'), { description: getReadableErrorMessage(err) });
+      return false;
+    }
+  };
+
+  /**
+   * 다시 매칭 — 자동 연결 조건에 맞는 짝을 찾아 연결
+   */
+  const handleRematch = async () => {
+    try {
+      const count = await rematchChangeRequests();
+      toast.success(
+        count
+          ? t(`새로 ${count}건을 자동 연결했습니다.`, `Auto-linked ${count} new changes.`)
+          : t('새로 연결할 짝이 없습니다. 후보는 직접 골라 연결해주세요.', 'Nothing new to link. Pick candidates by hand.')
+      );
+      await refresh();
+    } catch (err) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('다시 매칭 실패:', err);
+      }
+      toast.error(t('다시 매칭하지 못했습니다.', 'Could not match again.'), { description: getReadableErrorMessage(err) });
+    }
+  };
+
+  /**
    * 경유 고객처 주문의 실제 고객처 지정·해제
    */
   const handleSetDestination = async (orderNo: string, target: string | null) => {
@@ -261,6 +385,10 @@ const PoChangesContent = ({ userId, userEmail }: { userId: string; userEmail: st
   const tabs: { id: PoChangesTab; label: string }[] = [
     { id: 'review', label: t(`확인 필요 ${reviewCount}`, `To review ${reviewCount}`) },
     { id: 'events', label: t(`변경 이벤트 ${statCount}`, `Change events ${statCount}`) },
+    {
+      id: 'unregistered',
+      label: t(`미등록 변경 ${registration.unregistered + registration.waiting}`, `Unregistered ${registration.unregistered + registration.waiting}`),
+    },
     { id: 'pending', label: t(`재등록 대기 ${pendingLines.length}`, `Pending re-registration ${pendingLines.length}`) },
   ];
 
@@ -307,6 +435,8 @@ const PoChangesContent = ({ userId, userEmail }: { userId: string; userEmail: st
           setFilters({ ...filters, reasonFilter: REASON_FILTER_MISSING });
           setTab('events');
         }}
+        registration={registration}
+        onShowUnregistered={() => setTab('unregistered')}
       />
 
       <div className="flex flex-wrap gap-2" role="tablist">
@@ -339,7 +469,28 @@ const PoChangesContent = ({ userId, userEmail }: { userId: string; userEmail: st
           onReview={handleReview}
         />
       ) : tab === 'events' ? (
-        <ChangeEventsTable onEditReasons={setReasonUnits} onSetDestination={handleSetDestination} events={visibleEvents} changeTypes={changeTypes} statCount={statCount} from={filters.from} to={filters.to} />
+        <ChangeEventsTable
+          onEditReasons={setReasonUnits}
+          onSetDestination={handleSetDestination}
+          events={visibleEvents}
+          changeTypes={changeTypes}
+          statCount={statCount}
+          from={filters.from}
+          to={filters.to}
+          linksByUnit={linksByUnit}
+          candidatesByUnit={candidatesByUnit}
+          onOpenLinks={setLinkUnit}
+        />
+      ) : tab === 'unregistered' ? (
+        <UnregisteredQueue
+          events={eventsAnyRegistration}
+          candidatesByUnit={candidatesByUnit}
+          unreflected={unreflected}
+          changeTypes={changeTypes}
+          onOpen={setLinkUnit}
+          onLink={handleLink}
+          onRematch={handleRematch}
+        />
       ) : (
         <PendingLinesTable lines={pendingLines} />
       )}
@@ -355,6 +506,18 @@ const PoChangesContent = ({ userId, userEmail }: { userId: string; userEmail: st
         onClear={handleClearReasons}
         onDismiss={handleDismiss}
         onRestore={handleRestore}
+      />
+
+      <RequestLinkDialog
+        unit={linkUnit}
+        links={linkUnit ? linksByUnit.get(linkUnit.key) ?? [] : []}
+        candidates={linkUnit ? candidatesByUnit.get(linkUnit.key) ?? [] : []}
+        changeTypes={changeTypes}
+        onClose={() => setLinkUnit(null)}
+        onLink={handleLink}
+        onUnlink={handleUnlink}
+        onExempt={handleExempt}
+        onClearExempt={handleClearExempt}
       />
     </div>
   );

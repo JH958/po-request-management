@@ -1,5 +1,5 @@
 /**
- * 변경 이벤트 탭 — 통계 단위(묶음)별 표, 펼치면 라인별 이벤트, 사유 입력(여러 건 선택 가능) + Excel 다운로드
+ * 변경 이벤트 탭 — 통계 단위(묶음)별 표, 펼치면 라인별 이벤트, 요청 연결(등록 상태), 사유 입력(여러 건 선택 가능) + Excel 다운로드
  */
 'use client';
 
@@ -24,12 +24,14 @@ import {
   getChangeGroupTypeLabels,
   getEventTypeName,
   getProductClassLabels,
+  getRegistrationLabels,
+  REGISTRATION_BADGE_CLASSES,
 } from '@/lib/po-tracker-labels';
 import { groupByStatUnit, type PoStatUnit } from '@/lib/po-changes-utils';
 import { DestinationChoice } from '@/components/po-changes/DestinationChoice';
 import type { Translate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
-import type { PoChangeEvent, PoChangeTypeSetting } from '@/types/po-changes';
+import type { ChangeRequestLink, MatchCandidate, PoChangeEvent, PoChangeTypeSetting } from '@/types/po-changes';
 
 interface ChangeEventsTableProps {
   events: PoChangeEvent[];
@@ -41,6 +43,12 @@ interface ChangeEventsTableProps {
   onEditReasons: (units: PoStatUnit[]) => void;
   /** 경유 고객처 주문의 실제 고객처 지정 */
   onSetDestination: (orderNo: string, target: string | null) => Promise<void>;
+  /** 변경 1건 키 → 연결된 요청 */
+  linksByUnit: Map<string, ChangeRequestLink[]>;
+  /** 변경 1건 키 → 연결 후보 */
+  candidatesByUnit: Map<string, MatchCandidate[]>;
+  /** 요청 연결 창 열기 */
+  onOpenLinks: (unit: PoStatUnit) => void;
 }
 
 const numberFormat = new Intl.NumberFormat('ko-KR');
@@ -87,12 +95,16 @@ export const ChangeEventsTable = ({
   to,
   onEditReasons,
   onSetDestination,
+  linksByUnit,
+  candidatesByUnit,
+  onOpenLinks,
 }: ChangeEventsTableProps) => {
   const { t, lang } = useLanguage();
   const classLabels = getProductClassLabels(t);
   const typeLabels = getDoChangeTypeLabels(t);
   const groupTypeLabels = getChangeGroupTypeLabels(t);
   const groupStatusLabels = getChangeGroupStatusLabels(t);
+  const registrationLabels = getRegistrationLabels(t);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const units = useMemo(() => groupByStatUnit(events), [events]);
@@ -154,6 +166,11 @@ export const ChangeEventsTable = ({
           [t('사유 입력자', 'Reason by')]: e.reason_set_by_name ?? '',
           [t('변경 아님', 'Not a change')]: e.is_dismissed ? 'Y' : '',
           [t('정정 메모', 'Correction note')]: e.dismiss_note ?? '',
+          [t('등록 상태', 'Registration')]: e.is_excluded || e.is_dismissed ? '' : registrationLabels[e.registration_status],
+          [t('연결 요청', 'Linked requests')]: (linksByUnit.get(unit.key) ?? [])
+            .map((l) => `${l.request_date} ${l.requester_name} ${l.category_of_request}`)
+            .join(' / '),
+          [t('예외 처리 메모', 'Exemption note')]: e.exempt_note ?? '',
         }))
       );
       const sheet = XLSX.utils.json_to_sheet(rows);
@@ -262,6 +279,11 @@ export const ChangeEventsTable = ({
           ) : e.reason ? (
             <span className="block truncate" title={e.reason_note ?? ''}>
               <span className="font-medium text-[#253143]">{e.reason}</span>
+              {e.reason_source === 'request' ? (
+                <span className="ml-1 rounded bg-sky-50 px-1 text-xs text-sky-700" title={t('연결된 요청서에서 가져온 사유입니다. 고쳐서 저장하면 일반 입력으로 바뀝니다.', 'Taken from the linked request. Saving an edit makes it a regular entry.')}>
+                  {t('요청서', 'Request')}
+                </span>
+              ) : null}
               {e.reason_note ? <span className="ml-1 text-xs text-[#5A6778]">{e.reason_note}</span> : null}
             </span>
           ) : excluded ? (
@@ -294,6 +316,45 @@ export const ChangeEventsTable = ({
           )}
         </TableCell>
       </>
+    );
+  };
+
+  /**
+   * 요청 등록 칸 — 등록 상태 배지와 연결 요청·후보 수, 누르면 요청 연결 창
+   */
+  const renderRegistrationCell = (unit: PoStatUnit) => {
+    const e = unit.events[0];
+    if (unit.events.every((x) => x.is_excluded) || e.is_dismissed) {
+      return <TableCell><span className="text-[#8E98A8]">-</span></TableCell>;
+    }
+    const links = linksByUnit.get(unit.key) ?? [];
+    const candidateCount = candidatesByUnit.get(unit.key)?.length ?? 0;
+    const rejected = links.some((l) => l.request_status === 'rejected');
+    return (
+      <TableCell onClick={(ev) => ev.stopPropagation()}>
+        <button
+          type="button"
+          onClick={() => onOpenLinks(unit)}
+          className="flex flex-col items-start gap-0.5 rounded text-left hover:opacity-80"
+          title={
+            links.length
+              ? links.map((l) => `${l.request_date} ${l.requester_name} · ${l.category_of_request}`).join('\n')
+              : t('눌러서 요청 연결', 'Click to link a request')
+          }
+        >
+          <Badge variant="outline" className={cn('whitespace-nowrap', REGISTRATION_BADGE_CLASSES[e.registration_status])}>
+            {registrationLabels[e.registration_status]}
+          </Badge>
+          <span className="whitespace-nowrap text-xs text-[#5A6778]">
+            {links.length
+              ? t(`요청 ${links.length}건`, `${links.length} requests`)
+              : candidateCount
+                ? t(`후보 ${candidateCount}건`, `${candidateCount} candidates`)
+                : null}
+            {rejected ? <span className="ml-1 text-red-700">{t('· 반려된 요청', '· rejected')}</span> : null}
+          </span>
+        </button>
+      </TableCell>
     );
   };
 
@@ -392,6 +453,7 @@ export const ChangeEventsTable = ({
                   t('수량 (전 → 후)', 'Qty (before → after)'),
                   t('상세 (전 → 후)', 'Detail (before → after)'),
                   t('후보 묶음', 'Candidate'),
+                  t('요청 등록', 'Request'),
                   t('변경 사유', 'Reason'),
                   t('요청 출처', 'Requested by'),
                   '',
@@ -413,6 +475,7 @@ export const ChangeEventsTable = ({
                       <TableCell />
                       {renderEventCells(first)}
                       <TableCell className="whitespace-nowrap">{renderBadge(first)}</TableCell>
+                      {renderRegistrationCell(unit)}
                       {renderReasonCells(unit)}
                     </TableRow>
                   );
@@ -469,6 +532,7 @@ export const ChangeEventsTable = ({
                       <TableCell className="whitespace-nowrap font-semibold">{qtySummary(unit.events)}</TableCell>
                       <TableCell className="whitespace-nowrap text-[#5A6778]">{isShift ? detailText(first) : '-'}</TableCell>
                       <TableCell className="whitespace-nowrap">{renderBadge(first)}</TableCell>
+                      {renderRegistrationCell(unit)}
                       {renderReasonCells(unit)}
                     </TableRow>
                     {open
@@ -478,7 +542,7 @@ export const ChangeEventsTable = ({
                             <TableCell />
                             {renderEventCells(e, true)}
                             <TableCell />
-                            <TableCell colSpan={3} />
+                            <TableCell colSpan={4} />
                           </TableRow>
                         ))
                       : null}

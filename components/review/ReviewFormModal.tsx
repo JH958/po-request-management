@@ -29,7 +29,6 @@ import { Package } from 'lucide-react';
 import type { PORequest } from '@/types/request';
 import {
   isItemAdditionCategory,
-  needsProductCategory,
   validateApproveConfirmedQuantity,
   validateRejectConfirmedQuantity,
   getReadableErrorMessage,
@@ -173,12 +172,6 @@ export const ReviewFormModal = ({
               <div><p className="text-[#5A6778]">{t('요청자', 'Requester')}</p><p>{request.requester_name}</p></div>
               <div><p className="text-[#5A6778]">{t('출하일', 'Ship date')}</p><p>{request.factory_shipment_date}</p></div>
               <div><p className="text-[#5A6778]">{t('요청구분', 'Request type')}</p><p>{request.category_of_request}</p></div>
-              {needsProductCategory(request.category_of_request) && (
-                <div>
-                  <p className="text-[#5A6778]">{t('품목구분', 'Product category')}</p>
-                  <ProductCategoryBadges category={request.product_category} size="md" />
-                </div>
-              )}
               <div><p className="text-[#5A6778]">{t('품목코드', 'Item code')}</p><p>{request.erp_code}</p></div>
               <div><p className="text-[#5A6778]">{t('품목명', 'Item name')}</p><p>{request.item_name}</p></div>
               <div><p className="text-[#5A6778]">{t('수량', 'Qty')}</p><p>{request.quantity}</p></div>

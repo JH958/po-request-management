@@ -10,6 +10,7 @@ import type {
   PoChangeEvent,
   PoChangeTypeSetting,
   ProductClass,
+  RegistrationStatus,
 } from '@/types/po-changes';
 
 /** DO 변경 이벤트 유형 표시 순서 */
@@ -147,4 +148,25 @@ export const getEventTypeName = (
 ): string => {
   const setting = types.find((type) => type.code === event.change_type_code);
   return setting ? getChangeTypeName(setting, lang) : event.change_type_label;
+};
+
+/** 등록 상태 표시 순서 */
+export const REGISTRATION_STATUSES: RegistrationStatus[] = ['pre', 'post', 'exempt', 'waiting', 'unregistered'];
+
+/** 등록 상태 표시명 */
+export const getRegistrationLabels = (t: Translate): Record<RegistrationStatus, string> => ({
+  pre: t('사전 등록', 'Registered before'),
+  post: t('사후 등록', 'Registered after'),
+  exempt: t('예외 처리', 'Exempt'),
+  waiting: t('확인 대기', 'Waiting'),
+  unregistered: t('미등록', 'Unregistered'),
+});
+
+/** 등록 상태 배지 색 (Tailwind 클래스) */
+export const REGISTRATION_BADGE_CLASSES: Record<RegistrationStatus, string> = {
+  pre: 'border-green-200 bg-green-50 text-green-700',
+  post: 'border-sky-200 bg-sky-50 text-sky-700',
+  exempt: 'border-slate-300 bg-slate-100 text-slate-600',
+  waiting: 'border-amber-200 bg-amber-50 text-amber-700',
+  unregistered: 'border-red-200 bg-red-50 text-red-700',
 };

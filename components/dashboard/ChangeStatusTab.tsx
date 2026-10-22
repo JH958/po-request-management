@@ -24,7 +24,7 @@ import {
   rankByType,
 } from '@/lib/po-dashboard-utils';
 import { ORIGIN_FILTER_CUSTOMER } from '@/lib/po-changes-utils';
-import { getChangeTypeName } from '@/lib/po-tracker-labels';
+import { getChangeTypeName, getRegistrationLabels } from '@/lib/po-tracker-labels';
 import type { PoChangeTypeSetting } from '@/types/po-changes';
 import type { DashboardChangeRow, DashboardFilters, RankedItem, TrendUnit } from '@/types/po-dashboard';
 
@@ -64,8 +64,13 @@ export const ChangeStatusTab = ({ rows, previousRows, filters, changeTypes }: Ch
       customer: buckets.filter((b) => b === 'customer').length,
       production: buckets.filter((b) => b === 'production').length,
       department: buckets.filter((b) => b === 'department').length,
+      registered: rows.filter((r) => r.registration_status === 'pre' || r.registration_status === 'post').length,
+      exempt: rows.filter((r) => r.registration_status === 'exempt').length,
+      waiting: rows.filter((r) => r.registration_status === 'waiting').length,
+      unregistered: rows.filter((r) => r.registration_status === 'unregistered').length,
     };
   }, [rows]);
+  const registrationLabels = getRegistrationLabels(t);
 
   const typeGroupLabels = getTypeGroupLabels(t);
   const originLabels = getOriginLabels(t);
@@ -98,7 +103,7 @@ export const ChangeStatusTab = ({ rows, previousRows, filters, changeTypes }: Ch
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4" data-tour="po-status-header">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-5" data-tour="po-status-header">
         <KpiCard
           label={t('변경 건수', 'Changes')}
           value={numberFormat.format(stats.total)}
@@ -121,6 +126,24 @@ export const ChangeStatusTab = ({ rows, previousRows, filters, changeTypes }: Ch
             parts={[
               { label: t('입력', 'Entered'), value: stats.withReason, color: '#8B1538' },
               { label: t('미입력', 'Missing'), value: stats.total - stats.withReason, color: '#F1F4F8' },
+            ]}
+          />
+        </KpiCard>
+        <KpiCard
+          label={t('요청 등록률', 'Registered rate')}
+          value={`${percent(stats.registered, stats.total)}%`}
+          hint={t(
+            `등록 ${numberFormat.format(stats.registered)} · 확인 대기 ${numberFormat.format(stats.waiting)} · 미등록 ${numberFormat.format(stats.unregistered)}`,
+            `Registered ${stats.registered} · waiting ${stats.waiting} · unregistered ${stats.unregistered}`
+          )}
+        >
+          <RatioMeter
+            label={t('요청 등록률', 'Registered rate')}
+            parts={[
+              { label: t('등록 (사전+사후)', 'Registered'), value: stats.registered, color: '#1E40AF' },
+              { label: registrationLabels.exempt, value: stats.exempt, color: '#8E98A8' },
+              { label: registrationLabels.waiting, value: stats.waiting, color: '#D6DDE7' },
+              { label: registrationLabels.unregistered, value: stats.unregistered, color: '#8B1538' },
             ]}
           />
         </KpiCard>

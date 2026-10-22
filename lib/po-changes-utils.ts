@@ -2,7 +2,7 @@
  * PO 변경 페이지 필터·집계 유틸리티
  */
 import { format, subDays } from 'date-fns';
-import type { PoChangeEvent, PoChangeFilters, PoChangeGroup } from '@/types/po-changes';
+import type { PoChangeEvent, PoChangeFilters, PoChangeGroup, RegistrationStatus } from '@/types/po-changes';
 
 /** 기본 조회 기간: 오늘 포함 최근 7일 (달력일) */
 export const getDefaultRange = (): { from: string; to: string } => {
@@ -59,6 +59,36 @@ const matchesOrigin = (e: PoChangeEvent, filter: string): boolean => {
   return e.reason_origin_code === filter;
 };
 
+/** 등록 상태 필터 값: 등록됨(사전+사후) (그 밖의 값은 상태 값) */
+export const REGISTRATION_FILTER_REGISTERED = '__registered__';
+
+/**
+ * 등록 상태 필터 일치 여부
+ */
+const matchesRegistration = (e: PoChangeEvent, filter: string): boolean => {
+  if (filter === 'all') return true;
+  if (filter === REGISTRATION_FILTER_REGISTERED) return e.registration_status === 'pre' || e.registration_status === 'post';
+  return e.registration_status === filter;
+};
+
+/** 등록 상태별 변경 건수 */
+export type RegistrationCounts = Record<RegistrationStatus, number> & { total: number };
+
+/**
+ * 등록 상태별 변경 건수 (통계 단위 기준, 추적 제외·"변경 아님" 제외)
+ */
+export const countRegistration = (events: PoChangeEvent[]): RegistrationCounts => {
+  const units = new Map<string, RegistrationStatus>();
+  events.forEach((e) => {
+    if (!e.is_excluded && !e.is_dismissed) units.set(e.stat_unit_key, e.registration_status);
+  });
+  const counts: RegistrationCounts = { pre: 0, post: 0, exempt: 0, waiting: 0, unregistered: 0, total: units.size };
+  units.forEach((status) => {
+    counts[status] += 1;
+  });
+  return counts;
+};
+
 /**
  * 사유를 아직 입력하지 않은 변경 건수 (추적 제외 제외, 통계 단위 기준)
  */
@@ -78,6 +108,7 @@ export const filterEvents = (events: PoChangeEvent[], filters: PoChangeFilters):
     if (filters.productClass !== 'all' && e.product_class !== filters.productClass) return false;
     if (!matchesReason(e, filters.reasonFilter)) return false;
     if (!matchesOrigin(e, filters.originFilter)) return false;
+    if (!matchesRegistration(e, filters.registrationFilter)) return false;
     if (term && !matchesSearch(e, term)) return false;
     return true;
   });

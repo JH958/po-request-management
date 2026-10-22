@@ -34,11 +34,11 @@ import { formatDate } from '@/lib/dashboard-utils';
 import {
   getStatusLabel,
   isItemAdditionCategory,
-  needsProductCategory,
 } from '@/lib/request-helpers';
 import { useRequestConfig } from '@/context/RequestConfigContext';
-import { ProductCategoryBadges } from '@/components/common/ProductCategoryBadges';
 import { FrozenStatusBadge } from '@/components/request/FrozenStatusBadge';
+import { DoReflectionBadge, getDoReflectionText } from '@/components/request/DoReflectionBadge';
+import { useRequestReflections } from '@/hooks/use-request-reflections';
 import { cn } from '@/lib/utils';
 import { getDateLocale } from '@/lib/i18n';
 import { useLanguage } from '@/context/LanguageContext';
@@ -68,6 +68,10 @@ export const RequestHistoryTable = ({
   const [filterCustomer, setFilterCustomer] = useState('all');
   const [sortOrder, setSortOrder] = useState('request-date-desc');
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
+
+  // 요청별 DO 반영 상태 (3단계 요청 ↔ DO 변경 연결)
+  const requestIds = useMemo(() => requests.map((r) => r.id), [requests]);
+  const reflections = useRequestReflections(requestIds);
 
   const tableScrollRef = useRef<HTMLDivElement | null>(null);
   const bottomScrollbarRef = useRef<HTMLDivElement | null>(null);
@@ -179,6 +183,7 @@ export const RequestHistoryTable = ({
               ? t('프로즌 이후', 'After frozen')
               : t('미설정', 'Not set'),
         [t('상태', 'Status')]: getStatusLabel(r.status, t),
+        [t('DO 반영', 'DO reflected')]: getDoReflectionText(r, reflections.get(r.id), t),
       }));
       const worksheet = XLSX.utils.json_to_sheet(exportData);
       const workbook = XLSX.utils.book_new();
@@ -336,7 +341,7 @@ export const RequestHistoryTable = ({
               className="max-h-[500px] overflow-x-auto overflow-y-auto rounded-lg border"
               onScroll={handleTableScroll}
             >
-              <Table className="min-w-[1700px]">
+              <Table className="min-w-[1820px]">
                 <TableHeader
                   className="sticky top-0 z-20 bg-white shadow-sm"
                   data-tour={tourPrefix ? `${tourPrefix}-history-table-header` : undefined}
@@ -350,7 +355,6 @@ export const RequestHistoryTable = ({
                       t('요청자', 'Requester'),
                       t('출하일', 'Ship date'),
                       t('요청구분', 'Request type'),
-                      t('품목구분', 'Product category'),
                       t('품목코드', 'Item code'),
                       t('품목명', 'Item name'),
                       t('수량', 'Qty'),
@@ -359,6 +363,7 @@ export const RequestHistoryTable = ({
                       t('검토 상세', 'Review details'),
                       t('프로즌 여부', 'Frozen'),
                       t('상태', 'Status'),
+                      t('DO 반영', 'DO reflected'),
                     ].map(
                       (h) => (
                         <TableHead key={h} className="sticky top-0 z-20 bg-white">
@@ -385,13 +390,6 @@ export const RequestHistoryTable = ({
                         <TableCell>{r.requester_name}</TableCell>
                         <TableCell>{r.factory_shipment_date ? formatDate(r.factory_shipment_date) : '-'}</TableCell>
                         <TableCell>{r.category_of_request}</TableCell>
-                        <TableCell>
-                          {needsProductCategory(r.category_of_request) && r.product_category ? (
-                            <ProductCategoryBadges category={r.product_category} />
-                          ) : (
-                            <span className="text-[#8E98A8]">-</span>
-                          )}
-                        </TableCell>
                         <TableCell>{r.erp_code || '-'}</TableCell>
                         <TableCell>{r.item_name || '-'}</TableCell>
                         <TableCell>{r.quantity || 0}</TableCell>
@@ -427,6 +425,9 @@ export const RequestHistoryTable = ({
                           >
                             {getStatusLabel(r.status, t)}
                           </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <DoReflectionBadge request={r} reflection={reflections.get(r.id)} />
                         </TableCell>
                       </TableRow>
                     ))
