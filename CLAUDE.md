@@ -54,6 +54,15 @@ npm run lint     # ESLint — 커밋 전 반드시 통과해야 함
 - 품목 구분은 `item_class_overrides`(품목번호 예외)가 카테고리 구분보다 우선. 후보 승인/반려는 메모 필수이며 처리자 이름(`reviewed_by_name`)과 이력(`do_change_group_reviews`)을 DB 함수가 남긴다(다른 사용자 프로필은 RLS로 못 읽으므로 이름을 저장).
 - 운영 DB 변경은 기본 파일(`add_po_tracker_do_tracking.sql`)을 고치고, 이미 실행된 DB용 후속 파일(`update_po_tracker_*.sql`)을 따로 만든다.
 
+### 요청 ↔ DO 변경 연결 (3단계, 2026-10-22, `update_po_tracker_request_matching.sql`·`update_po_tracker_request_untracked.sql`)
+- 후보(`po_match_pairs`, 내부용): 요청 1건 × 품목(`po_request_items` — items 배열 우선, 없으면 단일 품목 칸, 수량 절댓값) ↔ 변경 1건(stat_unit_key). SO 같음(`po_norm_code`로 공백·대소문자 무시) + 품목 같음(변경 전·후 품목 포함) + 감지일이 요청일 −7 ~ +45일(`po_match_settings`, 관리자 설정 '요청 연결 기준'). 출하일정·운송방법 변경은 요청 단위(item_key 빈칸, 요청에 품목이 있으면 하나는 겹쳐야 함, 수량 비교 안 함). 일치 정도: 유형(요청구분 label = 변경 유형, 고친 유형 기준)·수량. 추적 제외·"변경 아님"·삭제된 요청·SO 없는 요청은 제외.
+- 자동 연결(`po_run_auto_link`): 유형·수량까지 맞고 그 변경의 후보 요청이 하나, 그 요청 품목의 후보 변경도 하나일 때만(요청 단위는 여러 변경 가능). 반려된 요청·예외 처리한 변경·해제한 짝은 제외. 실행: DO 업로드 완료 트리거(`po_uploads_auto_link`), 요청 등록·수정 트리거(`po_requests_match_*`, 실패해도 저장은 막지 않음), '다시 매칭' 버튼(`rematch_change_requests`). 요청 삭제(소프트·완전) 시 연결 해제.
+- 연결 `request_change_links`(auto/manual, linked/unlinked, request_date 복사 — 영업관리팀이 requests를 RLS로 못 읽을 수 있어서)·이력. 직접 연결 `link_change_request`, 해제 `unlink_change_request`(메모 필수). 연결되면 사유가 비어 있을 때만 요청서 사유·출처(요청 부서 목록 → 부서, 고객처 계정 → 고객처)·"[요청서 날짜 · 요청자] 상세"로 채움(`po_prefill_request_reason`, source `request`), 연결이 모두 풀리면 고치지 않은 요청서 사유는 지움.
+- 등록 상태(`v_do_change_events.registration_status`): pre 사전(요청일 ≤ 감지일) / post 사후 / exempt 예외 처리(`po_change_exemptions`, `set_change_exemptions`·`clear_change_exemptions`, 메모 필수 — "변경 아님"과 다름) / waiting 확인 대기(감지 후 5영업일 안, 토·일만 제외 `po_business_days_between`) / unregistered 미등록. 묶음이 반려되면 각 라인이 묶음 연결·예외를 물려받음.
+- 조회 함수(영업관리팀): `po_change_links`, `po_match_candidates`(요청 요약 포함), `po_unreflected_requests`(승인·완료 + 출하일 지남 + 연결 없음, 추적 전 제외). 요청 화면용 `po_request_reflections`(본인 요청·검토자·관리자·영업관리팀만): reflected / partial / none / no_so / untracked(요청일+45일 < 첫 DO 업로드일 `po_tracking_start`).
+- 화면: PO 변경 — 표의 '요청 등록' 칸 → `RequestLinkDialog`(연결·후보·예외), 등록 상태 필터, 요청 등록률 카드, '미등록 변경' 탭(`UnregisteredQueue`, 후보 3개 바로 연결, 미반영 요청). 요청접수·검토대기 표 'DO 반영'(`DoReflectionBadge`, `useRequestReflections`). PO 현황 '요청 등록률' 지표. API `lib/po-request-links-api.ts`.
+- 요청 등록 창: 주문번호는 영문 + 9자리 숫자(`validateSONumber` — SO·PO·ihcPO·bwaPO·TRO), 품목 구분 입력은 삭제(열 `product_category`는 남김, 예전 값만 표시).
+
 ### 화면 언어 (KOR/ENG)
 - 헤더·로그인·회원가입의 `LanguageToggle`로 전환하며, 선택 언어는 localStorage `purchaseOnLanguage`에 저장(`context/LanguageContext.tsx`, `lib/i18n.ts`).
 - 화면 문구는 키 없이 **`t('한국어', 'English')`** 로 두 언어를 나란히 적는다. 컴포넌트에서는 `const { t, lang } = useLanguage()`.
@@ -77,7 +86,7 @@ npm run lint     # ESLint — 커밋 전 반드시 통과해야 함
 
 ## 진행 상황과 다음 할 일 (2026-10-22 기준)
 
-PO Tracker 전환은 4단계로 진행 중: 1) 표시명 변경 2) DO 업로드·비교 3) 요청↔DO 매칭·미등록 변경 큐 4) 원요청 수신일·프로즌 판정 기준·AI 분류·통계. 2단계를 다듬는 보완 작업 A·B·C를 3단계보다 먼저 진행하고 있다.
+PO Tracker 전환은 4단계로 진행 중: 1) 표시명 변경 2) DO 업로드·비교 3) 요청↔DO 매칭·미등록 변경 큐 4) 원요청 수신일·프로즌 판정 기준·AI 분류·통계. 1~3단계와 보완 작업 A·B·C 완료, 다음은 4단계(또는 업로드 자동화).
 
 **완료**
 - 1·2단계: 표시명 PO Tracker, 판매주문조회·DO등록현황조회 업로드와 DO 변경 이벤트, 분할/합배송·품목코드 변경 후보 승인/반려, PO 변경 페이지(`/po-changes`), 디자인 개편·KOR/ENG
@@ -91,11 +100,12 @@ PO Tracker 전환은 4단계로 진행 중: 1) 표시명 변경 2) DO 업로드�
 - 10-21 시도 후 원복: 'PO 간 이동' 유형, 날짜가 다른 짝찾기(5영업일), 직접 묶기 — 사용자가 분류는 사람이 유형을 고르는 방식으로 결정. 다시 제안하지 말 것(요청하면 그때)
 - 10-22: 고친 변경 유형이 자동 판정과 같아지면 "수정" 표시 없음·겹치는 기록 정리(`update_po_tracker_type_override_cleanup.sql`) / C-3 PO 현황 대시보드 개편(커밋 8da389a) — 탭 'PO 변경 현황'·'요청 현황', 영업관리팀·관리자 전용(다른 계정은 메뉴 숨김·요청접수로), 보기 전용, 지표 4개(변경 건수 직전 대비·사유 입력률·확인 대기 후보·고객처/생산부 요청 비중), 추이 일·주·월·분기·연 전환, 유형·고객처 상위 10·사유·요청 출처 막대(툴팁: 고객처/생산부 비중, 경유 고객처는 꼬리표 없이 묶고 실제 도착지별), 막대 클릭 → PO 변경 페이지(같은 기간·조건). 구분(제품/상품/자재)은 필터만(막대 안 넣기로)
 - 운영 데이터 정리(10-22, 사용자): 인그립 거치대 W9T400006 → 품목 구분 예외 '상품', PO 변경 사유에 '신규 품목 초도 발주' 추가. 사용자 담당 고객처(미국법인·멕시코법인) 8건 사유·유형 입력 완료, PO781→788은 분할/합배송으로 승인(사유 적재공간 과부족)
-- 운영 DB: `update_po_tracker_type_override_cleanup.sql`까지 실행됨(`update_po_tracker_po_move.sql`은 운영에 실행됐다가 `update_po_tracker_change_type_edit.sql`로 원복, 레포에는 없음). 업로드 10/12(기준선)~10/21. 10/13~10/21 변경 70건 중 사유 입력 8건, 확인 대기 후보 14건 — 다른 담당자 고객처는 아직 사유·검토 전
+- 3단계 요청↔DO 변경 연결(10-22, 커밋 6a14a29): 사용자 결정 — SO 없는 요청은 매칭 제외("SO 없음"), 대기·검토 중·승인 요청 모두 매칭(반려는 후보만, 연결되면 "반려됐는데 변경됨"), 유예 5영업일·사전/사후 구분, 날짜 −7 ~ +45일, 수량 다르면 부분 반영, 사유는 비어 있을 때만 채움. 로컬 PGlite 46개 항목 + 운영 확인 완료. 시험 요청 1건(PO000000788 Z19902005 −60, 요청일 10/22) 운영에 남겨 둠 → 사후 등록·반영됨 10/20, 기존 사유 '기타' 유지. 2025-12 테스트 요청은 '추적 전'
+- 운영 DB: `update_po_tracker_request_untracked.sql`까지 실행됨 (그 전 `update_po_tracker_type_override_cleanup.sql`)(`update_po_tracker_po_move.sql`은 운영에 실행됐다가 `update_po_tracker_change_type_edit.sql`로 원복, 레포에는 없음). 업로드 10/12(기준선)~10/21. 10/13~10/21 변경 70건 중 사유 입력 8건, 확인 대기 후보 14건 — 다른 담당자 고객처는 아직 사유·검토 전
 
 **다음 할 일**
 - C-3 후속: PO 현황 대시보드는 사용자가 쓰면서 추가 수정 요청 예정. 고객처·본사 부서 계정에서 메뉴가 숨겨지는지 실제 계정으로 확인 필요(관리자 계정으로만 확인함). 요청 현황 탭 숫자는 아직 테스트 요청 데이터
-- 3단계: 요청↔DO 매칭(설계안 초안 있음 — 사용자가 다시 요청하면 보여줄 것), 미등록 변경 큐, 미반영 요청. 매칭되면 요청서의 사유·출처로 변경 사유를 미리 채움(`po_change_reasons.source = 'request'`). 현재 `requests` 데이터는 테스트용
+- 3단계 후속: 실제 요청이 쌓이면 자동 연결·후보 정확도 확인(날짜 범위·유예 기간 조정은 관리자 설정). 현재 `requests`는 시험 1건 외 테스트 데이터. 재계산(maintenance_po_rebuild) 시 event: 키가 바뀌면 연결·예외 처리 키도 옮겨야 함(아직 복원 스크립트에 없음)
 - 4단계: 원요청 수신일, 프로즌 판정 기준일 변경, AI 분류(메모 → 사유), 통계
 - 업로드 자동화(API) — **기존 계획 순서대로 나중에** (사용자 결정 10/21)
   - 사내 DX팀이 필요한 열로 판매주문조회·DO등록현황조회 API를 만들어 줌. 사용법: 사내 데이터센터 사이트에서 API 키 발급 → 요청 헤더에 넣어 호출
