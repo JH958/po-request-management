@@ -1,5 +1,5 @@
 /**
- * PO 변경 요약 카드 (변경 건수·확인 필요·사유 미입력·요청 등록률·신규 주문·재등록 대기)
+ * PO 변경 요약 카드 (변경 건수·확인 필요·사유 미입력·사전 요청률·신규 주문·재등록 대기)
  */
 'use client';
 
@@ -14,9 +14,9 @@ interface PoChangesSummaryCardsProps {
   missingReasonCount: number;
   /** 사유 미입력 카드를 누르면 미입력 건만 보기 */
   onShowMissingReasons: () => void;
-  /** 등록 상태별 건수 */
+  /** 요청 연결 상태별 건수 */
   registration: RegistrationCounts;
-  /** 등록률 카드를 누르면 미등록 변경 탭 */
+  /** 사전 요청률 카드를 누르면 요청 없는 변경 탭 */
   onShowUnregistered: () => void;
 }
 
@@ -68,8 +68,8 @@ export const PoChangesSummaryCards = ({
   onShowUnregistered,
 }: PoChangesSummaryCardsProps) => {
   const { t } = useLanguage();
-  const registered = registration.pre + registration.post;
-  const rate = registration.total ? Math.round((registered / registration.total) * 100) : 0;
+  // 사전 요청률 = 요청일이 DO 반영일 이전인 변경 ÷ 전체 변경
+  const rate = registration.total ? Math.round((registration.pre / registration.total) * 100) : 0;
   return (
     <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
       <Card
@@ -91,11 +91,11 @@ export const PoChangesSummaryCards = ({
         onClick={onShowMissingReasons}
       />
       <Card
-        label={t('요청 등록률', 'Registered rate')}
+        label={t('사전 요청률', 'Requested-before rate')}
         value={registration.total ? `${rate}%` : '-'}
         hint={t(
-          `사전 ${registration.pre} · 사후 ${registration.post} / ${registration.total}건 · 미등록 ${registration.unregistered}`,
-          `Before ${registration.pre} · after ${registration.post} of ${registration.total} · unregistered ${registration.unregistered}`
+          `사전 ${registration.pre} / ${registration.total}건 · 사후 ${registration.post} · 요청 없음 ${registration.unregistered}`,
+          `Before ${registration.pre} of ${registration.total} · after ${registration.post} · no request ${registration.unregistered}`
         )}
         onClick={onShowUnregistered}
       />

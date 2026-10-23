@@ -1,5 +1,5 @@
 /**
- * 요청 연결 기준 — 요청 ↔ DO 변경 후보 날짜 범위와 미등록으로 보기 전 유예 영업일 (관리자 전용)
+ * 요청 연결 기준 — 요청 ↔ DO 변경 후보 날짜 범위와 '요청 없음'으로 보기 전 유예 영업일 (관리자 전용)
  */
 'use client';
 
@@ -58,7 +58,7 @@ export const MatchSettings = ({ userId }: { userId: string }) => {
   const labels: Record<keyof MatchSettingsValue, { name: string; hint: string; unit: string }> = {
     days_before: {
       name: t('요청일 이전', 'Before the request date'),
-      hint: t('DO 변경이 요청일보다 이만큼 먼저 감지돼도 후보로 봅니다 (사후 등록).', 'A DO change detected this many days before the request still counts (registered after).'),
+      hint: t('DO 변경이 요청일보다 이만큼 먼저 감지돼도 후보로 봅니다 (사후 요청).', 'A DO change detected this many days before the request still counts (requested after).'),
       unit: t('일', 'days'),
     },
     days_after: {
@@ -67,8 +67,8 @@ export const MatchSettings = ({ userId }: { userId: string }) => {
       unit: t('일', 'days'),
     },
     grace_business_days: {
-      name: t('미등록 유예', 'Grace before Unregistered'),
-      hint: t('연결된 요청이 없는 변경을 감지 후 이만큼 지나면 미등록으로, 그 전은 확인 대기로 봅니다 (토·일 제외).', 'A change with no linked request becomes Unregistered after this many business days; before that it is Waiting (weekends excluded).'),
+      name: t('요청 없음 유예', 'Grace before No request'),
+      hint: t('연결된 요청이 없는 변경을 감지 후 이만큼 지나면 요청 없음으로, 그 전은 확인 대기로 봅니다 (토·일 제외).', 'A change with no linked request becomes No request after this many business days; before that it is Waiting (weekends excluded).'),
       unit: t('영업일', 'business days'),
     },
   };

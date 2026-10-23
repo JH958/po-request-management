@@ -150,19 +150,19 @@ export const getEventTypeName = (
   return setting ? getChangeTypeName(setting, lang) : event.change_type_label;
 };
 
-/** 등록 상태 표시 순서 */
+/** 요청 연결 상태 표시 순서 */
 export const REGISTRATION_STATUSES: RegistrationStatus[] = ['pre', 'post', 'exempt', 'waiting', 'unregistered'];
 
-/** 등록 상태 표시명 */
+/** 요청 연결 상태 표시명 — 사전 요청(요청일 ≤ DO 반영일) / 사후 요청 / 예외 처리 / 확인 대기 / 요청 없음 */
 export const getRegistrationLabels = (t: Translate): Record<RegistrationStatus, string> => ({
-  pre: t('사전 등록', 'Registered before'),
-  post: t('사후 등록', 'Registered after'),
+  pre: t('사전 요청', 'Requested before'),
+  post: t('사후 요청', 'Requested after'),
   exempt: t('예외 처리', 'Exempt'),
   waiting: t('확인 대기', 'Waiting'),
-  unregistered: t('미등록', 'Unregistered'),
+  unregistered: t('요청 없음', 'No request'),
 });
 
-/** 등록 상태 배지 색 (Tailwind 클래스) */
+/** 요청 연결 상태 배지 색 (Tailwind 클래스) */
 export const REGISTRATION_BADGE_CLASSES: Record<RegistrationStatus, string> = {
   pre: 'border-green-200 bg-green-50 text-green-700',
   post: 'border-sky-200 bg-sky-50 text-sky-700',

@@ -64,7 +64,8 @@ export const ChangeStatusTab = ({ rows, previousRows, filters, changeTypes }: Ch
       customer: buckets.filter((b) => b === 'customer').length,
       production: buckets.filter((b) => b === 'production').length,
       department: buckets.filter((b) => b === 'department').length,
-      registered: rows.filter((r) => r.registration_status === 'pre' || r.registration_status === 'post').length,
+      pre: rows.filter((r) => r.registration_status === 'pre').length,
+      post: rows.filter((r) => r.registration_status === 'post').length,
       exempt: rows.filter((r) => r.registration_status === 'exempt').length,
       waiting: rows.filter((r) => r.registration_status === 'waiting').length,
       unregistered: rows.filter((r) => r.registration_status === 'unregistered').length,
@@ -130,17 +131,18 @@ export const ChangeStatusTab = ({ rows, previousRows, filters, changeTypes }: Ch
           />
         </KpiCard>
         <KpiCard
-          label={t('요청 등록률', 'Registered rate')}
-          value={`${percent(stats.registered, stats.total)}%`}
+          label={t('사전 요청률', 'Requested-before rate')}
+          value={`${percent(stats.pre, stats.total)}%`}
           hint={t(
-            `등록 ${numberFormat.format(stats.registered)} · 확인 대기 ${numberFormat.format(stats.waiting)} · 미등록 ${numberFormat.format(stats.unregistered)}`,
-            `Registered ${stats.registered} · waiting ${stats.waiting} · unregistered ${stats.unregistered}`
+            `사전 ${numberFormat.format(stats.pre)} · 사후 ${numberFormat.format(stats.post)} · 확인 대기 ${numberFormat.format(stats.waiting)} · 요청 없음 ${numberFormat.format(stats.unregistered)}`,
+            `Before ${stats.pre} · after ${stats.post} · waiting ${stats.waiting} · no request ${stats.unregistered}`
           )}
         >
           <RatioMeter
-            label={t('요청 등록률', 'Registered rate')}
+            label={t('사전 요청률', 'Requested-before rate')}
             parts={[
-              { label: t('등록 (사전+사후)', 'Registered'), value: stats.registered, color: '#1E40AF' },
+              { label: registrationLabels.pre, value: stats.pre, color: '#1E40AF' },
+              { label: registrationLabels.post, value: stats.post, color: '#5A6778' },
               { label: registrationLabels.exempt, value: stats.exempt, color: '#8E98A8' },
               { label: registrationLabels.waiting, value: stats.waiting, color: '#D6DDE7' },
               { label: registrationLabels.unregistered, value: stats.unregistered, color: '#8B1538' },

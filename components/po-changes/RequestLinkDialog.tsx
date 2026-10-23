@@ -237,8 +237,8 @@ const RequestLinkDialogBody = ({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs text-[#8E98A8]">
               {t(
-                '변경은 맞지만 요청서가 필요 없었던 건(예: 샘플·내부 이동)을 미등록에서 뺍니다. 실제 변경이 아니면 사유 입력 창의 "변경 아님"을 쓰세요.',
-                'Removes a real change that needed no request (e.g. samples, internal moves) from Unregistered. If it is not a real change, use "Not a change" in the reason dialog.'
+                '변경은 맞지만 요청서가 필요 없었던 건(예: 샘플·내부 이동)을 요청 없음에서 뺍니다. 실제 변경이 아니면 사유 입력 창의 "변경 아님"을 쓰세요.',
+                'Removes a real change that needed no request (e.g. samples, internal moves) from No request. If it is not a real change, use "Not a change" in the reason dialog.'
               )}
             </p>
             <Button

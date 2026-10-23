@@ -37,7 +37,7 @@ import {
 } from '@/lib/request-helpers';
 import { useRequestConfig } from '@/context/RequestConfigContext';
 import { FrozenStatusBadge } from '@/components/request/FrozenStatusBadge';
-import { DoReflectionBadge, getDoReflectionText } from '@/components/request/DoReflectionBadge';
+import { RegistrationDateCell, getDaysToRegistration, getRegistrationStateText } from '@/components/request/RegistrationDateCell';
 import { useRequestReflections } from '@/hooks/use-request-reflections';
 import { cn } from '@/lib/utils';
 import { getDateLocale } from '@/lib/i18n';
@@ -165,6 +165,9 @@ export const RequestHistoryTable = ({
       const XLSX = await import('xlsx');
       const exportData = filteredRequests.map((r) => ({
         [t('요청일', 'Request date')]: r.request_date || '',
+        [t('등록일 (DO 반영)', 'Registered (in DO)')]: reflections.get(r.id)?.reflected_on ?? '',
+        [t('요청일부터 등록일까지(일)', 'Days from request to registration')]: getDaysToRegistration(r, reflections.get(r.id)) ?? '',
+        [t('등록 상태', 'Registration state')]: getRegistrationStateText(r, reflections.get(r.id), t),
         [t('SO 번호', 'SO No.')]: r.so_number || '',
         [t('고객', 'Customer')]: r.customer || '',
         [t('요청부서', 'Requesting dept')]: r.requesting_dept || '',
@@ -183,7 +186,6 @@ export const RequestHistoryTable = ({
               ? t('프로즌 이후', 'After frozen')
               : t('미설정', 'Not set'),
         [t('상태', 'Status')]: getStatusLabel(r.status, t),
-        [t('DO 반영', 'DO reflected')]: getDoReflectionText(r, reflections.get(r.id), t),
       }));
       const worksheet = XLSX.utils.json_to_sheet(exportData);
       const workbook = XLSX.utils.book_new();
@@ -349,6 +351,7 @@ export const RequestHistoryTable = ({
                   <TableRow>
                     {[
                       t('요청일', 'Request date'),
+                      t('등록일 (DO 반영)', 'Registered (in DO)'),
                       t('SO 번호', 'SO No.'),
                       t('고객', 'Customer'),
                       t('요청부서', 'Requesting dept'),
@@ -363,7 +366,6 @@ export const RequestHistoryTable = ({
                       t('검토 상세', 'Review details'),
                       t('프로즌 여부', 'Frozen'),
                       t('상태', 'Status'),
-                      t('DO 반영', 'DO reflected'),
                     ].map(
                       (h) => (
                         <TableHead key={h} className="sticky top-0 z-20 bg-white">
@@ -384,6 +386,9 @@ export const RequestHistoryTable = ({
                     filteredRequests.map((r) => (
                       <TableRow key={r.id}>
                         <TableCell>{r.request_date ? formatDate(r.request_date) : '-'}</TableCell>
+                        <TableCell>
+                          <RegistrationDateCell request={r} reflection={reflections.get(r.id)} />
+                        </TableCell>
                         <TableCell className="font-medium">{r.so_number || '-'}</TableCell>
                         <TableCell>{r.customer}</TableCell>
                         <TableCell>{r.requesting_dept}</TableCell>
@@ -425,9 +430,6 @@ export const RequestHistoryTable = ({
                           >
                             {getStatusLabel(r.status, t)}
                           </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <DoReflectionBadge request={r} reflection={reflections.get(r.id)} />
                         </TableCell>
                       </TableRow>
                     ))

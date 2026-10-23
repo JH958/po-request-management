@@ -1,5 +1,5 @@
 /**
- * 미등록 변경 탭 — 요청과 연결되지 않은 변경(미등록·확인 대기)과 후보 요청, 승인됐는데 DO에 반영되지 않은 요청
+ * 요청 없는 변경 탭 — 요청과 연결되지 않은 변경(요청 없음·확인 대기)과 후보 요청, 승인됐는데 DO에 반영되지 않은 요청
  */
 'use client';
 
@@ -84,8 +84,8 @@ export const UnregisteredQueue = ({ events, candidatesByUnit, unreflected, chang
           )}
           <span className="ml-2 text-xs text-[#8E98A8]">
             {t(
-              '감지 후 유예 영업일이 지나면 미등록, 그 전은 확인 대기입니다. 후보를 연결하거나 예외 처리하세요.',
-              'Unregistered after the grace business days, Waiting before that. Link a candidate or mark it exempt.'
+              '감지 후 유예 영업일이 지나면 요청 없음, 그 전은 확인 대기입니다. 후보를 연결하거나 예외 처리하세요.',
+              'No request after the grace business days, Waiting before that. Link a candidate or mark it exempt.'
             )}
           </span>
         </p>
@@ -116,7 +116,7 @@ export const UnregisteredQueue = ({ events, candidatesByUnit, unreflected, chang
                   t('주문 · 품목', 'Order · Item'),
                   t('변경 유형', 'Change type'),
                   t('수량', 'Qty'),
-                  t('등록 상태', 'Registration'),
+                  t('연결 상태', 'Link status'),
                   t('후보 요청', 'Candidate requests'),
                   '',
                 ].map((h, i) => (

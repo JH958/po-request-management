@@ -1,5 +1,5 @@
 /**
- * PO 변경 페이지 — 기간별 변경 이벤트·사유 입력, 분할/합배송·품목코드 변경 후보 확인, 요청 연결·미등록 변경, 재등록 대기 (영업관리팀·관리자)
+ * PO 변경 페이지 — 기간별 변경 이벤트·사유 입력, 분할/합배송·품목코드 변경 후보 확인, 요청 연결·요청 없는 변경, 재등록 대기 (영업관리팀·관리자)
  */
 'use client';
 
@@ -152,7 +152,7 @@ const PoChangesContent = ({ userId, userEmail }: { userId: string; userEmail: st
     [events, filters]
   );
   const reviewCount = visibleGroups.filter((g) => g.status === 'pending').length;
-  // 등록률·미등록 변경은 등록 상태 필터와 관계없이 (다른 필터는 적용)
+  // 사전 요청률·요청 없는 변경은 요청 연결 필터와 관계없이 (다른 필터는 적용)
   const eventsAnyRegistration = useMemo(() => filterEvents(events, { ...filters, registrationFilter: 'all' }), [events, filters]);
   const registration = useMemo(() => countRegistration(eventsAnyRegistration), [eventsAnyRegistration]);
   const newOrders = uploadDays
@@ -387,7 +387,7 @@ const PoChangesContent = ({ userId, userEmail }: { userId: string; userEmail: st
     { id: 'events', label: t(`변경 이벤트 ${statCount}`, `Change events ${statCount}`) },
     {
       id: 'unregistered',
-      label: t(`미등록 변경 ${registration.unregistered + registration.waiting}`, `Unregistered ${registration.unregistered + registration.waiting}`),
+      label: t(`요청 없는 변경 ${registration.unregistered + registration.waiting}`, `No request ${registration.unregistered + registration.waiting}`),
     },
     { id: 'pending', label: t(`재등록 대기 ${pendingLines.length}`, `Pending re-registration ${pendingLines.length}`) },
   ];

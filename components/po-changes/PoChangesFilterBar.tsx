@@ -173,12 +173,12 @@ export const PoChangesFilterBar = ({
         </div>
 
         <div className="space-y-1.5">
-          <Label className="text-xs text-[#5A6778]">{t('요청 등록', 'Request registration')}</Label>
+          <Label className="text-xs text-[#5A6778]">{t('요청 연결', 'Request link')}</Label>
           <Select value={filters.registrationFilter} onValueChange={(v) => set({ registrationFilter: v })}>
             <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">{t('전체 등록 상태', 'All')}</SelectItem>
-              <SelectItem value={REGISTRATION_FILTER_REGISTERED}>{t('등록됨 (사전+사후)', 'Registered (before+after)')}</SelectItem>
+              <SelectItem value="all">{t('전체 연결 상태', 'All')}</SelectItem>
+              <SelectItem value={REGISTRATION_FILTER_REGISTERED}>{t('요청 있음 (사전+사후)', 'Has a request (before+after)')}</SelectItem>
               {REGISTRATION_STATUSES.map((s) => (
                 <SelectItem key={s} value={s}>{registrationLabels[s]}</SelectItem>
               ))}

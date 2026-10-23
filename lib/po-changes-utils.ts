@@ -59,11 +59,11 @@ const matchesOrigin = (e: PoChangeEvent, filter: string): boolean => {
   return e.reason_origin_code === filter;
 };
 
-/** 등록 상태 필터 값: 등록됨(사전+사후) (그 밖의 값은 상태 값) */
+/** 요청 연결 필터 값: 요청 있음(사전+사후) (그 밖의 값은 상태 값) */
 export const REGISTRATION_FILTER_REGISTERED = '__registered__';
 
 /**
- * 등록 상태 필터 일치 여부
+ * 요청 연결 필터 일치 여부
  */
 const matchesRegistration = (e: PoChangeEvent, filter: string): boolean => {
   if (filter === 'all') return true;
@@ -71,11 +71,11 @@ const matchesRegistration = (e: PoChangeEvent, filter: string): boolean => {
   return e.registration_status === filter;
 };
 
-/** 등록 상태별 변경 건수 */
+/** 요청 연결 상태별 변경 건수 */
 export type RegistrationCounts = Record<RegistrationStatus, number> & { total: number };
 
 /**
- * 등록 상태별 변경 건수 (통계 단위 기준, 추적 제외·"변경 아님" 제외)
+ * 요청 연결 상태별 변경 건수 (통계 단위 기준, 추적 제외·"변경 아님" 제외)
  */
 export const countRegistration = (events: PoChangeEvent[]): RegistrationCounts => {
   const units = new Map<string, RegistrationStatus>();

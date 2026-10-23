@@ -1,5 +1,5 @@
 /**
- * 변경 이벤트 탭 — 통계 단위(묶음)별 표, 펼치면 라인별 이벤트, 요청 연결(등록 상태), 사유 입력(여러 건 선택 가능) + Excel 다운로드
+ * 변경 이벤트 탭 — 통계 단위(묶음)별 표, 펼치면 라인별 이벤트, 요청 연결(사전·사후 요청), 사유 입력(여러 건 선택 가능) + Excel 다운로드
  */
 'use client';
 
@@ -166,7 +166,7 @@ export const ChangeEventsTable = ({
           [t('사유 입력자', 'Reason by')]: e.reason_set_by_name ?? '',
           [t('변경 아님', 'Not a change')]: e.is_dismissed ? 'Y' : '',
           [t('정정 메모', 'Correction note')]: e.dismiss_note ?? '',
-          [t('등록 상태', 'Registration')]: e.is_excluded || e.is_dismissed ? '' : registrationLabels[e.registration_status],
+          [t('요청 연결', 'Request link')]: e.is_excluded || e.is_dismissed ? '' : registrationLabels[e.registration_status],
           [t('연결 요청', 'Linked requests')]: (linksByUnit.get(unit.key) ?? [])
             .map((l) => `${l.request_date} ${l.requester_name} ${l.category_of_request}`)
             .join(' / '),
@@ -320,7 +320,7 @@ export const ChangeEventsTable = ({
   };
 
   /**
-   * 요청 등록 칸 — 등록 상태 배지와 연결 요청·후보 수, 누르면 요청 연결 창
+   * 요청 연결 칸 — 연결 상태 배지와 연결 요청·후보 수, 누르면 요청 연결 창
    */
   const renderRegistrationCell = (unit: PoStatUnit) => {
     const e = unit.events[0];
@@ -453,7 +453,7 @@ export const ChangeEventsTable = ({
                   t('수량 (전 → 후)', 'Qty (before → after)'),
                   t('상세 (전 → 후)', 'Detail (before → after)'),
                   t('후보 묶음', 'Candidate'),
-                  t('요청 등록', 'Request'),
+                  t('요청 연결', 'Request'),
                   t('변경 사유', 'Reason'),
                   t('요청 출처', 'Requested by'),
                   '',

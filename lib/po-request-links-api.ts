@@ -64,7 +64,7 @@ export const unlinkChangeRequest = async (linkId: string, note: string): Promise
 };
 
 /**
- * 예외 처리 (메모 필수) — 요청서가 필요 없었던 변경을 미등록에서 뺌
+ * 예외 처리 (메모 필수) — 요청서가 필요 없었던 변경을 요청 없음에서 뺌
  * @returns 처리한 건수
  */
 export const setChangeExemptions = async (keys: string[], note: string): Promise<number> => {
