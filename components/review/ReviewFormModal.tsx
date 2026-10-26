@@ -152,7 +152,7 @@ export const ReviewFormModal = ({
   return (
     <>
       <AlertDialog open={open} onOpenChange={onOpenChange}>
-        <AlertDialogContent className="max-w-3xl">
+        <AlertDialogContent className="sm:max-w-3xl">
           <AlertDialogHeader>
             <AlertDialogTitle>{t('요청 상세 정보', 'Request details')}</AlertDialogTitle>
           </AlertDialogHeader>

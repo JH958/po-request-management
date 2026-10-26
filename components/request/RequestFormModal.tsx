@@ -437,7 +437,7 @@ export const RequestFormModal = ({
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold text-[#172132]">
             {t('PO 변경 요청', 'PO Change Request')} - {requestType.label}

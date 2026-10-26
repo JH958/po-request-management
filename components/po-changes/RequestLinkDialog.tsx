@@ -102,7 +102,7 @@ const RequestLinkDialogBody = ({
   };
 
   return (
-    <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+    <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
       <DialogHeader>
         <DialogTitle className="flex items-center gap-2">
           {t('요청 연결', 'Linked requests')}

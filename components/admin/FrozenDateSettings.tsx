@@ -285,7 +285,7 @@ export const FrozenDateSettings = ({ userId }: FrozenDateSettingsProps) => {
       )}
 
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>{isNew ? t('신규 고객처 추가', 'Add customer') : t('프로즌 설정 수정', 'Edit frozen date rule')}</DialogTitle>
             <DialogDescription>

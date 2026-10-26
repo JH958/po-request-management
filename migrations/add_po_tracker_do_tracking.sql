@@ -864,7 +864,8 @@ SELECT
   END AS change_label,
   ex.is_excluded_customer,
   (cls.product_class = '제외') AS is_excluded_item,
-  (ex.is_excluded_customer OR COALESCE(cls.product_class = '제외', FALSE)) AS is_excluded,
+  -- 추적 제외: 제외 고객처 · '제외' 품목 · 이전(Transfer, 창고 간 이동 — 고객 발주가 아님, 2026-10-26)
+  (ex.is_excluded_customer OR COALESCE(cls.product_class = '제외', FALSE) OR e.is_transfer) AS is_excluded,
   g.group_type,
   g.status AS group_status,
   g.customer_unverified,

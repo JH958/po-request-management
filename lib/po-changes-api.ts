@@ -302,3 +302,23 @@ export const setOrderDestination = async (orderNo: string, target: string | null
   const { error } = await supabase.rpc('set_order_destination', { p_order_no: orderNo, p_target: target });
   if (error) throw new Error(formatPoTrackerError(error));
 };
+
+/**
+ * 이 메일이 담당하는 고객처가 있는지 (고객처 담당자 표, 대소문자 무시) — 못 읽으면 false
+ */
+export const hasManagedCustomers = async (email: string): Promise<boolean> => {
+  const supabase = createClient();
+  // ilike의 와일드카드(% _)와 역슬래시는 글자 그대로 비교되도록 이스케이프
+  const pattern = email.trim().replace(/[\\%_]/g, (c) => `\\${c}`);
+  const { count, error } = await supabase
+    .from('customer_managers')
+    .select('account_no', { count: 'exact', head: true })
+    .ilike('manager_email', pattern);
+  if (error) {
+    if (process.env.NODE_ENV === 'development') {
+      console.error('담당 고객처 확인 실패:', error);
+    }
+    return false;
+  }
+  return (count ?? 0) > 0;
+};

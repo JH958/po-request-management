@@ -29,6 +29,7 @@ import {
   reviewChangeGroup,
   setChangeReasons,
   setChangeTypes,
+  hasManagedCustomers,
   setOrderDestination,
 } from '@/lib/po-changes-api';
 import {
@@ -72,11 +73,15 @@ const groupByKey = <T,>(rows: T[], keyOf: (row: T) => string): Map<string, T[]> 
 /** "내 담당 고객처만" 선택 기억 (브라우저별 편의 기능) */
 const MINE_ONLY_KEY = 'purchaseOnPoChangesMineOnly';
 
-const readMineOnly = (): boolean => {
+/**
+ * 저장된 "내 담당 고객처만" 선택 — 한 번도 고르지 않았으면 null (담당 고객처가 있으면 켠 채로 시작)
+ */
+const readMineOnly = (): boolean | null => {
   try {
-    return window.localStorage.getItem(MINE_ONLY_KEY) === '1';
+    const value = window.localStorage.getItem(MINE_ONLY_KEY);
+    return value === null ? null : value === '1';
   } catch {
-    return false;
+    return null;
   }
 };
 
@@ -126,7 +131,7 @@ const PoChangesContent = ({ userId, userEmail }: { userId: string; userEmail: st
       search: fromDashboard && drill.customer ? drill.customer : '',
       includeExcluded: false,
       // PO 현황에서 들어오면 전체 고객처 기준으로 보여 줌
-      myEmail: !fromDashboard && readMineOnly() ? userEmail : null,
+      myEmail: !fromDashboard && readMineOnly() === true ? userEmail : null,
       reasonFilter: fromDashboard && drill.reason ? drill.reason : 'all',
       originFilter: fromDashboard && drill.origin ? drill.origin : 'all',
       includeDismissed: false,
@@ -136,6 +141,18 @@ const PoChangesContent = ({ userId, userEmail }: { userId: string; userEmail: st
   const [tab, setTab] = useState<PoChangesTab>(fromDashboard ? 'events' : 'review');
   const [reasonUnits, setReasonUnits] = useState<PoStatUnit[] | null>(null);
   const [linkUnit, setLinkUnit] = useState<PoStatUnit | null>(null);
+
+  // 처음 여는 사람(선택 기록 없음)이 담당 고객처가 있으면 "내 담당 고객처만"을 켠 채로 시작
+  useEffect(() => {
+    if (fromDashboard || !userEmail || readMineOnly() !== null) return;
+    let cancelled = false;
+    void hasManagedCustomers(userEmail).then((has) => {
+      if (!cancelled && has) setFilters((prev) => ({ ...prev, myEmail: userEmail }));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [fromDashboard, userEmail]);
   const { requestReasons } = useRequestConfig();
 
   const { events, groups, changeTypes, origins, pendingLines, uploadDays, links, candidates, unreflected, loading, error, refresh } =

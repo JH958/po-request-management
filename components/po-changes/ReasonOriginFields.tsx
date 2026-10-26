@@ -50,7 +50,7 @@ export const ReasonOriginFields = ({
 
   return (
     <div className={cn('grid gap-3', compact ? 'md:grid-cols-[1fr_auto_1fr]' : '')}>
-      <div className="space-y-1.5">
+      <div className="min-w-0 space-y-1.5">
         <Label htmlFor={`${idPrefix}-reason`} className="text-xs text-[#5A6778]">
           {t('변경 사유', 'Change reason')} <span className="text-red-500">*</span>
         </Label>
@@ -69,7 +69,7 @@ export const ReasonOriginFields = ({
         ) : null}
       </div>
 
-      <div className="space-y-1.5">
+      <div className="min-w-0 space-y-1.5">
         <span className="block text-xs font-medium text-[#5A6778]">
           {t('요청 출처', 'Requested by')} <span className="text-red-500">*</span>
         </span>
@@ -95,14 +95,14 @@ export const ReasonOriginFields = ({
         </div>
       </div>
 
-      <div className="space-y-1.5">
+      <div className="min-w-0 space-y-1.5">
         <Label htmlFor={`${idPrefix}-origin`} className="text-xs text-[#5A6778]">
           {value.originType === 'customer' ? t('고객처', 'Customer') : t('요청 부서', 'Department')}
         </Label>
         {value.originType === 'customer' ? (
           <p
             id={`${idPrefix}-origin`}
-            className="flex h-9 items-center truncate rounded-md border border-[#E4E9EF] bg-[#F8FAFC] px-3 text-sm text-[#253143]"
+            className="block h-9 truncate rounded-md border border-[#E4E9EF] bg-[#F8FAFC] px-3 text-sm leading-9 text-[#253143]"
             title={customerNames.join(', ')}
           >
             {customerNames.length ? customerNames.join(', ') : t('주문의 고객처', "The order's customer")}

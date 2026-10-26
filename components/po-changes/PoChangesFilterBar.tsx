@@ -58,6 +58,11 @@ export const PoChangesFilterBar = ({
   const registrationLabels = getRegistrationLabels(t);
   const set = (patch: Partial<PoChangeFilters>) => onChange({ ...filters, ...patch });
   const singleDay = filters.from === filters.to ? filters.from : '';
+  // DO 추적 시작일 = 가장 이른 DO 업로드(기준선)
+  const trackingStart = uploadDays.reduce<string | null>(
+    (min, d) => (!min || d.snapshot_date < min ? d.snapshot_date : min),
+    null
+  );
 
   return (
     <div className="space-y-4 rounded-lg border bg-white p-4">
@@ -92,6 +97,16 @@ export const PoChangesFilterBar = ({
         >
           {t('최근 7일', 'Last 7 days')}
         </Button>
+        {trackingStart ? (
+          <Button
+            variant="outline"
+            className="border-[#D6DDE7] shadow-none"
+            onClick={() => set({ from: trackingStart, to: getDefaultRange().to })}
+            title={t(`DO 추적을 시작한 ${trackingStart}부터 오늘까지`, `From ${trackingStart}, when DO tracking started, to today`)}
+          >
+            {t('추적 시작부터', 'Since tracking began')}
+          </Button>
+        ) : null}
 
         <div className="space-y-1.5">
           <Label className="text-xs text-[#5A6778]">{t('업로드일', 'Upload date')}</Label>
@@ -227,7 +242,7 @@ export const PoChangesFilterBar = ({
             onCheckedChange={(v) => set({ includeExcluded: v })}
           />
           <Label htmlFor="po-changes-excluded" className="cursor-pointer text-sm text-[#253143]">
-            {t('추적 제외 고객처 포함', 'Include excluded customers')}
+            {t('추적 제외·이전(TRO) 포함', 'Include excluded & transfers')}
           </Label>
         </div>
       </div>

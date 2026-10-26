@@ -157,7 +157,7 @@ const ReasonDialogBody = ({
   };
 
   return (
-    <DialogContent className="max-w-2xl">
+    <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
       <DialogHeader>
         <DialogTitle>
           {units.length === 1 ? t('변경 사유·유형 입력', 'Change reason and type') : t(`변경 ${units.length}건 사유·유형 입력`, `Reason and type for ${units.length} changes`)}
