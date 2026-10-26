@@ -18,6 +18,7 @@ import { CustomerAccountSettings } from '@/components/admin/CustomerAccountSetti
 import { ViewGrantSettings } from '@/components/admin/ViewGrantSettings';
 import { DestinationSettings } from '@/components/admin/DestinationSettings';
 import { MatchSettings } from '@/components/admin/MatchSettings';
+import { RequestMenuSetting } from '@/components/admin/RequestMenuSetting';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { PageHeader } from '@/components/common/PageHeader';
@@ -69,7 +70,7 @@ export default function AdminSettingsPage() {
     { id: 'item-class', label: t('품목 구분 예외', 'Item Category Exceptions') },
     { id: 'customer-managers', label: t('고객처 담당자', 'Customer Owners') },
     { id: 'destinations', label: t('경유 고객처·도착지', 'Via Customers & Destinations') },
-    { id: 'matching', label: t('요청 연결 기준', 'Request Matching') },
+    { id: 'matching', label: t('요청 메뉴·연결 기준', 'Request Menus & Matching') },
   ];
 
   return (
@@ -103,7 +104,12 @@ export default function AdminSettingsPage() {
       {tab === 'item-class' && <ItemClassOverrideSettings userId={user.id} />}
       {tab === 'customer-managers' && <CustomerManagerSettings userId={user.id} />}
       {tab === 'destinations' && <DestinationSettings userId={user.id} />}
-      {tab === 'matching' && <MatchSettings userId={user.id} />}
+      {tab === 'matching' && (
+        <div className="space-y-4">
+          <RequestMenuSetting userId={user.id} />
+          <MatchSettings userId={user.id} />
+        </div>
+      )}
     </div>
   );
 }

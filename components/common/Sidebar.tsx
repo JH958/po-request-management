@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useLanguage } from '@/context/LanguageContext';
+import { useRequestConfig } from '@/context/RequestConfigContext';
 
 const SIDEBAR_STORAGE_KEY = 'purchaseOnSidebarCollapsed';
 
@@ -85,6 +86,7 @@ export const Sidebar = ({
   });
   const pathname = usePathname();
   const { t } = useLanguage();
+  const { requestMenuEnabled } = useRequestConfig();
 
   const toggleCollapsed = () => {
     const next = !collapsed;
@@ -101,13 +103,18 @@ export const Sidebar = ({
     ...(showSalesTeamMenus
       ? [{ title: t('현황', 'Overview'), items: [{ href: '/', label: t('PO 현황', 'PO Status'), icon: LayoutDashboard }] }]
       : []),
-    {
-      title: t('요청', 'Requests'),
-      items: [
-        { href: '/request', label: t('요청접수', 'Submit Request'), icon: FileEdit },
-        { href: '/review', label: t('검토대기', 'Pending Review'), icon: CheckSquare },
-      ],
-    },
+    // 요청접수·검토대기는 관리자 설정 '요청 메뉴 표시'가 켜져 있을 때만 (관리자는 항상)
+    ...(showAdminSettings || requestMenuEnabled
+      ? [
+          {
+            title: t('요청', 'Requests'),
+            items: [
+              { href: '/request', label: t('요청접수', 'Submit Request'), icon: FileEdit },
+              { href: '/review', label: t('검토대기', 'Pending Review'), icon: CheckSquare },
+            ],
+          },
+        ]
+      : []),
     ...(showAdminSettings || showSalesTeamMenus
       ? [
           {

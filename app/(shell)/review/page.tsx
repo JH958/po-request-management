@@ -5,6 +5,9 @@
 
 import { useState } from 'react';
 import { useAuth } from '@/hooks/use-auth';
+import { RequestMenuClosed } from '@/components/common/RequestMenuClosed';
+import { useRequestConfig } from '@/context/RequestConfigContext';
+import { isSalesTeam } from '@/lib/dashboard-scope';
 import { useLanguage } from '@/context/LanguageContext';
 import { useRequests, usePendingRequests } from '@/hooks/use-requests';
 import { ReviewGrid } from '@/components/review/ReviewGrid';
@@ -16,6 +19,7 @@ import { PageHeader } from '@/components/common/PageHeader';
 export default function ReviewPage() {
   const { user, profile, isAdmin, isReviewer } = useAuth();
   const { t } = useLanguage();
+  const { requestMenuEnabled } = useRequestConfig();
   const { requests, loading: historyLoading, fetchRequests } = useRequests({
     userId: user?.id,
     department: profile?.department,
@@ -40,6 +44,11 @@ export default function ReviewPage() {
     void fetchRequests();
     void fetchPending();
   };
+
+  // 관리자 설정에서 요청 메뉴가 꺼져 있으면 관리자 외에는 준비 중 안내
+  if (user && profile && !isAdmin && !requestMenuEnabled) {
+    return <RequestMenuClosed showPoChangesLink={isSalesTeam(profile.department, profile.role)} />;
+  }
 
   if (!user || !profile) {
     return (
