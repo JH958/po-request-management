@@ -169,24 +169,10 @@ export default function LoginPage() {
               PO Tracker
             </h1>
             <p className="text-lg text-[#5A6778] leading-relaxed">
-              {t('체계적인 PO 변경 요청 관리를 통해', 'Structured PO change request management')}
+              {t('매일의 DO 변경을 추적해,', 'Tracks DO changes every day')}
               <br />
-              {t('유관부서 간 효율적인 협업을 지원합니다.', 'for smooth collaboration across departments.')}
+              {t('PO 변경의 원인과 흐름을 한눈에 보여 줍니다.', 'to show what changed in each PO and why.')}
             </p>
-          </div>
-          <div className="space-y-2 text-sm text-[#5A6778]">
-            <div className="flex items-center gap-2">
-              <span className="text-[#8B1538]">✓</span>
-              <span>{t('실시간 요청 현황 추적', 'Real-time request tracking')}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[#8B1538]">✓</span>
-              <span>{t('원활한 승인 워크플로우', 'Smooth approval workflow')}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[#8B1538]">✓</span>
-              <span>{t('중앙 집중식 요청 관리', 'Centralized request management')}</span>
-            </div>
           </div>
         </div>
 
@@ -326,8 +312,8 @@ export default function LoginPage() {
           </h1>
           <p className="text-sm text-[#5A6778]">
             {t(
-              '체계적인 PO 변경 요청 관리를 통해 효율적인 협업을 지원합니다.',
-              'Structured PO change request management for smooth collaboration.'
+              '매일의 DO 변경을 추적해, PO 변경의 원인과 흐름을 한눈에 보여 줍니다.',
+              'Tracks DO changes every day to show what changed in each PO and why.'
             )}
           </p>
         </div>
