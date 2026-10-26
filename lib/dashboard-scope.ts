@@ -35,6 +35,17 @@ export const isSalesTeam = (department: string, role: string): boolean =>
   canAccessAdminSettings(department, role) || Boolean(department?.includes('영업관리'));
 
 /**
+ * 화면 접근용 영업관리팀 여부 — 서버 판정(담당자 표 메일 또는 관리자 승인)을 쓰고, 판정이 없으면 부서 기준
+ */
+export const isSalesTeamProfile = (
+  profile: { department?: string | null; role?: string | null; is_sales_team?: boolean } | null | undefined
+): boolean => {
+  if (!profile) return false;
+  if (typeof profile.is_sales_team === 'boolean') return profile.is_sales_team;
+  return isSalesTeam(profile.department ?? '', profile.role ?? '');
+};
+
+/**
  * 대시보드 범위에 맞게 요청 목록 필터링
  */
 export const applyDashboardScope = (requests: PORequest[], scope: DashboardScope): PORequest[] => {

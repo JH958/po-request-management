@@ -21,7 +21,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { usePoChanges } from '@/hooks/use-po-changes';
 import { useLanguage } from '@/context/LanguageContext';
 import { useRequestConfig } from '@/context/RequestConfigContext';
-import { isSalesTeam } from '@/lib/dashboard-scope';
+import { isSalesTeamProfile } from '@/lib/dashboard-scope';
 import {
   clearChangeReasons,
   dismissChanges,
@@ -543,7 +543,7 @@ const PoChangesContent = ({ userId, userEmail }: { userId: string; userEmail: st
 export default function PoChangesPage() {
   const router = useRouter();
   const { user, profile, loading } = useAuth();
-  const hasAccess = profile && isSalesTeam(profile.department, profile.role);
+  const hasAccess = isSalesTeamProfile(profile);
 
   useEffect(() => {
     if (!loading && profile && !hasAccess) {

@@ -6,13 +6,13 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
-import { isSalesTeam } from '@/lib/dashboard-scope';
+import { isSalesTeamProfile } from '@/lib/dashboard-scope';
 import { PoDashboard } from '@/components/dashboard/PoDashboard';
 
 export default function HomePage() {
   const router = useRouter();
   const { profile, loading } = useAuth();
-  const hasAccess = Boolean(profile && isSalesTeam(profile.department ?? '', profile.role ?? ''));
+  const hasAccess = Boolean(profile && isSalesTeamProfile(profile));
 
   useEffect(() => {
     if (!loading && profile && !hasAccess) {

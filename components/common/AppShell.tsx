@@ -13,7 +13,7 @@ import { Sidebar } from '@/components/common/Sidebar';
 import { TourLauncher } from '@/components/tour/TourLauncher';
 import { TourHost } from '@/components/tour/TourHost';
 import { EXTERNAL_LINKS } from '@/lib/request-constants';
-import { canAccessAdminSettings, getDashboardScope, isSalesTeam } from '@/lib/dashboard-scope';
+import { canAccessAdminSettings, getDashboardScope, isSalesTeamProfile } from '@/lib/dashboard-scope';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
@@ -233,7 +233,7 @@ export const AppShell = ({ children }: AppShellProps) => {
           showAdminSettings={
             profile ? canAccessAdminSettings(profile.department, profile.role) : false
           }
-          showSalesTeamMenus={profile ? isSalesTeam(profile.department, profile.role) : false}
+          showSalesTeamMenus={isSalesTeamProfile(profile)}
         />
         <main className="flex-1 overflow-y-auto px-6 py-8 lg:px-10">
           {children}

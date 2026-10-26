@@ -29,6 +29,8 @@
 
 -- ---------------------------------------------------------------------
 -- 0. 권한 헬퍼 (2026-10-20 분리: 관리자 = role에 admin, 영업관리팀 = 부서에 영업관리 또는 관리자)
+--    (2026-10-26) po_is_sales_team()은 update_po_tracker_sales_access.sql에서 '부서 + 담당자 표 메일 또는 관리자 승인'으로 바뀜
+--    (user_profiles.sales_access_approved 열이 필요해 그 파일에서 정의)
 -- ---------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.is_po_tracker_admin()
 RETURNS BOOLEAN

@@ -12,6 +12,8 @@ interface UserProfile {
   full_name: string;
   department: string;
   role: string; // 콤마로 구분된 역할들 (예: "reviewer,requester" 또는 "admin")
+  /** 영업관리팀 권한 (서버 판정 po_is_sales_team — 부서 + 담당자 표 메일 또는 관리자 승인) */
+  is_sales_team?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -159,14 +161,17 @@ export const useAuth = (): UseAuthReturn => {
 
       const supabase = createClient();
       try {
-        const { data } = await supabase
-          .from('user_profiles')
-          .select('*')
-          .eq('id', user.id)
-          .single();
-        
+        // 프로필과 영업관리팀 권한(서버 판정)을 함께 받음 — 권한 함수가 없으면(마이그레이션 전) 부서 기준으로
+        const [{ data }, salesTeam] = await Promise.all([
+          supabase.from('user_profiles').select('*').eq('id', user.id).single(),
+          supabase.rpc('po_is_sales_team'),
+        ]);
+
         if (data && !cancelled) {
-          setProfile(data as UserProfile);
+          setProfile({
+            ...(data as UserProfile),
+            is_sales_team: salesTeam.error ? undefined : Boolean(salesTeam.data),
+          });
         }
       } catch (error) {
         // 프로필이 없어도 계속 진행

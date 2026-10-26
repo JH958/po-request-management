@@ -19,6 +19,7 @@ import { ViewGrantSettings } from '@/components/admin/ViewGrantSettings';
 import { DestinationSettings } from '@/components/admin/DestinationSettings';
 import { MatchSettings } from '@/components/admin/MatchSettings';
 import { RequestMenuSetting } from '@/components/admin/RequestMenuSetting';
+import { SalesAccessSettings } from '@/components/admin/SalesAccessSettings';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { PageHeader } from '@/components/common/PageHeader';
@@ -30,6 +31,7 @@ type AdminTab =
   | 'request-origins'
   | 'customer-accounts'
   | 'view-grants'
+  | 'sales-access'
   | 'item-class'
   | 'customer-managers'
   | 'destinations'
@@ -67,6 +69,7 @@ export default function AdminSettingsPage() {
     { id: 'request-origins', label: t('요청 부서', 'Requesting Departments') },
     { id: 'customer-accounts', label: t('고객처 계정', 'Customer Accounts') },
     { id: 'view-grants', label: t('조회 권한', 'View Access') },
+    { id: 'sales-access', label: t('영업관리팀 계정', 'Sales Admin Accounts') },
     { id: 'item-class', label: t('품목 구분 예외', 'Item Category Exceptions') },
     { id: 'customer-managers', label: t('고객처 담당자', 'Customer Owners') },
     { id: 'destinations', label: t('경유 고객처·도착지', 'Via Customers & Destinations') },
@@ -101,6 +104,7 @@ export default function AdminSettingsPage() {
       {tab === 'request-origins' && <RequestOriginSettings userId={user.id} />}
       {tab === 'customer-accounts' && <CustomerAccountSettings userId={user.id} />}
       {tab === 'view-grants' && <ViewGrantSettings />}
+      {tab === 'sales-access' && <SalesAccessSettings />}
       {tab === 'item-class' && <ItemClassOverrideSettings userId={user.id} />}
       {tab === 'customer-managers' && <CustomerManagerSettings userId={user.id} />}
       {tab === 'destinations' && <DestinationSettings userId={user.id} />}
