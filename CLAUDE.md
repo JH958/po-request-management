@@ -6,6 +6,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 PO Tracker(구 Purchase On) — PO(Purchase Order) 변경 요청 접수·검토 및 변경 추적 웹 서비스. 화면 표시명만 PO Tracker이며 레포·Supabase·Vercel 프로젝트명과 localStorage 키(`purchaseOn*`)는 기존 이름을 유지합니다. 고객처(법인·대리점·지사)와 본사 부서가 PO 변경 요청을 등록하고, 유관부서가 검토(가능 여부·확정 출하일/수량)하는 흐름. 요구사항 원문은 `docs/PRD.md`. UI 텍스트, 주석, 커밋 메시지는 모두 한국어.
 
+## 저장소 (2026-10-26~)
+
+- 원격 저장소 두 곳: GitHub `JH958/po-request-management`(origin, Vercel 배포 연결)와 사내 GitLab `gitlab.weareinbody.com/inbody/vibe-coding/po-tracker`. `origin`의 push URL에 두 곳을 모두 등록해 **`git push` 한 번에 두 곳으로** 올라감(`main`의 upstream은 `origin/main`). GitLab에만 올릴 때는 `git push gitlab main`
+- GitLab `main`은 보호 브랜치(force push 꺼짐 유지). 처음 올릴 때만 force push를 잠시 켜서 GitLab 기본 README(Initial commit)를 덮어씀
+- 저장소 문서(CLAUDE.md 등)에는 팀원 이름·메일 같은 개인 정보를 적지 않음 — 커밋·푸시가 자동 권한 검사에서 막힘
+
 ## Commands
 
 ```bash
@@ -106,6 +112,7 @@ PO Tracker 전환은 4단계로 진행 중: 1) 표시명 변경 2) DO 업로드�
 - 10-23: 재계산 스크립트 보완·10/20 백업 테이블 삭제(`maintenance_po_rebuild_cleanup.sql` 운영 실행, 커밋 71e494f) / 4단계-1 요청일·등록일 정리(커밋 998c0e6) — 요청일 = 카드 작성일(고칠 수 없음, 프로즌 기준), 등록일 = DO 반영일, PO 변경 용어를 사전 요청·사후 요청·요청 없음·사전 요청률로
 - 10-23 시도 후 원복: '최초 요청일'(요청자가 요청을 처음 받은 날을 입력, 그 날짜로 프로즌 판정, 판정이 바뀌면 지연 사유·관리자 수정·한도 설정) — 사용자가 날짜 조작 여지를 없애려고 요청일을 카드 작성일로 고정하기로 결정. `add_request_original_date.sql`은 운영에 실행됐다가 `update_request_original_date_revert.sql`로 원복(레포에는 원복 파일만). 다시 제안하지 말 것(요청하면 그때)
 - 10-26 (영업관리팀 사용 준비, 커밋 519d8a0·22b40bd·34ba6b8·eff7108): 팀 공유용 원 페이지 문서 'PO Tracker 구현 현황 (팀 공유)'·'PO Tracker 영업관리팀 사용 안내'(계정 만들기, 내 담당 변경 찾기, 확인 필요 처리, 사유·유형 입력, 재등록 대기, FAQ Q1~Q6 — Claude Docs, 사용자가 공유) / PO 변경: 담당 고객처가 있으면 '내 담당 고객처만' 처음부터 켜짐(선택 기억), '추적 시작부터' 기간 버튼, 이전(TRO) 변경 추적 제외(`update_po_tracker_exclude_transfer.sql`, 토글 '추적 제외·이전(TRO) 포함') / 팝업 너비 버그 수정(shadcn 기본 `sm:max-w-lg`가 넓은 창을 묶음 → 넓은 창은 `sm:max-w-*`, DialogContent 자식 `min-w-0`) / 요청 메뉴 표시 설정(`add_app_settings.sql`) / 영업관리팀 권한 = 담당자 표 메일 또는 관리자 승인 / 로그인·회원가입 소개 문구 "매일의 DO 변경을 추적해, PO 변경의 원인과 흐름을 한눈에 보여 줍니다."·체크 문구 3줄 삭제
+- 10-26 저장소: 사내 GitLab 연결·전체 기록(커밋 58개) 업로드, 이후 `git push`가 GitHub·GitLab 동시
 - 운영 DB: `update_po_tracker_sales_access.sql`까지 실행됨 (10-26: `update_po_tracker_exclude_transfer.sql`, `add_app_settings.sql`, `update_po_tracker_sales_access.sql`)(`update_po_tracker_po_move.sql`·`add_request_original_date.sql`은 운영에 실행됐다가 원복, 레포에는 없음). 업로드 10/12(기준선)~10/23. 10/13~10/23 변경 90건(이전 8건 제외 후), 사유 입력 8건, 확인 필요 후보 15건. 영업관리팀 부서 계정 2개 중 1개가 담당자 표에 없어 승인 대기(시험 계정인지 사용자 확인 필요 — 관리자 설정 '영업관리팀 계정' 탭)
 
 **다음 할 일**
