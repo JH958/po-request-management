@@ -6,10 +6,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 PO Tracker(구 Purchase On) — PO(Purchase Order) 변경 요청 접수·검토 및 변경 추적 웹 서비스. 화면 표시명만 PO Tracker이며 레포·Supabase·Vercel 프로젝트명과 localStorage 키(`purchaseOn*`)는 기존 이름을 유지합니다. 고객처(법인·대리점·지사)와 본사 부서가 PO 변경 요청을 등록하고, 유관부서가 검토(가능 여부·확정 출하일/수량)하는 흐름. 요구사항 원문은 `docs/PRD.md`. UI 텍스트, 주석, 커밋 메시지는 모두 한국어.
 
-## 저장소 (2026-10-26~)
+## 저장소 (2026-10-29~)
 
-- 원격 저장소 두 곳: GitHub `JH958/po-request-management`(origin, Vercel 배포 연결)와 사내 GitLab `gitlab.weareinbody.com/inbody/vibe-coding/po-tracker`. `origin`의 push URL에 두 곳을 모두 등록해 **`git push` 한 번에 두 곳으로** 올라감(`main`의 upstream은 `origin/main`). GitLab에만 올릴 때는 `git push gitlab main`
-- GitLab `main`은 보호 브랜치(force push 꺼짐 유지). 처음 올릴 때만 force push를 잠시 켜서 GitLab 기본 README(Initial commit)를 덮어씀
+- 이 폴더(Next.js·Supabase 앱)는 GitHub `JH958/po-request-management`(origin, Vercel 배포 연결)에만 올림
+- 사내 GitLab `gitlab.weareinbody.com/inbody/vibe-coding/po-tracker`는 **새 앱(사내 react 키트 + PostgreSQL) 전용**. 하위 폴더 `po-tracker/`가 그 저장소이며 이 폴더의 git에는 포함하지 않음. 10-26~10-28에는 이 폴더를 GitLab에도 동시 푸시했으나 10-29 해제(GitLab `main` 기록에 예전 코드가 남아 있음) — 이 폴더에서 GitLab로 push하지 말 것
+- GitLab `main`은 보호 브랜치(force push 꺼짐 유지)
 - 저장소 문서(CLAUDE.md 등)에는 팀원 이름·메일 같은 개인 정보를 적지 않음 — 커밋·푸시가 자동 권한 검사에서 막힘
 
 ## Commands
